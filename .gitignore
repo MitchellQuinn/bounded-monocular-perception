@@ -1,0 +1,121 @@
+# ------------------------------
+# Virtual environments and local env files
+# ------------------------------
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-meta/
+.python-version
+.env
+.env.*
+!.env.example
+
+# ------------------------------
+# Python caches and build artifacts
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# ------------------------------
+# Repository-specific generated data and model outputs
+# ------------------------------
+rb-training/training-data/
+rb-training/validation-data/
+rb-training/models/
+synthetic-data-processing/training-data-shuffled/
+synthetic-data-processing/boundbox-images/
+
+# ------------------------------
+# Generic datasets, generated outputs, and training artifacts
+# ------------------------------
+datasets/
+dataset/
+data/
+generated/
+outputs/
+artifacts/
+checkpoints/
+**/checkpoints/
+**/runs/
+
+# ------------------------------
+# Model files and checkpoints
+# ------------------------------
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.keras
+*.safetensors
+*.joblib
+*.pkl
+
+# ------------------------------
+# Generated arrays and image artifacts
+# ------------------------------
+*.npy
+*.npz
+*.png
+
+# ------------------------------
+# Ambiguous experiment metadata (ignore by default)
+# ------------------------------
+**/manifests/
+**/run_register*.json
+**/run*.log
+**/train*.log
+**/*stage_log*.txt
+**/split_membership*.csv
+**/split_membership*.json
+**/split_summary*.json
+**/dataset_summary*.json
+**/shuffle_ledger*.csv
+**/samples.csv
+**/model_architecture*.txt
+**/model_architecture*.json
+
+# ------------------------------
+# Logs, temp files, and OS/editor noise
+# ------------------------------
+logs/
+*.log
+*.out
+*.err
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ------------------------------
+# Local machine one-off notes
+# ------------------------------
+*pyenv*-before-uninstall*.txt
+
+# Keep intentional placeholders
+!.gitkeep
