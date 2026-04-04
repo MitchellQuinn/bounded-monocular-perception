@@ -17,6 +17,7 @@ from .manifest import (
     copy_run_json,
     load_samples_csv,
     samples_csv_path,
+    upsert_preprocessing_contract,
     write_samples_csv,
 )
 from .paths import (
@@ -76,6 +77,23 @@ def run_edge_stage(
 
     ensure_run_dirs(output_paths, dry_run=stage_config.dry_run)
     copy_run_json(source_paths.manifests_dir, output_paths.manifests_dir, dry_run=stage_config.dry_run)
+    upsert_preprocessing_contract(
+        output_paths.manifests_dir,
+        stage_name="edge",
+        stage_parameters={
+            "BlurKernelSize": int(stage_config.blur_kernel_size),
+            "BlurKernelSizeUsed": int(stage_config.normalized_blur_kernel_size()),
+            "CannyLowThreshold": int(stage_config.canny_low_threshold),
+            "CannyHighThreshold": int(stage_config.canny_high_threshold),
+        },
+        current_representation={
+            "Kind": "edge_png",
+            "StorageFormat": "png",
+            "ColorSpace": "grayscale",
+            "ForegroundEncoding": "black_on_white",
+        },
+        dry_run=stage_config.dry_run,
+    )
 
     log_path = output_paths.manifests_dir / "edge_stage_log.txt"
     logger = StageLogger(

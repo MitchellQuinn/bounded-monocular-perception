@@ -76,6 +76,7 @@ checkpoints/
 *.npy
 *.npz
 *.png
+*.zip
 
 # ------------------------------
 # Ambiguous experiment metadata (ignore by default)

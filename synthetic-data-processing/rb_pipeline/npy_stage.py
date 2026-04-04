@@ -19,6 +19,7 @@ from .manifest import (
     copy_run_json,
     load_samples_csv,
     samples_csv_path,
+    upsert_preprocessing_contract,
     write_samples_csv,
 )
 from .paths import (
@@ -95,6 +96,26 @@ def run_npy_stage(
 
     ensure_run_dirs(output_paths, dry_run=stage_config.dry_run)
     copy_run_json(source_paths.manifests_dir, output_paths.manifests_dir, dry_run=stage_config.dry_run)
+    upsert_preprocessing_contract(
+        output_paths.manifests_dir,
+        stage_name="npy",
+        stage_parameters={
+            "Normalize": bool(stage_config.normalize),
+            "Invert": bool(stage_config.invert),
+            "OutputDType": output_dtype,
+        },
+        current_representation={
+            "Kind": "full_frame_bbox_array",
+            "StorageFormat": "npy",
+            "ColorSpace": "grayscale",
+            "Geometry": "full_frame_bbox_outline",
+            "ArrayLayout": "H,W",
+            "ArrayDType": output_dtype,
+            "Normalize": bool(stage_config.normalize),
+            "Invert": bool(stage_config.invert),
+        },
+        dry_run=stage_config.dry_run,
+    )
 
     log_path = output_paths.manifests_dir / "npy_stage_log.txt"
     logger = StageLogger(

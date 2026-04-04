@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+import json
 import math
 from pathlib import Path
 from time import perf_counter
@@ -39,7 +40,15 @@ from .paths import (
     to_repo_relative,
 )
 from .plots import save_history_plot, save_prediction_scatter, save_residual_plot
-from .utils import environment_summary, git_metadata, set_random_seeds, sha256_file, utc_now_iso, write_json
+from .utils import (
+    environment_summary,
+    git_metadata,
+    read_json,
+    set_random_seeds,
+    sha256_file,
+    utc_now_iso,
+    write_json,
+)
 
 
 def _schema_to_records(schema_df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -276,6 +285,111 @@ def _resolve_entrypoint(repo_root: Path, entrypoint_path_raw: str) -> tuple[str,
     return entrypoint_path_raw, None
 
 
+def _load_preprocessing_contract_records(
+    repo_root: Path,
+    infos: list[Any],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for info in infos:
+        run_payload = read_json(info.run_json_path)
+        preprocessing_contract = run_payload.get("PreprocessingContract")
+        records.append(
+            {
+                "source_root": str(info.source_root),
+                "dataset_id": str(info.dataset_id),
+                "relative_run_json_path": to_repo_relative(repo_root, info.run_json_path),
+                "has_preprocessing_contract": isinstance(preprocessing_contract, dict),
+                "preprocessing_contract": (
+                    preprocessing_contract if isinstance(preprocessing_contract, dict) else None
+                ),
+            }
+        )
+    return records
+
+
+def _resolve_preprocessing_contract(
+    contract_records: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    if not contract_records:
+        return None, ["No source corpuses were available to resolve a preprocessing contract."]
+
+    present = [record for record in contract_records if record["preprocessing_contract"] is not None]
+    missing = [record for record in contract_records if record["preprocessing_contract"] is None]
+
+    if missing and present:
+        missing_paths = ", ".join(record["relative_run_json_path"] for record in missing)
+        raise ValueError(
+            "Selected corpuses mix run.json files with and without PreprocessingContract metadata. "
+            f"Missing contract in: {missing_paths}"
+        )
+
+    if not present:
+        return None, [
+            "No source run.json files contain PreprocessingContract metadata; "
+            "saved model artifacts cannot fully reconstruct preprocessing for inference."
+        ]
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in present:
+        signature = json.dumps(
+            record["preprocessing_contract"],
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        grouped.setdefault(signature, []).append(record)
+
+    if len(grouped) > 1:
+        mismatched_paths = ", ".join(
+            record["relative_run_json_path"]
+            for records in grouped.values()
+            for record in records
+        )
+        raise ValueError(
+            "Selected corpuses contain conflicting PreprocessingContract values. "
+            f"Conflicting run.json files: {mismatched_paths}"
+        )
+
+    resolved_contract = present[0]["preprocessing_contract"]
+    return dict(resolved_contract), []
+
+
+def _describe_input_representation(preprocessing_contract: dict[str, Any] | None) -> str:
+    fallback = "NPZ shard key X; full-frame bbox image, grayscale, normalized [0, 1]"
+    if not isinstance(preprocessing_contract, dict):
+        return fallback
+
+    representation = preprocessing_contract.get("CurrentRepresentation")
+    if not isinstance(representation, dict):
+        return fallback
+
+    storage = representation.get("StorageFormat")
+    array_key = representation.get("ArrayKey")
+    kind = representation.get("Kind")
+    color = representation.get("ColorSpace")
+    geometry = representation.get("Geometry")
+    dtype = representation.get("ArrayDType")
+
+    parts: list[str] = []
+    if storage and array_key:
+        parts.append(f"{storage} key {array_key}")
+    elif storage:
+        parts.append(str(storage))
+    if kind:
+        parts.append(str(kind))
+    if color:
+        parts.append(str(color))
+    if geometry:
+        parts.append(str(geometry))
+    if dtype:
+        parts.append(f"dtype={dtype}")
+    if "Normalize" in representation:
+        parts.append(f"normalize={bool(representation['Normalize'])}")
+    if "Invert" in representation:
+        parts.append(f"invert={bool(representation['Invert'])}")
+
+    return "; ".join(parts) if parts else fallback
+
+
 def _write_model_card(
     run_dir: Path,
     run_id: str,
@@ -394,6 +508,13 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     validation_metadata, validation_infos = load_root_metadata(
         validation_root, source_root="validation", repo_root=repo_root
     )
+    preprocessing_contract_sources = _load_preprocessing_contract_records(
+        repo_root,
+        [*training_infos, *validation_infos],
+    )
+    preprocessing_contract, preprocessing_contract_warnings = _resolve_preprocessing_contract(
+        preprocessing_contract_sources
+    )
 
     training_schema = validate_root_schema(training_metadata, root_name="training")
     validation_schema = validate_root_schema(validation_metadata, root_name="validation")
@@ -454,6 +575,17 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "validation_shard_schema": _schema_to_records(validation_schema),
         "overlap_warnings": overlap_warnings,
         "overlap_details": overlap_details,
+        "preprocessing_contract": preprocessing_contract,
+        "preprocessing_contract_sources": [
+            {
+                "source_root": record["source_root"],
+                "dataset_id": record["dataset_id"],
+                "relative_run_json_path": record["relative_run_json_path"],
+                "has_preprocessing_contract": bool(record["has_preprocessing_contract"]),
+            }
+            for record in preprocessing_contract_sources
+        ],
+        "preprocessing_contract_warnings": preprocessing_contract_warnings,
     }
     write_json(run_dir / "dataset_summary.json", dataset_summary)
 
@@ -841,11 +973,14 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "source_run_json_paths": source_run_json_paths,
         "source_samples_csv_paths": source_samples_csv_paths,
         "dataset_summary": dataset_summary,
+        "preprocessing_contract": preprocessing_contract,
+        "preprocessing_contract_sources": dataset_summary["preprocessing_contract_sources"],
+        "preprocessing_contract_warnings": preprocessing_contract_warnings,
         "model_name": config.model_name,
         "model_class_name": "DistanceRegressor2DCNN",
         "model_architecture_variant": config.model_architecture_variant,
         "model_architecture_summary": architecture_text(model),
-        "input_representation": "NPZ shard key X; full-frame bbox image, grayscale, normalized [0, 1]",
+        "input_representation": _describe_input_representation(preprocessing_contract),
         "input_shape": [1, int(target_hw[0]), int(target_hw[1])],
         "target_name": "distance_m",
         "optimizer": "Adam",

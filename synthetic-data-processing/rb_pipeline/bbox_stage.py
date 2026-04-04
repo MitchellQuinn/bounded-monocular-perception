@@ -19,6 +19,7 @@ from .manifest import (
     copy_run_json,
     load_samples_csv,
     samples_csv_path,
+    upsert_preprocessing_contract,
     write_samples_csv,
 )
 from .paths import (
@@ -63,6 +64,28 @@ def run_bbox_stage(
 
     ensure_run_dirs(output_paths, dry_run=stage_config.dry_run)
     copy_run_json(source_paths.manifests_dir, output_paths.manifests_dir, dry_run=stage_config.dry_run)
+    upsert_preprocessing_contract(
+        output_paths.manifests_dir,
+        stage_name="bbox",
+        stage_parameters={
+            "ForegroundThreshold": int(stage_config.foreground_threshold),
+            "LineThicknessPx": int(stage_config.line_thickness),
+            "LineThicknessPxUsed": max(1, int(stage_config.line_thickness)),
+            "PaddingPx": int(stage_config.padding_px),
+            "PaddingPxUsed": max(0, int(stage_config.padding_px)),
+            "PostDrawBlur": bool(stage_config.post_draw_blur),
+            "PostDrawBlurKernelSize": int(stage_config.post_draw_blur_kernel_size),
+            "PostDrawBlurKernelSizeUsed": int(stage_config.normalized_blur_kernel_size()),
+        },
+        current_representation={
+            "Kind": "full_frame_bbox_png",
+            "StorageFormat": "png",
+            "ColorSpace": "grayscale",
+            "ForegroundEncoding": "black_on_white",
+            "Geometry": "full_frame_bbox_outline",
+        },
+        dry_run=stage_config.dry_run,
+    )
 
     log_path = output_paths.manifests_dir / "bbox_stage_log.txt"
     logger = StageLogger(

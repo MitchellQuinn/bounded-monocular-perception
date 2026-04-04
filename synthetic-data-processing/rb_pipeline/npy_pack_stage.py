@@ -21,6 +21,7 @@ from .manifest import (
     copy_run_json,
     load_samples_csv,
     samples_csv_path,
+    upsert_preprocessing_contract,
     write_samples_csv,
 )
 from .npy_stage import _coerce_training_array_dtype, _normalize_output_dtype
@@ -94,6 +95,51 @@ def run_npy_pack_stage(
 
     ensure_run_dirs(output_paths, dry_run=dry_run)
     copy_run_json(source_paths.manifests_dir, output_paths.manifests_dir, dry_run=dry_run)
+    upsert_preprocessing_contract(
+        output_paths.manifests_dir,
+        stage_name="npy",
+        stage_parameters={
+            "Normalize": bool(npy_stage_config.normalize),
+            "Invert": bool(npy_stage_config.invert),
+            "OutputDType": npy_output_dtype,
+        },
+        current_representation={
+            "Kind": "full_frame_bbox_array",
+            "StorageFormat": "npy",
+            "ColorSpace": "grayscale",
+            "Geometry": "full_frame_bbox_outline",
+            "ArrayLayout": "H,W",
+            "ArrayDType": npy_output_dtype,
+            "Normalize": bool(npy_stage_config.normalize),
+            "Invert": bool(npy_stage_config.invert),
+        },
+        dry_run=dry_run,
+    )
+    effective_pack_array_dtype = (
+        pack_output_dtype if pack_output_dtype != "preserve" else npy_output_dtype
+    )
+    upsert_preprocessing_contract(
+        output_paths.manifests_dir,
+        stage_name="pack",
+        stage_parameters={
+            "OutputDType": pack_output_dtype,
+            "EffectiveArrayDType": effective_pack_array_dtype,
+            "Compress": bool(pack_stage_config.compress),
+            "ShardSize": int(shard_size),
+        },
+        current_representation={
+            "Kind": "full_frame_bbox_array",
+            "StorageFormat": "npz",
+            "ArrayKey": "X",
+            "ColorSpace": "grayscale",
+            "Geometry": "full_frame_bbox_outline",
+            "ArrayLayout": "N,H,W",
+            "ArrayDType": effective_pack_array_dtype,
+            "Normalize": bool(npy_stage_config.normalize),
+            "Invert": bool(npy_stage_config.invert),
+        },
+        dry_run=dry_run,
+    )
 
     npy_log_path = output_paths.manifests_dir / "npy_stage_log.txt"
     pack_log_path = output_paths.manifests_dir / "pack_stage_log.txt"

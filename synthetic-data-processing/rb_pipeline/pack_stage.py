@@ -10,7 +10,17 @@ import pandas as pd
 
 from .config import PackStageConfig, StageSummary
 from .logging_utils import StageLogger
-from .manifest import NPY_STAGE_COLUMNS, PACK_STAGE_COLUMNS, append_columns, load_samples_csv, samples_csv_path, write_samples_csv
+from .manifest import (
+    PREPROCESSING_CONTRACT_KEY,
+    NPY_STAGE_COLUMNS,
+    PACK_STAGE_COLUMNS,
+    append_columns,
+    load_run_json,
+    load_samples_csv,
+    samples_csv_path,
+    upsert_preprocessing_contract,
+    write_samples_csv,
+)
 from .paths import normalize_relative_filename, resolve_manifest_path, training_run_paths
 from .validation import (
     PipelineValidationError,
@@ -117,6 +127,44 @@ def run_pack_stage(
         raise PipelineValidationError("\n".join(validation_errors))
 
     append_columns(samples_df, PACK_STAGE_COLUMNS)
+
+    run_payload = load_run_json(run_paths.manifests_dir)
+    prior_contract = run_payload.get(PREPROCESSING_CONTRACT_KEY)
+    prior_representation = (
+        prior_contract.get("CurrentRepresentation", {})
+        if isinstance(prior_contract, dict)
+        else {}
+    )
+    effective_array_dtype = (
+        output_dtype
+        if output_dtype != "preserve"
+        else str(prior_representation.get("ArrayDType", "preserve"))
+    )
+    current_representation = {
+        "Kind": "full_frame_bbox_array",
+        "StorageFormat": "npz",
+        "ArrayKey": "X",
+        "ColorSpace": "grayscale",
+        "Geometry": "full_frame_bbox_outline",
+        "ArrayLayout": "N,H,W",
+        "ArrayDType": effective_array_dtype,
+    }
+    if "Normalize" in prior_representation:
+        current_representation["Normalize"] = bool(prior_representation["Normalize"])
+    if "Invert" in prior_representation:
+        current_representation["Invert"] = bool(prior_representation["Invert"])
+    upsert_preprocessing_contract(
+        run_paths.manifests_dir,
+        stage_name="pack",
+        stage_parameters={
+            "OutputDType": output_dtype,
+            "EffectiveArrayDType": effective_array_dtype,
+            "Compress": bool(stage_config.compress),
+            "ShardSize": int(shard_size),
+        },
+        current_representation=current_representation,
+        dry_run=stage_config.dry_run,
+    )
 
     samples_df["npz_filename"] = samples_df["npz_filename"].astype("string")
     samples_df["npz_row_index"] = pd.to_numeric(samples_df["npz_row_index"], errors="coerce").astype("Int64")

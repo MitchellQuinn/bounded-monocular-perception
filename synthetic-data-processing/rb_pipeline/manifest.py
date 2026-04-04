@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -44,6 +46,10 @@ PACK_STAGE_COLUMNS = [
     "pack_stage_status",
     "pack_stage_error",
 ]
+
+PREPROCESSING_CONTRACT_KEY = "PreprocessingContract"
+PREPROCESSING_CONTRACT_VERSION = "rb-preprocess-v1"
+PREPROCESSING_STAGE_ORDER = ("edge", "bbox", "npy", "pack")
 
 
 
@@ -104,3 +110,81 @@ def samples_csv_path(manifest_dir: Path) -> Path:
 
 def run_json_path(manifest_dir: Path) -> Path:
     return manifest_dir / RUN_JSON_FILENAME
+
+
+def load_run_json(manifest_dir: Path) -> dict[str, Any]:
+    """Load one manifest run.json as a dictionary."""
+
+    path = run_json_path(manifest_dir)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"run.json must contain a JSON object: {path}")
+    return payload
+
+
+def write_run_json(
+    manifest_dir: Path,
+    payload: dict[str, Any],
+    *,
+    dry_run: bool = False,
+) -> Path:
+    """Write run.json unless dry-run mode is enabled."""
+
+    path = run_json_path(manifest_dir)
+    if dry_run:
+        return path
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=4) + "\n", encoding="utf-8")
+    return path
+
+
+def upsert_preprocessing_contract(
+    manifest_dir: Path,
+    *,
+    stage_name: str,
+    stage_parameters: dict[str, Any],
+    current_representation: dict[str, Any],
+    dry_run: bool = False,
+) -> Path:
+    """Add or update the authoritative preprocessing contract inside run.json."""
+
+    normalized_stage_name = str(stage_name).strip().lower()
+    if normalized_stage_name not in PREPROCESSING_STAGE_ORDER:
+        allowed = ", ".join(PREPROCESSING_STAGE_ORDER)
+        raise ValueError(
+            f"Unsupported preprocessing contract stage '{stage_name}'. Allowed: {allowed}."
+        )
+
+    payload = load_run_json(manifest_dir)
+    existing = payload.get(PREPROCESSING_CONTRACT_KEY)
+    contract = existing.copy() if isinstance(existing, dict) else {}
+
+    completed_stages_raw = contract.get("CompletedStages")
+    completed_stages = (
+        [
+            str(value).strip().lower()
+            for value in completed_stages_raw
+            if str(value).strip().lower() in PREPROCESSING_STAGE_ORDER
+        ]
+        if isinstance(completed_stages_raw, list)
+        else []
+    )
+    if normalized_stage_name not in completed_stages:
+        completed_stages.append(normalized_stage_name)
+    completed_stages = [
+        stage for stage in PREPROCESSING_STAGE_ORDER if stage in completed_stages
+    ]
+
+    stages_raw = contract.get("Stages")
+    stages = stages_raw.copy() if isinstance(stages_raw, dict) else {}
+    stages[normalized_stage_name] = dict(stage_parameters)
+
+    contract["ContractVersion"] = PREPROCESSING_CONTRACT_VERSION
+    contract["CurrentStage"] = normalized_stage_name
+    contract["CompletedStages"] = completed_stages
+    contract["CurrentRepresentation"] = dict(current_representation)
+    contract["Stages"] = stages
+
+    payload[PREPROCESSING_CONTRACT_KEY] = contract
+    return write_run_json(manifest_dir, payload, dry_run=dry_run)
