@@ -40,6 +40,8 @@ class TrainConfig:
     train_active_shard_count: int = 3
     cache_validation_in_ram: bool = True
     validation_cache_budget_gb: float = 40.0
+    resume_from_run_dir: str | Path | None = None
+    additional_epochs: int | None = None
     change_note: str = "First-pass 2D CNN distance-regression falsification run."
     entrypoint_type: str = "cli"
     entrypoint_path: str = "src/train.py"

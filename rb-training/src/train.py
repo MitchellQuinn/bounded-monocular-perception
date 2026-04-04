@@ -7,6 +7,7 @@ from dataclasses import asdict
 import json
 import math
 from pathlib import Path
+import shutil
 from time import perf_counter
 from typing import Any
 
@@ -40,6 +41,12 @@ from .paths import (
     to_repo_relative,
 )
 from .plots import save_history_plot, save_prediction_scatter, save_residual_plot
+from .resume.state import (
+    RESUME_STATE_FILENAME,
+    build_resume_state_payload,
+    load_resume_state,
+    save_resume_state,
+)
 from .utils import (
     environment_summary,
     git_metadata,
@@ -486,10 +493,138 @@ def _write_model_card(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _run_index_from_name(name: str) -> int:
+    text = str(name).strip()
+    if not text.startswith("run_"):
+        return -1
+    try:
+        return int(text.split("_", maxsplit=1)[1])
+    except ValueError:
+        return -1
+
+
+def _normalize_history_records(raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("history_records in resume state must be a list.")
+    records: list[dict[str, Any]] = []
+    for idx, row in enumerate(raw):
+        if not isinstance(row, dict):
+            raise ValueError(
+                f"history_records[{idx}] in resume state must be an object; got {type(row)}"
+            )
+        records.append(dict(row))
+    return records
+
+
+def _resolve_resume_source_run_dir(repo_root: Path, source_raw: str | Path) -> Path:
+    source = Path(source_raw).expanduser()
+    if not source.is_absolute():
+        source = (repo_root / source).resolve()
+    if not source.exists():
+        raise FileNotFoundError(f"resume_from_run_dir does not exist: {source}")
+
+    if source.is_dir() and (source / "config.json").exists():
+        return source
+
+    candidates: list[Path] = []
+    for base in (source, source / "runs"):
+        if not base.exists() or not base.is_dir():
+            continue
+        for child in base.glob("run_*"):
+            if not child.is_dir():
+                continue
+            if (child / RESUME_STATE_FILENAME).exists() and (child / "config.json").exists():
+                candidates.append(child.resolve())
+    if candidates:
+        candidates.sort(
+            key=lambda path: (
+                _run_index_from_name(path.name),
+                path.stat().st_mtime,
+            )
+        )
+        return candidates[-1]
+
+    raise FileNotFoundError(
+        "Could not resolve a resume source run directory with both config.json and "
+        f"{RESUME_STATE_FILENAME}: {source}"
+    )
+
+
+def _load_resume_context(
+    *,
+    repo_root: Path,
+    config: TrainConfig,
+    training_root: Path,
+    validation_root: Path,
+    target_hw: tuple[int, int],
+) -> dict[str, Any] | None:
+    source_raw = config.resume_from_run_dir
+    if source_raw is None:
+        return None
+
+    source_run_dir = _resolve_resume_source_run_dir(repo_root, source_raw)
+    source_config = read_json(source_run_dir / "config.json")
+    resume_state_path = source_run_dir / RESUME_STATE_FILENAME
+    resume_state = load_resume_state(resume_state_path, map_location="cpu")
+
+    source_variant = str(resume_state.get("model_architecture_variant", "")).strip()
+    if source_variant and source_variant != str(config.model_architecture_variant):
+        raise ValueError(
+            "Resume source architecture variant mismatch: "
+            f"source={source_variant} current={config.model_architecture_variant}"
+        )
+
+    state_train_root = str(resume_state.get("training_data_root_resolved", "")).strip()
+    state_val_root = str(resume_state.get("validation_data_root_resolved", "")).strip()
+    if state_train_root and Path(state_train_root).resolve() != training_root.resolve():
+        raise ValueError(
+            "Resume source training root mismatch: "
+            f"source={state_train_root} current={training_root}"
+        )
+    if state_val_root and Path(state_val_root).resolve() != validation_root.resolve():
+        raise ValueError(
+            "Resume source validation root mismatch: "
+            f"source={state_val_root} current={validation_root}"
+        )
+
+    state_target_hw = resume_state.get("target_hw")
+    if isinstance(state_target_hw, (list, tuple)) and len(state_target_hw) == 2:
+        source_target_hw = (int(state_target_hw[0]), int(state_target_hw[1]))
+        if source_target_hw != (int(target_hw[0]), int(target_hw[1])):
+            raise ValueError(
+                "Resume source target_hw mismatch: "
+                f"source={source_target_hw} current={(int(target_hw[0]), int(target_hw[1]))}"
+            )
+
+    additional_epochs = config.additional_epochs
+    if additional_epochs is None:
+        raise ValueError(
+            "additional_epochs must be provided when resume_from_run_dir is set."
+        )
+    if int(additional_epochs) <= 0:
+        raise ValueError(
+            f"additional_epochs must be positive for resume runs; got {additional_epochs}"
+        )
+
+    return {
+        "source_run_dir": source_run_dir,
+        "source_config": source_config,
+        "source_run_id": str(source_config.get("run_id", source_run_dir.name)),
+        "resume_state": resume_state,
+        "additional_epochs": int(additional_epochs),
+    }
+
+
 def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, Any]:
     """Train the first-pass 2D CNN regressor and write canonical run artifacts."""
     if isinstance(config, dict):
         config = TrainConfig(**{**asdict(TrainConfig()), **config})  # type: ignore[arg-type]
+    if config.resume_from_run_dir is None and config.additional_epochs is not None:
+        raise ValueError(
+            "additional_epochs can only be used when resume_from_run_dir is set."
+        )
 
     repo_root = find_repo_root()
     training_root = resolve_data_root(
@@ -520,6 +655,13 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     validation_schema = validate_root_schema(validation_metadata, root_name="validation")
     combined_schema = pd.concat([training_schema, validation_schema], ignore_index=True)
     target_hw = determine_target_hw(combined_schema, padding_mode=config.padding_mode)
+    resume_context = _load_resume_context(
+        repo_root=repo_root,
+        config=config,
+        training_root=training_root,
+        validation_root=validation_root,
+        target_hw=target_hw,
+    )
 
     overlap_warnings, overlap_details = detect_overlap_warnings(
         training_metadata,
@@ -554,6 +696,11 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     run_id = run_dir.name
 
     config_payload = asdict(config)
+    resume_source_run_dir: str | None = None
+    resume_source_run_id: str | None = None
+    if resume_context is not None:
+        resume_source_run_dir = str(resume_context["source_run_dir"])
+        resume_source_run_id = str(resume_context["source_run_id"])
     config_payload.update(
         {
             "repo_root": str(repo_root),
@@ -564,6 +711,8 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "target_width": int(target_hw[1]),
             "run_id": run_id,
             "created_utc": utc_now_iso(),
+            "resume_from_run_dir_resolved": resume_source_run_dir,
+            "resume_from_run_id": resume_source_run_id,
         }
     )
     write_json(run_dir / "config.json", config_payload)
@@ -674,7 +823,8 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     best_val_loss = float("inf")
     best_epoch = -1
     no_improvement_epochs = 0
-    total_epochs = int(config.epochs)
+    start_epoch = 1
+    total_epochs_target = int(config.epochs)
     progress_log_interval_batches = max(0, int(config.progress_log_interval_batches))
     accuracy_tolerance_m = float(config.accuracy_tolerance_m)
     if accuracy_tolerance_m <= 0:
@@ -712,6 +862,34 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             patience=lr_scheduler_patience,
             min_lr=lr_scheduler_min_lr,
         )
+    resume_mode = False
+    resume_source_run_id = ""
+    if resume_context is not None:
+        resume_state = dict(resume_context["resume_state"])
+        source_run_dir = Path(resume_context["source_run_dir"]).resolve()
+        resume_source_run_id = str(resume_context["source_run_id"])
+        additional_epochs = int(resume_context["additional_epochs"])
+        model.load_state_dict(resume_state["model_state_dict"])
+        optimizer.load_state_dict(resume_state["optimizer_state_dict"])
+        scheduler_state = resume_state.get("lr_scheduler_state_dict")
+        if lr_scheduler is not None and isinstance(scheduler_state, dict):
+            lr_scheduler.load_state_dict(scheduler_state)
+        history_records = _normalize_history_records(resume_state.get("history_records"))
+        best_val_loss = float(resume_state.get("best_val_loss", float("inf")))
+        best_epoch = int(resume_state.get("best_epoch", -1))
+        no_improvement_epochs = int(resume_state.get("no_improvement_epochs", 0))
+        last_completed_epoch = int(resume_state["epoch"])
+        start_epoch = last_completed_epoch + 1
+        total_epochs_target = last_completed_epoch + additional_epochs
+        if total_epochs_target < start_epoch:
+            raise ValueError(
+                "Resolved total epoch budget is before resume start: "
+                f"start_epoch={start_epoch} total_epochs_target={total_epochs_target}"
+            )
+        source_best_path = source_run_dir / "best.pt"
+        if source_best_path.exists():
+            shutil.copy2(source_best_path, run_dir / "best.pt")
+        resume_mode = True
 
     train_shuffle_mode = str(config.train_shuffle_mode)
     if train_shuffle_mode not in ALLOWED_TRAIN_SHUFFLE_MODES:
@@ -735,7 +913,8 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     )
 
     print(
-        f"[train] run_id={run_id} device={device} model_variant={config.model_architecture_variant} "
+        f"[train] run_id={run_id} mode={'resume' if resume_mode else 'fresh'} "
+        f"device={device} model_variant={config.model_architecture_variant} "
         f"train_samples={len(train_split)} val_samples={len(validation_metadata)} "
         f"batch_size={int(config.batch_size)} "
         f"acc_metrics={accuracy_metrics_label} "
@@ -747,10 +926,16 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         f"val_cache_budget={validation_cache_budget_gb:.1f}GiB",
         flush=True,
     )
+    if resume_mode:
+        print(
+            f"[train] resuming from run_id={resume_source_run_id} "
+            f"start_epoch={start_epoch} total_target_epochs={total_epochs_target}",
+            flush=True,
+        )
 
-    for epoch in range(1, total_epochs + 1):
+    for epoch in range(start_epoch, total_epochs_target + 1):
         epoch_started = perf_counter()
-        print(f"[train][epoch {epoch}/{total_epochs}] starting", flush=True)
+        print(f"[train][epoch {epoch}/{total_epochs_target}] starting", flush=True)
         epoch_lr_before = float(optimizer.param_groups[0]["lr"])
         train_loss, train_accuracy, train_accuracy_by_tolerance = _train_one_epoch(
             model=model,
@@ -768,7 +953,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             shuffle_mode=train_shuffle_mode,
             active_shard_count=train_active_shard_count,
             epoch=epoch,
-            total_epochs=total_epochs,
+            total_epochs=total_epochs_target,
             progress_log_interval_batches=progress_log_interval_batches,
         )
         val_eval = evaluate_split(
@@ -784,7 +969,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             accuracy_tolerance_m=accuracy_tolerance_m,
             additional_accuracy_tolerances_m=extra_accuracy_tolerances,
             progress_log_interval_batches=progress_log_interval_batches,
-            progress_log_prefix=f"[validation][epoch {epoch}/{total_epochs}]",
+            progress_log_prefix=f"[validation][epoch {epoch}/{total_epochs_target}]",
             shard_cache=validation_shard_cache,
         )
         if val_eval.loss is None:
@@ -827,13 +1012,36 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         if not math.isclose(epoch_lr_before, epoch_lr_after):
             lr_text = f"lr={epoch_lr_before:.2e}->{epoch_lr_after:.2e}"
         print(
-            f"[train][epoch {epoch}/{total_epochs}] complete "
+            f"[train][epoch {epoch}/{total_epochs_target}] complete "
             f"train_loss={train_loss:.6f} {_format_accuracy_metrics(train_accuracy_by_tolerance, prefix='train_')} "
             f"val_loss={float(val_eval.loss):.6f} {_format_accuracy_metrics(val_eval.accuracy_by_tolerance, prefix='val_')} "
             f"val_mae={val_eval.mae:.6f} val_rmse={val_eval.rmse:.6f} "
             f"{lr_text} "
             f"elapsed={epoch_elapsed:.1f}s",
             flush=True,
+        )
+        history_df_epoch = pd.DataFrame(history_records)
+        history_df_epoch.to_csv(run_dir / "history.csv", index=False)
+        torch.save(model.state_dict(), run_dir / "latest.pt")
+        save_resume_state(
+            run_dir / RESUME_STATE_FILENAME,
+            build_resume_state_payload(
+                epoch=epoch,
+                run_id=run_id,
+                model_state_dict=model.state_dict(),
+                optimizer_state_dict=optimizer.state_dict(),
+                lr_scheduler_state_dict=(
+                    lr_scheduler.state_dict() if lr_scheduler is not None else None
+                ),
+                best_epoch=best_epoch,
+                best_val_loss=best_val_loss,
+                no_improvement_epochs=no_improvement_epochs,
+                history_records=history_records,
+                model_architecture_variant=config.model_architecture_variant,
+                training_data_root_resolved=str(training_root),
+                validation_data_root_resolved=str(validation_root),
+                target_hw=target_hw,
+            ),
         )
 
         if no_improvement_epochs >= int(config.early_stopping_patience):
@@ -985,6 +1193,18 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "target_name": "distance_m",
         "optimizer": "Adam",
         "loss_function": f"HuberLoss(delta={config.huber_delta})",
+        "resume": {
+            "enabled": bool(resume_mode),
+            "source_run_id": resume_source_run_id if resume_mode else None,
+            "source_run_dir": (
+                str(resume_context["source_run_dir"]) if resume_mode and resume_context is not None else None
+            ),
+            "start_epoch": int(start_epoch),
+            "total_target_epochs": int(total_epochs_target),
+            "additional_epochs": (
+                int(resume_context["additional_epochs"]) if resume_mode and resume_context is not None else None
+            ),
+        },
         "hyperparameters": {
             "batch_size": int(config.batch_size),
             "epochs": int(config.epochs),
@@ -1009,6 +1229,14 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "validation_cache_budget_gb": float(config.validation_cache_budget_gb),
             "enable_internal_test_split": bool(config.enable_internal_test_split),
             "internal_test_fraction": float(config.internal_test_fraction),
+            "resume_from_run_dir": (
+                str(config.resume_from_run_dir) if config.resume_from_run_dir is not None else None
+            ),
+            "additional_epochs": (
+                int(config.additional_epochs) if config.additional_epochs is not None else None
+            ),
+            "start_epoch": int(start_epoch),
+            "total_target_epochs": int(total_epochs_target),
         },
         "cache_runtime_stats": {
             "train_shard_cache": train_cache_stats,
@@ -1032,6 +1260,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "model_card_md": to_repo_relative(repo_root, run_dir / "model_card.md"),
             "best_pt": to_repo_relative(repo_root, run_dir / "best.pt"),
             "latest_pt": to_repo_relative(repo_root, run_dir / "latest.pt"),
+            "resume_state_pt": to_repo_relative(repo_root, run_dir / RESUME_STATE_FILENAME),
             "history_csv": to_repo_relative(repo_root, run_dir / "history.csv"),
             "metrics_json": to_repo_relative(repo_root, run_dir / "metrics.json"),
             "prediction_scatter_png": to_repo_relative(repo_root, run_dir / "prediction_scatter.png"),
@@ -1056,6 +1285,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "run_id": run_id,
         "best_model_path": str(run_dir / "best.pt"),
         "last_model_path": str(run_dir / "latest.pt"),
+        "resume_state_path": str(run_dir / RESUME_STATE_FILENAME),
         "metrics": metrics,
     }
 
@@ -1097,6 +1327,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=True,
     )
     parser.add_argument("--validation-cache-budget-gb", type=float, default=40.0)
+    parser.add_argument("--resume-from-run-dir", default=None)
+    parser.add_argument("--additional-epochs", type=int, default=None)
     parser.add_argument("--change-note", default="CLI training run.")
     parser.add_argument("--enable-internal-test-split", action="store_true")
     parser.add_argument("--internal-test-fraction", type=float, default=0.1)
@@ -1135,6 +1367,8 @@ def main() -> None:
         train_active_shard_count=args.train_active_shard_count,
         cache_validation_in_ram=bool(args.cache_validation_in_ram),
         validation_cache_budget_gb=args.validation_cache_budget_gb,
+        resume_from_run_dir=args.resume_from_run_dir,
+        additional_epochs=args.additional_epochs,
         change_note=args.change_note,
         entrypoint_type="cli",
         entrypoint_path="src/train.py",
