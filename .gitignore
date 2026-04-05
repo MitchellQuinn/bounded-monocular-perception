@@ -43,6 +43,7 @@ rb-training/validation-data/
 rb-training/models/
 synthetic-data-processing/training-data-shuffled/
 synthetic-data-processing/boundbox-images/
+synthetic-data-processing/input-images/
 
 # ------------------------------
 # Generic datasets, generated outputs, and training artifacts
