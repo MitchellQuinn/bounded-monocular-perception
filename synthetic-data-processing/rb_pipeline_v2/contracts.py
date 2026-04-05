@@ -19,6 +19,9 @@ class GeneratorOutput:
     fallback_mask: np.ndarray
     contour: ContourArray | None
     primary_reason: str
+    debug_images: dict[str, np.ndarray] | None = None
+    quality_flags: tuple[str, ...] = ()
+    diagnostics: dict[str, object] | None = None
 
 
 class RepresentationGenerator(Protocol):
@@ -36,6 +39,7 @@ class RepresentationGenerator(Protocol):
         close_kernel_size: int,
         dilate_kernel_size: int,
         min_component_area_px: int,
+        fill_holes: bool,
     ) -> GeneratorOutput:
         ...
 

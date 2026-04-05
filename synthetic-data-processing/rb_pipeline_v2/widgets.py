@@ -79,6 +79,14 @@ def _safe_npy(path: Path | None) -> np.ndarray | None:
 
 
 
+def _preferred_generator_id(generator_ids: list[str]) -> str | None:
+    if "silhouette.contour_v2" in generator_ids:
+        return "silhouette.contour_v2"
+    if generator_ids:
+        return generator_ids[0]
+    return None
+
+
 def _draw_preview_grid_v2(
     source_img: np.ndarray | None,
     edge_debug_img: np.ndarray | None,
@@ -308,23 +316,25 @@ class PipelineLauncherV2:
         self.generator_dropdown = widgets.Dropdown(
             description="Generator:",
             options=[(value, value) for value in registered["generators"]],
-            value=registered["generators"][0] if registered["generators"] else None,
+            value=_preferred_generator_id(registered["generators"]),
         )
         self.fallback_dropdown = widgets.Dropdown(
             description="Fallback:",
             options=[(value, value) for value in registered["fallbacks"]],
             value=registered["fallbacks"][0] if registered["fallbacks"] else None,
         )
-        self.persist_edge_debug_checkbox = widgets.Checkbox(value=False, description="Persist edge debug")
+        self.fill_holes_checkbox = widgets.Checkbox(value=True, description="Fill holes")
+        self.use_convex_hull_fallback_checkbox = widgets.Checkbox(value=True, description="Use convex-hull fallback")
+        self.persist_edge_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
         self.sample_offset_input = widgets.BoundedIntText(description="Sample offset:", value=0, min=0, max=1_000_000)
         self.sample_limit_input = widgets.BoundedIntText(description="Sample limit:", value=0, min=0, max=1_000_000)
 
         self.blur_kernel_slider = widgets.IntSlider(description="Blur k", value=5, min=1, max=31, step=2)
         self.canny_low_slider = widgets.IntSlider(description="Canny low", value=50, min=0, max=255, step=1)
         self.canny_high_slider = widgets.IntSlider(description="Canny high", value=150, min=0, max=255, step=1)
-        self.close_kernel_slider = widgets.IntSlider(description="Close k", value=3, min=1, max=31, step=1)
-        self.dilate_kernel_slider = widgets.IntSlider(description="Dilate k", value=3, min=1, max=31, step=1)
-        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=20, min=1, max=1_000_000)
+        self.close_kernel_slider = widgets.IntSlider(description="Close k", value=1, min=1, max=31, step=1)
+        self.dilate_kernel_slider = widgets.IntSlider(description="Dilate k", value=1, min=1, max=31, step=1)
+        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=50, min=1, max=1_000_000)
         self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
 
         self.array_exporter_dropdown = widgets.Dropdown(
@@ -386,6 +396,8 @@ class PipelineLauncherV2:
                 self.mode_dropdown,
                 self.generator_dropdown,
                 self.fallback_dropdown,
+                self.fill_holes_checkbox,
+                self.use_convex_hull_fallback_checkbox,
                 self.persist_edge_debug_checkbox,
                 self.sample_offset_input,
                 self.sample_limit_input,
@@ -503,7 +515,10 @@ class PipelineLauncherV2:
             dilate_kernel_size=self.dilate_kernel_slider.value,
             min_component_area_px=self.min_component_area_input.value,
             outline_thickness=self.outline_thickness_slider.value,
+            fill_holes=self.fill_holes_checkbox.value,
+            use_convex_hull_fallback=self.use_convex_hull_fallback_checkbox.value,
             persist_edge_debug=self.persist_edge_debug_checkbox.value,
+            debug_persist=self.persist_edge_debug_checkbox.value,
             sample_offset=self.sample_offset_input.value,
             sample_limit=self.sample_limit_input.value,
         )
@@ -616,22 +631,24 @@ class SilhouetteStagePanelV2:
         self.generator_dropdown = widgets.Dropdown(
             description="Generator:",
             options=[(value, value) for value in registered["generators"]],
-            value=registered["generators"][0] if registered["generators"] else None,
+            value=_preferred_generator_id(registered["generators"]),
         )
         self.fallback_dropdown = widgets.Dropdown(
             description="Fallback:",
             options=[(value, value) for value in registered["fallbacks"]],
             value=registered["fallbacks"][0] if registered["fallbacks"] else None,
         )
+        self.fill_holes_checkbox = widgets.Checkbox(value=True, description="Fill holes")
+        self.use_convex_hull_fallback_checkbox = widgets.Checkbox(value=True, description="Use convex-hull fallback")
 
         self.blur_kernel_slider = widgets.IntSlider(description="Blur k", value=5, min=1, max=31, step=2)
         self.canny_low_slider = widgets.IntSlider(description="Canny low", value=50, min=0, max=255, step=1)
         self.canny_high_slider = widgets.IntSlider(description="Canny high", value=150, min=0, max=255, step=1)
-        self.close_kernel_slider = widgets.IntSlider(description="Close k", value=3, min=1, max=31, step=1)
-        self.dilate_kernel_slider = widgets.IntSlider(description="Dilate k", value=3, min=1, max=31, step=1)
-        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=20, min=1, max=1_000_000)
+        self.close_kernel_slider = widgets.IntSlider(description="Close k", value=1, min=1, max=31, step=1)
+        self.dilate_kernel_slider = widgets.IntSlider(description="Dilate k", value=1, min=1, max=31, step=1)
+        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=50, min=1, max=1_000_000)
         self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
-        self.persist_edge_debug_checkbox = widgets.Checkbox(value=False, description="Persist edge debug")
+        self.persist_edge_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
         self.sample_offset_input = widgets.BoundedIntText(description="Sample offset:", value=0, min=0, max=1_000_000)
         self.sample_limit_input = widgets.BoundedIntText(description="Sample limit:", value=0, min=0, max=1_000_000)
 
@@ -664,6 +681,8 @@ class SilhouetteStagePanelV2:
                     self.mode_dropdown,
                     self.generator_dropdown,
                     self.fallback_dropdown,
+                    self.fill_holes_checkbox,
+                    self.use_convex_hull_fallback_checkbox,
                     self.blur_kernel_slider,
                     self.canny_low_slider,
                     self.canny_high_slider,
@@ -753,12 +772,17 @@ class SilhouetteStagePanelV2:
                 close_kernel_size=max(1, int(self.close_kernel_slider.value)),
                 dilate_kernel_size=max(1, int(self.dilate_kernel_slider.value)),
                 min_component_area_px=max(1, int(self.min_component_area_input.value)),
+                fill_holes=bool(self.fill_holes_checkbox.value),
             )
 
             contour = generated.contour
             fallback_reason = ""
             if contour is None or contour.ndim != 3 or contour.shape[0] < 3:
-                contour, fallback_reason = fallback.recover(generated.fallback_mask)
+                if self.use_convex_hull_fallback_checkbox.value:
+                    contour, fallback_reason = fallback.recover(generated.fallback_mask)
+                else:
+                    contour = None
+                    fallback_reason = generated.primary_reason or "fallback_disabled"
 
             if contour is None:
                 edge_preview = np.full(generated.edge_binary.shape, 255, dtype=np.uint8)
@@ -813,7 +837,10 @@ class SilhouetteStagePanelV2:
             dilate_kernel_size=self.dilate_kernel_slider.value,
             min_component_area_px=self.min_component_area_input.value,
             outline_thickness=self.outline_thickness_slider.value,
+            fill_holes=self.fill_holes_checkbox.value,
+            use_convex_hull_fallback=self.use_convex_hull_fallback_checkbox.value,
             persist_edge_debug=self.persist_edge_debug_checkbox.value,
+            debug_persist=self.persist_edge_debug_checkbox.value,
             sample_offset=self.sample_offset_input.value,
             sample_limit=self.sample_limit_input.value,
         )

@@ -11,13 +11,51 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from rb_pipeline_v2.algorithms.silhouette_algorithms import FilledArtifactWriterV1, OutlineArtifactWriterV1
+from rb_pipeline_v2.algorithms import register_default_components
+from rb_pipeline_v2.algorithms.silhouette_algorithms import (
+    ContourSilhouetteGeneratorV2,
+    FilledArtifactWriterV1,
+    OutlineArtifactWriterV1,
+)
 from rb_pipeline_v2.config import SilhouetteStageConfigV2
+from rb_pipeline_v2.inspect import save_contour_comparison_debug_batch
 from rb_pipeline_v2.manifest import load_samples_csv, samples_csv_path
+from rb_pipeline_v2.registry import list_registered_component_ids
 from rb_pipeline_v2.silhouette_stage import run_silhouette_stage_v2
 
 
 class SilhouetteV2UnitTests(unittest.TestCase):
+    def test_registry_includes_contour_v2(self) -> None:
+        register_default_components()
+        ids = list_registered_component_ids()
+        self.assertIn("silhouette.contour_v2", ids["generators"])
+
+    def test_contour_v2_prefers_single_external_blob(self) -> None:
+        image = self._internal_and_detached_edges_image()
+        generator = ContourSilhouetteGeneratorV2()
+
+        generated = generator.generate(
+            image,
+            blur_kernel_size=5,
+            canny_low_threshold=50,
+            canny_high_threshold=150,
+            close_kernel_size=1,
+            dilate_kernel_size=1,
+            min_component_area_px=50,
+            fill_holes=True,
+        )
+
+        self.assertIsNotNone(generated.contour)
+        self.assertEqual(generated.primary_reason, "")
+
+        filled = FilledArtifactWriterV1().render(image.shape, generated.contour, line_thickness=1)
+        foreground = (filled == 0).astype(np.uint8)
+        count, _, _, _ = cv2.connectedComponentsWithStats(foreground, connectivity=8)
+        self.assertEqual(count - 1, 1)
+
+        # Detached fragment near bottom-right should be excluded from final silhouette.
+        self.assertEqual(int(filled[60, 60]), 255)
+
     def test_outline_and_filled_writers_render_expected_geometry(self) -> None:
         contour = np.asarray([[[8, 8]], [[8, 24]], [[24, 24]], [[24, 8]]], dtype=np.int32)
 
@@ -122,6 +160,23 @@ class SilhouetteV2UnitTests(unittest.TestCase):
             )
             self.assertTrue(edge_debug_path_true.is_file())
 
+    def test_comparison_debug_batch_writes_grids_and_manifest(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_compare"
+            self._make_project_fixture(project_root, run_name, [self._rectangle_image(), self._circle_image()])
+
+            output_dir = save_contour_comparison_debug_batch(
+                project_root,
+                run_name,
+                sample_limit=2,
+            )
+
+            self.assertTrue(output_dir.is_dir())
+            self.assertTrue((output_dir / "comparison_manifest.csv").is_file())
+            grid_files = sorted(output_dir.glob("*.png"))
+            self.assertGreaterEqual(len(grid_files), 1)
+
     def _make_project_fixture(
         self,
         project_root: Path,
@@ -173,6 +228,23 @@ class SilhouetteV2UnitTests(unittest.TestCase):
     @staticmethod
     def _blank_image() -> np.ndarray:
         return np.full((64, 64), 255, dtype=np.uint8)
+
+    @staticmethod
+    def _circle_image() -> np.ndarray:
+        image = np.full((64, 64), 255, dtype=np.uint8)
+        cv2.circle(image, (32, 32), 14, color=0, thickness=2)
+        return image
+
+    @staticmethod
+    def _internal_and_detached_edges_image() -> np.ndarray:
+        image = np.full((80, 80), 255, dtype=np.uint8)
+        cv2.rectangle(image, (14, 14), (58, 58), color=0, thickness=2)
+        # Internal clutter that should not survive external contour extraction.
+        cv2.line(image, (22, 22), (50, 22), color=0, thickness=1)
+        cv2.line(image, (22, 28), (50, 46), color=0, thickness=1)
+        # Detached tiny junk blob.
+        cv2.circle(image, (68, 68), 1, color=0, thickness=-1)
+        return image
 
 
 if __name__ == "__main__":

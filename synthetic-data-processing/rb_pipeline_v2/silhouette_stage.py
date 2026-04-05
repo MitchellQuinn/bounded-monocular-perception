@@ -60,10 +60,13 @@ def run_silhouette_stage_v2(
     mode = config.normalized_representation_mode()
     generator_id = config.normalized_generator_id()
     fallback_id = config.normalized_fallback_id()
+    debug_persist = config.normalized_debug_persist()
+    use_convex_hull_fallback = bool(config.use_convex_hull_fallback)
 
     generator = get_representation_generator(generator_id)
     fallback = get_fallback_strategy(fallback_id)
     writer = get_artifact_writer_by_mode(mode)
+    filled_writer = get_artifact_writer_by_mode("filled")
 
     source_paths = input_run_paths(project_root, run_name)
     output_paths = silhouette_run_paths(project_root, run_name)
@@ -118,7 +121,9 @@ def run_silhouette_stage_v2(
             "MinComponentAreaPxUsed": int(config.normalized_min_component_area_px()),
             "OutlineThicknessPx": int(config.outline_thickness),
             "OutlineThicknessPxUsed": int(config.normalized_outline_thickness()),
-            "PersistEdgeDebug": bool(config.persist_edge_debug),
+            "FillHoles": bool(config.fill_holes),
+            "UseConvexHullFallback": use_convex_hull_fallback,
+            "PersistEdgeDebug": debug_persist,
             "SampleOffset": int(config.normalized_sample_offset()),
             "SampleLimit": int(config.normalized_sample_limit()),
         },
@@ -153,6 +158,9 @@ def run_silhouette_stage_v2(
             "dilate_kernel_size_used": config.normalized_dilate_kernel_size(),
             "outline_thickness_used": config.normalized_outline_thickness(),
             "min_component_area_px_used": config.normalized_min_component_area_px(),
+            "fill_holes_used": bool(config.fill_holes),
+            "use_convex_hull_fallback": use_convex_hull_fallback,
+            "debug_persist_used": debug_persist,
         }
     )
 
@@ -160,13 +168,37 @@ def run_silhouette_stage_v2(
 
     for row_idx in samples_df.index:
         samples_df.at[row_idx, "silhouette_mode"] = mode
+        samples_df.at[row_idx, "silhouette_generator"] = generator_id
         samples_df.at[row_idx, "silhouette_fallback_used"] = "false"
+        samples_df.at[row_idx, "silhouette_used_fallback"] = "false"
         samples_df.at[row_idx, "silhouette_fallback_reason"] = ""
         samples_df.at[row_idx, "silhouette_area_px"] = ""
         samples_df.at[row_idx, "silhouette_bbox_x1"] = ""
         samples_df.at[row_idx, "silhouette_bbox_y1"] = ""
         samples_df.at[row_idx, "silhouette_bbox_x2"] = ""
         samples_df.at[row_idx, "silhouette_bbox_y2"] = ""
+        samples_df.at[row_idx, "silhouette_selected_component_area_px"] = ""
+        samples_df.at[row_idx, "silhouette_selected_component_bbox_x1"] = ""
+        samples_df.at[row_idx, "silhouette_selected_component_bbox_y1"] = ""
+        samples_df.at[row_idx, "silhouette_selected_component_bbox_x2"] = ""
+        samples_df.at[row_idx, "silhouette_selected_component_bbox_y2"] = ""
+        samples_df.at[row_idx, "silhouette_contour_area_px"] = ""
+        samples_df.at[row_idx, "silhouette_contour_bbox_x1"] = ""
+        samples_df.at[row_idx, "silhouette_contour_bbox_y1"] = ""
+        samples_df.at[row_idx, "silhouette_contour_bbox_x2"] = ""
+        samples_df.at[row_idx, "silhouette_contour_bbox_y2"] = ""
+        samples_df.at[row_idx, "silhouette_hull_area_px"] = ""
+        samples_df.at[row_idx, "silhouette_num_components_total"] = ""
+        samples_df.at[row_idx, "silhouette_num_components_after_filter"] = ""
+        samples_df.at[row_idx, "silhouette_quality_flags"] = ""
+        samples_df.at[row_idx, "silhouette_edge_debug_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_raw_edge_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_post_morph_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_components_mask_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_selected_component_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_external_contour_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_final_filled_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = ""
 
         row_capture_success = bool(capture_mask.loc[row_idx])
         source_filename = samples_df.at[row_idx, "image_filename"]
@@ -185,11 +217,24 @@ def run_silhouette_stage_v2(
             continue
 
         edge_debug_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.edge.png")
+        raw_edge_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.raw_edge.png")
+        post_morph_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.post_morph.png")
+        components_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.components.png")
+        selected_component_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.selected_component.png")
+        external_contour_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.external_contour.png")
+        final_filled_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.final_filled.png")
+        fallback_hull_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.fallback_hull.png")
 
         samples_df.at[row_idx, "silhouette_image_filename"] = to_posix_path(silhouette_rel)
-        samples_df.at[row_idx, "silhouette_edge_debug_filename"] = (
-            to_posix_path(edge_debug_rel) if config.persist_edge_debug else ""
-        )
+        if debug_persist:
+            samples_df.at[row_idx, "silhouette_edge_debug_filename"] = to_posix_path(edge_debug_rel)
+            samples_df.at[row_idx, "silhouette_debug_raw_edge_filename"] = to_posix_path(raw_edge_rel)
+            samples_df.at[row_idx, "silhouette_debug_post_morph_filename"] = to_posix_path(post_morph_rel)
+            samples_df.at[row_idx, "silhouette_debug_components_mask_filename"] = to_posix_path(components_rel)
+            samples_df.at[row_idx, "silhouette_debug_selected_component_filename"] = to_posix_path(selected_component_rel)
+            samples_df.at[row_idx, "silhouette_debug_external_contour_filename"] = to_posix_path(external_contour_rel)
+            samples_df.at[row_idx, "silhouette_debug_final_filled_filename"] = to_posix_path(final_filled_rel)
+            samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = to_posix_path(fallback_hull_rel)
 
         if row_idx not in selected_rows:
             samples_df.at[row_idx, "silhouette_stage_status"] = "skipped"
@@ -204,6 +249,13 @@ def run_silhouette_stage_v2(
         source_path = resolve_manifest_path(source_paths.root, "images", source_filename)
         silhouette_path = output_paths.images_dir / silhouette_rel
         edge_debug_path = output_paths.images_dir / edge_debug_rel
+        raw_edge_path = output_paths.images_dir / raw_edge_rel
+        post_morph_path = output_paths.images_dir / post_morph_rel
+        components_path = output_paths.images_dir / components_rel
+        selected_component_path = output_paths.images_dir / selected_component_rel
+        external_contour_path = output_paths.images_dir / external_contour_rel
+        final_filled_path = output_paths.images_dir / final_filled_rel
+        fallback_hull_path = output_paths.images_dir / fallback_hull_rel
 
         if silhouette_path.exists() and not config.overwrite:
             samples_df.at[row_idx, "silhouette_stage_status"] = "skipped"
@@ -221,19 +273,28 @@ def run_silhouette_stage_v2(
                 close_kernel_size=config.normalized_close_kernel_size(),
                 dilate_kernel_size=config.normalized_dilate_kernel_size(),
                 min_component_area_px=config.normalized_min_component_area_px(),
+                fill_holes=bool(config.fill_holes),
             )
 
             contour = generated.contour
             fallback_used = False
             fallback_reason = ""
+            hull_contour = None
+            quality_flags = [str(value).strip() for value in generated.quality_flags if str(value).strip()]
+            diagnostics = dict(generated.diagnostics or {})
 
             primary_break_reason = _contour_break_reason(contour)
             if primary_break_reason:
-                contour, recovery_reason = fallback.recover(generated.fallback_mask)
-                fallback_used = True
-                fallback_reason = f"primary_{generated.primary_reason or primary_break_reason}"
-                if contour is None:
-                    raise ValueError(f"Fallback failed: {recovery_reason}")
+                if use_convex_hull_fallback:
+                    contour, recovery_reason = fallback.recover(generated.fallback_mask)
+                    fallback_used = True
+                    fallback_reason = f"primary_{generated.primary_reason or primary_break_reason}"
+                    if contour is None:
+                        raise ValueError(f"Fallback failed: {recovery_reason}")
+                    hull_contour = contour
+                else:
+                    break_reason = generated.primary_reason or primary_break_reason
+                    raise ValueError(f"Primary contour failed ({break_reason}) and fallback is disabled")
 
             silhouette_img = writer.render(
                 source_gray.shape,
@@ -242,12 +303,13 @@ def run_silhouette_stage_v2(
             )
 
             if _render_is_empty(silhouette_img):
-                if not fallback_used:
+                if not fallback_used and use_convex_hull_fallback:
                     contour, recovery_reason = fallback.recover(generated.fallback_mask)
                     fallback_used = True
                     fallback_reason = "primary_render_empty"
                     if contour is None:
                         raise ValueError(f"Fallback failed: {recovery_reason}")
+                    hull_contour = contour
                     silhouette_img = writer.render(
                         source_gray.shape,
                         contour,
@@ -255,24 +317,82 @@ def run_silhouette_stage_v2(
                     )
 
                 if _render_is_empty(silhouette_img):
+                    if not use_convex_hull_fallback:
+                        raise ValueError("Rendered silhouette is empty and fallback is disabled")
                     raise ValueError("Rendered silhouette is empty after fallback")
 
+            final_filled_img = filled_writer.render(
+                source_gray.shape,
+                contour,
+                line_thickness=1,
+            )
             write_grayscale_png(silhouette_path, silhouette_img, dry_run=config.dry_run)
 
-            if config.persist_edge_debug:
+            if debug_persist:
                 edge_debug = np.full(generated.edge_binary.shape, 255, dtype=np.uint8)
                 edge_debug[generated.edge_binary > 0] = 0
                 write_grayscale_png(edge_debug_path, edge_debug, dry_run=config.dry_run)
+                debug_images = generated.debug_images or {}
+                _write_debug_if_present(debug_images, "raw_edge", raw_edge_path, dry_run=config.dry_run)
+                _write_debug_if_present(debug_images, "post_morph", post_morph_path, dry_run=config.dry_run)
+                _write_debug_if_present(
+                    debug_images,
+                    "components_before_selection",
+                    components_path,
+                    dry_run=config.dry_run,
+                )
+                _write_debug_if_present(
+                    debug_images,
+                    "selected_component",
+                    selected_component_path,
+                    dry_run=config.dry_run,
+                )
+                _write_debug_if_present(
+                    debug_images,
+                    "external_contour",
+                    external_contour_path,
+                    dry_run=config.dry_run,
+                )
+                write_grayscale_png(final_filled_path, final_filled_img, dry_run=config.dry_run)
+                if fallback_used and hull_contour is not None:
+                    fallback_hull_img = filled_writer.render(source_gray.shape, hull_contour, line_thickness=1)
+                    write_grayscale_png(fallback_hull_path, fallback_hull_img, dry_run=config.dry_run)
 
             area_px, bbox = _contour_geometry(contour)
+            contour_area = _safe_int(diagnostics.get("contour_area"), default=area_px)
+            contour_bbox = _bbox_tuple_from_value(diagnostics.get("contour_bbox"), default=bbox)
+            selected_component_area = _safe_int(diagnostics.get("selected_component_area"), default=0)
+            selected_component_bbox = _bbox_tuple_from_value(diagnostics.get("selected_component_bbox"), default=(0, 0, 0, 0))
+            num_components_total = _safe_int(diagnostics.get("num_components_total"), default=0)
+            num_components_after_filter = _safe_int(diagnostics.get("num_components_after_filter"), default=0)
+            hull_area = int(round(abs(float(cv2.contourArea(hull_contour))))) if hull_contour is not None else 0
+            if fallback_used:
+                quality_flags.append("used_fallback")
 
             samples_df.at[row_idx, "silhouette_fallback_used"] = "true" if fallback_used else "false"
+            samples_df.at[row_idx, "silhouette_used_fallback"] = "true" if fallback_used else "false"
             samples_df.at[row_idx, "silhouette_fallback_reason"] = fallback_reason
             samples_df.at[row_idx, "silhouette_area_px"] = str(area_px)
             samples_df.at[row_idx, "silhouette_bbox_x1"] = str(bbox[0])
             samples_df.at[row_idx, "silhouette_bbox_y1"] = str(bbox[1])
             samples_df.at[row_idx, "silhouette_bbox_x2"] = str(bbox[2])
             samples_df.at[row_idx, "silhouette_bbox_y2"] = str(bbox[3])
+            samples_df.at[row_idx, "silhouette_selected_component_area_px"] = str(selected_component_area)
+            samples_df.at[row_idx, "silhouette_selected_component_bbox_x1"] = str(selected_component_bbox[0])
+            samples_df.at[row_idx, "silhouette_selected_component_bbox_y1"] = str(selected_component_bbox[1])
+            samples_df.at[row_idx, "silhouette_selected_component_bbox_x2"] = str(selected_component_bbox[2])
+            samples_df.at[row_idx, "silhouette_selected_component_bbox_y2"] = str(selected_component_bbox[3])
+            samples_df.at[row_idx, "silhouette_contour_area_px"] = str(contour_area)
+            samples_df.at[row_idx, "silhouette_contour_bbox_x1"] = str(contour_bbox[0])
+            samples_df.at[row_idx, "silhouette_contour_bbox_y1"] = str(contour_bbox[1])
+            samples_df.at[row_idx, "silhouette_contour_bbox_x2"] = str(contour_bbox[2])
+            samples_df.at[row_idx, "silhouette_contour_bbox_y2"] = str(contour_bbox[3])
+            samples_df.at[row_idx, "silhouette_hull_area_px"] = str(hull_area) if hull_area > 0 else ""
+            samples_df.at[row_idx, "silhouette_num_components_total"] = str(num_components_total)
+            samples_df.at[row_idx, "silhouette_num_components_after_filter"] = str(num_components_after_filter)
+            samples_df.at[row_idx, "silhouette_quality_flags"] = ";".join(sorted(set(quality_flags)))
+            if not fallback_used:
+                samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = ""
 
             samples_df.at[row_idx, "silhouette_stage_status"] = "success"
             samples_df.at[row_idx, "silhouette_stage_error"] = ""
@@ -362,3 +482,62 @@ def _contour_geometry(contour: np.ndarray) -> tuple[int, tuple[int, int, int, in
     x2 = int(x + max(0, w - 1))
     y2 = int(y + max(0, h - 1))
     return area_px, (int(x), int(y), x2, y2)
+
+
+def _write_debug_if_present(
+    debug_images: dict[str, np.ndarray],
+    key: str,
+    output_path: Path,
+    *,
+    dry_run: bool,
+) -> None:
+    image = debug_images.get(key)
+    if image is None:
+        return
+    if image.ndim != 2:
+        return
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+    write_grayscale_png(output_path, image, dry_run=dry_run)
+
+
+def _safe_int(value: object, *, default: int) -> int:
+    if value is None:
+        return int(default)
+    try:
+        value_str = str(value).strip()
+        if value_str == "":
+            return int(default)
+        return int(float(value_str))
+    except Exception:
+        return int(default)
+
+
+def _bbox_tuple_from_value(
+    value: object,
+    *,
+    default: tuple[int, int, int, int],
+) -> tuple[int, int, int, int]:
+    if value is None:
+        return default
+
+    if isinstance(value, tuple) and len(value) == 4:
+        try:
+            return tuple(int(part) for part in value)  # type: ignore[return-value]
+        except Exception:
+            return default
+
+    if isinstance(value, list) and len(value) == 4:
+        try:
+            return tuple(int(part) for part in value)  # type: ignore[return-value]
+        except Exception:
+            return default
+
+    try:
+        text = str(value).strip().replace("(", "").replace(")", "").replace("[", "").replace("]", "")
+        parts = [part.strip() for part in text.split(",") if part.strip()]
+        if len(parts) != 4:
+            return default
+        return (int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]))
+    except Exception:
+        return default

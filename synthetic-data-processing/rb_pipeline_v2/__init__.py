@@ -10,7 +10,11 @@ from .config import (
     SilhouetteStageConfigV2,
     StageSummaryV2,
 )
-from .inspect import load_source_edge_silhouette_preview, show_source_edge_silhouette_preview
+from .inspect import (
+    load_source_edge_silhouette_preview,
+    save_contour_comparison_debug_batch,
+    show_source_edge_silhouette_preview,
+)
 from .npy_pack_stage import run_npy_pack_stage_v2
 from .paths import (
     SILHOUETTE_ROOT_NAME,
@@ -44,6 +48,7 @@ __all__ = [
     "run_shuffle_stage_v2",
     "load_source_edge_silhouette_preview",
     "show_source_edge_silhouette_preview",
+    "save_contour_comparison_debug_batch",
     "list_registered_component_ids",
     "PreviewPanelV2",
     "PipelineLauncherV2",

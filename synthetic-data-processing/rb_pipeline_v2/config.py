@@ -26,12 +26,15 @@ class SilhouetteStageConfigV2:
     canny_low_threshold: int = 50
     canny_high_threshold: int = 150
 
-    close_kernel_size: int = 3
-    dilate_kernel_size: int = 3
-    min_component_area_px: int = 20
+    close_kernel_size: int = 1
+    dilate_kernel_size: int = 1
+    min_component_area_px: int = 50
     outline_thickness: int = 1
+    fill_holes: bool = True
+    use_convex_hull_fallback: bool = True
 
     persist_edge_debug: bool = False
+    debug_persist: bool | None = None
 
     sample_offset: int = 0
     sample_limit: int = 0
@@ -74,6 +77,11 @@ class SilhouetteStageConfigV2:
 
     def normalized_min_component_area_px(self) -> int:
         return max(1, int(self.min_component_area_px))
+
+    def normalized_debug_persist(self) -> bool:
+        if self.debug_persist is None:
+            return bool(self.persist_edge_debug)
+        return bool(self.debug_persist)
 
     def normalized_sample_offset(self) -> int:
         return max(0, int(self.sample_offset))

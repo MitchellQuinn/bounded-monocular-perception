@@ -31,7 +31,7 @@ class V2PipelineIntegrationTests(unittest.TestCase):
 
             silhouette_config = SilhouetteStageConfigV2(
                 representation_mode="filled",
-                generator_id="silhouette.contour_v1",
+                generator_id="silhouette.contour_v2",
                 fallback_id="fallback.convex_hull_v1",
                 sample_offset=0,
                 sample_limit=1,
