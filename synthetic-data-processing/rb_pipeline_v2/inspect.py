@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from rb_pipeline.image_io import read_grayscale_uint8
+from rb_pipeline.image_io import read_grayscale_uint8, read_image_unchanged
 
 from .algorithms import register_default_components
 from .manifest import load_samples_csv, samples_csv_path
@@ -103,6 +103,20 @@ def _safe_gray(path: Path) -> np.ndarray | None:
         return None
 
 
+def _safe_bgr(path: Path) -> np.ndarray | None:
+    try:
+        if not path.is_file():
+            return None
+        image = read_image_unchanged(path)
+        if image.ndim == 3 and image.shape[2] == 3:
+            return image
+        if image.ndim == 3 and image.shape[2] == 4:
+            return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+        return None
+    except Exception:
+        return None
+
+
 def save_contour_comparison_debug_batch(
     project_root: Path,
     run_name: str,
@@ -162,11 +176,13 @@ def save_contour_comparison_debug_batch(
 
         source_path = resolve_manifest_path(input_paths.root, "images", source_filename)
         source_gray = _safe_gray(source_path)
+        source_bgr = _safe_bgr(source_path)
         if source_gray is None:
             continue
 
         v1_output = generator_v1.generate(
             source_gray,
+            source_bgr=source_bgr,
             blur_kernel_size=max(1, int(blur_k) | 1),
             canny_low_threshold=int(canny_low),
             canny_high_threshold=int(canny_high),
@@ -174,9 +190,11 @@ def save_contour_comparison_debug_batch(
             dilate_kernel_size=max(1, int(dilate_k)),
             min_component_area_px=max(1, int(min_area)),
             fill_holes=bool(fill_holes),
+            experimental_params=None,
         )
         v2_output = generator_v2.generate(
             source_gray,
+            source_bgr=source_bgr,
             blur_kernel_size=max(1, int(blur_k) | 1),
             canny_low_threshold=int(canny_low),
             canny_high_threshold=int(canny_high),
@@ -184,6 +202,7 @@ def save_contour_comparison_debug_batch(
             dilate_kernel_size=max(1, int(dilate_k)),
             min_component_area_px=max(1, int(min_area)),
             fill_holes=bool(fill_holes),
+            experimental_params=None,
         )
 
         edge_debug = _resolve_debug_edge(v2_output)
@@ -237,6 +256,158 @@ def save_contour_comparison_debug_batch(
         written_count += 1
 
     pd.DataFrame(records).to_csv(output_dir / "comparison_manifest.csv", index=False)
+    return output_dir
+
+
+def save_blob_branch_sanity_batch(
+    project_root: Path,
+    run_name: str,
+    *,
+    output_dir: Path | None = None,
+    sample_limit: int = 25,
+    sample_offset: int = 0,
+    representation_mode: str = "filled",
+    blur_k: int = 5,
+    canny_low: int = 50,
+    canny_high: int = 150,
+    close_k: int = 1,
+    dilate_k: int = 1,
+    min_area: int = 50,
+    outline_px: int = 1,
+    fill_holes: bool = True,
+    use_convex_hull_fallback: bool = True,
+    blob_border_fraction: float = 0.05,
+    blob_hue_delta: float = 16.0,
+    blob_sat_min: float = 42.0,
+    blob_val_min: float = 50.0,
+    blob_bright_val_min: float = 95.0,
+    blob_bright_sat_min: float = 35.0,
+    blob_use_bright_rescue: bool = True,
+    blob_reject_large_border_components: bool = True,
+    blob_large_border_component_ratio: float = 0.01,
+) -> Path:
+    """Save a 25-image sanity batch comparing contour_v2 vs blob_bg_v1."""
+
+    register_default_components()
+    baseline_generator = get_representation_generator("silhouette.contour_v2")
+    blob_generator = get_representation_generator("silhouette.blob_bg_v1")
+    fallback = get_fallback_strategy("fallback.convex_hull_v1")
+    writer = get_artifact_writer_by_mode(representation_mode)
+
+    blob_params = {
+        "blob_border_fraction": float(blob_border_fraction),
+        "blob_hue_delta": float(blob_hue_delta),
+        "blob_sat_min": float(blob_sat_min),
+        "blob_val_min": float(blob_val_min),
+        "blob_bright_val_min": float(blob_bright_val_min),
+        "blob_bright_sat_min": float(blob_bright_sat_min),
+        "blob_use_bright_rescue": bool(blob_use_bright_rescue),
+        "blob_reject_large_border_components": bool(blob_reject_large_border_components),
+        "blob_large_border_component_ratio": float(blob_large_border_component_ratio),
+    }
+
+    input_paths = input_run_paths(project_root, run_name)
+    samples_df = load_samples_csv(samples_csv_path(input_paths.manifests_dir))
+    selected_rows = _selected_input_rows(samples_df, sample_offset=sample_offset, sample_limit=sample_limit)
+
+    if output_dir is None:
+        output_dir = project_root / "silhouette-images-v2" / run_name / "debug-blob-vs-contour-v2"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    records: list[dict[str, object]] = []
+    written_count = 0
+
+    for row_idx in selected_rows:
+        source_filename = str(samples_df.at[row_idx, "image_filename"])
+        sample_id = str(samples_df.at[row_idx, "sample_id"]) if "sample_id" in samples_df.columns else f"row_{row_idx}"
+        if "capture_success" in samples_df.columns and not _capture_success_bool(samples_df.at[row_idx, "capture_success"]):
+            continue
+
+        source_path = resolve_manifest_path(input_paths.root, "images", source_filename)
+        source_gray = _safe_gray(source_path)
+        source_bgr = _safe_bgr(source_path)
+        if source_gray is None:
+            continue
+
+        baseline_output = baseline_generator.generate(
+            source_gray,
+            source_bgr=source_bgr,
+            blur_kernel_size=max(1, int(blur_k) | 1),
+            canny_low_threshold=int(canny_low),
+            canny_high_threshold=int(canny_high),
+            close_kernel_size=max(1, int(close_k)),
+            dilate_kernel_size=max(1, int(dilate_k)),
+            min_component_area_px=max(1, int(min_area)),
+            fill_holes=bool(fill_holes),
+            experimental_params=None,
+        )
+        blob_output = blob_generator.generate(
+            source_gray,
+            source_bgr=source_bgr,
+            blur_kernel_size=max(1, int(blur_k) | 1),
+            canny_low_threshold=int(canny_low),
+            canny_high_threshold=int(canny_high),
+            close_kernel_size=max(1, int(close_k)),
+            dilate_kernel_size=max(1, int(dilate_k)),
+            min_component_area_px=max(1, int(min_area)),
+            fill_holes=bool(fill_holes),
+            experimental_params=blob_params,
+        )
+
+        baseline_render, baseline_status, _ = _render_with_optional_fallback(
+            source_gray,
+            baseline_output.contour,
+            fallback_mask=baseline_output.fallback_mask,
+            writer=writer,
+            outline_px=outline_px,
+            fallback=fallback,
+            use_convex_hull_fallback=use_convex_hull_fallback,
+            primary_reason=baseline_output.primary_reason,
+        )
+        blob_render, blob_status, blob_fallback_render = _render_with_optional_fallback(
+            source_gray,
+            blob_output.contour,
+            fallback_mask=blob_output.fallback_mask,
+            writer=writer,
+            outline_px=outline_px,
+            fallback=fallback,
+            use_convex_hull_fallback=use_convex_hull_fallback,
+            primary_reason=blob_output.primary_reason,
+        )
+
+        blob_debug = blob_output.debug_images or {}
+        blob_raw = blob_debug.get("raw_edge") if isinstance(blob_debug, dict) else None
+        blob_selected = blob_debug.get("selected_component") if isinstance(blob_debug, dict) else None
+
+        image_stem = f"{written_count:03d}_row_{row_idx:05d}_{sample_id}".replace("/", "_")
+        grid_path = output_dir / f"{image_stem}.png"
+        _save_blob_sanity_grid(
+            grid_path,
+            source=source_gray,
+            blob_raw=blob_raw if isinstance(blob_raw, np.ndarray) else None,
+            blob_selected=blob_selected if isinstance(blob_selected, np.ndarray) else None,
+            contour_v2=baseline_render,
+            blob_output=blob_render,
+            blob_fallback=blob_fallback_render,
+            title_suffix=f"row={row_idx}, sample={sample_id}",
+        )
+
+        records.append(
+            {
+                "row_index": int(row_idx),
+                "sample_id": sample_id,
+                "image_filename": source_filename,
+                "comparison_grid_filename": grid_path.name,
+                "contour_v2_status": baseline_status,
+                "blob_status": blob_status,
+                "blob_quality_flags": ";".join(blob_output.quality_flags),
+                "blob_primary_reason": str(blob_output.primary_reason),
+                "blob_used_fallback": str(blob_fallback_render is not None).lower(),
+            }
+        )
+        written_count += 1
+
+    pd.DataFrame(records).to_csv(output_dir / "blob_sanity_manifest.csv", index=False)
     return output_dir
 
 
@@ -302,6 +473,16 @@ def _is_contour_broken(contour: np.ndarray | None) -> bool:
     return area < 1.0
 
 
+def _capture_success_bool(value: object) -> bool:
+    if value is None:
+        return False
+    if pd.isna(value):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
 def _selected_input_rows(samples_df: pd.DataFrame, *, sample_offset: int, sample_limit: int) -> list[int]:
     rows = list(samples_df.index)
     if not rows:
@@ -333,6 +514,41 @@ def _save_comparison_grid(
         (axes[0, 1], contour_v1, "contour_v1"),
         (axes[1, 0], contour_v2, "contour_v2"),
         (axes[1, 1], fallback_hull, "Fallback Hull (if used)"),
+    ]
+
+    for axis, image, title in panels:
+        axis.set_title(title)
+        axis.axis("off")
+        if image is None:
+            axis.text(0.5, 0.5, "Not used / failed", ha="center", va="center")
+            continue
+        axis.imshow(image, cmap="gray", vmin=0, vmax=255)
+
+    fig.suptitle(title_suffix)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=120)
+    plt.close(fig)
+
+
+def _save_blob_sanity_grid(
+    output_path: Path,
+    *,
+    source: np.ndarray | None,
+    blob_raw: np.ndarray | None,
+    blob_selected: np.ndarray | None,
+    contour_v2: np.ndarray | None,
+    blob_output: np.ndarray | None,
+    blob_fallback: np.ndarray | None,
+    title_suffix: str,
+) -> None:
+    fig, axes = plt.subplots(2, 3, figsize=(13, 8))
+    panels = [
+        (axes[0, 0], source, "Source"),
+        (axes[0, 1], blob_raw, "Blob Raw Mask"),
+        (axes[0, 2], blob_selected, "Blob Selected Component"),
+        (axes[1, 0], contour_v2, "contour_v2"),
+        (axes[1, 1], blob_output, "blob_bg_v1"),
+        (axes[1, 2], blob_fallback, "Blob Fallback Hull"),
     ]
 
     for axis, image, title in panels:

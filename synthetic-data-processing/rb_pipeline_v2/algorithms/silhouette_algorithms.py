@@ -24,7 +24,10 @@ class ContourSilhouetteGeneratorV1:
         dilate_kernel_size: int,
         min_component_area_px: int,
         fill_holes: bool,
+        source_bgr: np.ndarray | None = None,
+        experimental_params: dict[str, object] | None = None,
     ) -> GeneratorOutput:
+        del source_bgr, experimental_params
         del fill_holes
 
         if source_gray.ndim != 2:
@@ -196,7 +199,10 @@ class ContourSilhouetteGeneratorV2:
         dilate_kernel_size: int,
         min_component_area_px: int,
         fill_holes: bool,
+        source_bgr: np.ndarray | None = None,
+        experimental_params: dict[str, object] | None = None,
     ) -> GeneratorOutput:
+        del source_bgr, experimental_params
         if source_gray.ndim != 2:
             raise ValueError("source_gray must be 2D grayscale")
 
@@ -311,6 +317,213 @@ class ContourSilhouetteGeneratorV2:
                 fallback_mask=selected_mask,
                 contour=None,
                 primary_reason=f"poor_contour_{quality_flags[0]}",
+                debug_images=debug_images,
+                quality_flags=tuple(quality_flags),
+                diagnostics=diagnostics
+                | {
+                    "filled_area": filled_area,
+                    "filled_to_component_ratio": _safe_ratio(filled_area, selected_area),
+                },
+            )
+
+        return GeneratorOutput(
+            edge_binary=post_morph,
+            fallback_mask=selected_mask,
+            contour=contour,
+            primary_reason="",
+            debug_images=debug_images,
+            diagnostics=diagnostics
+            | {
+                "filled_area": filled_area,
+                "filled_to_component_ratio": _safe_ratio(filled_area, selected_area),
+            },
+        )
+
+
+class BlobBackgroundSilhouetteGeneratorV1:
+    """Experimental controlled-demo generator using foreground blob isolation."""
+
+    generator_id = "silhouette.blob_bg_v1"
+
+    def generate(
+        self,
+        source_gray: np.ndarray,
+        *,
+        blur_kernel_size: int,
+        canny_low_threshold: int,
+        canny_high_threshold: int,
+        close_kernel_size: int,
+        dilate_kernel_size: int,
+        min_component_area_px: int,
+        fill_holes: bool,
+        source_bgr: np.ndarray | None = None,
+        experimental_params: dict[str, object] | None = None,
+    ) -> GeneratorOutput:
+        del canny_low_threshold, canny_high_threshold
+
+        if source_gray.ndim != 2:
+            raise ValueError("source_gray must be 2D grayscale")
+
+        params = dict(experimental_params or {})
+        border_fraction = _safe_float(params.get("blob_border_fraction"), default=0.05)
+        hue_delta = _safe_float(params.get("blob_hue_delta"), default=16.0)
+        sat_min = _safe_float(params.get("blob_sat_min"), default=42.0)
+        val_min = _safe_float(params.get("blob_val_min"), default=50.0)
+        bright_val_min = _safe_float(params.get("blob_bright_val_min"), default=95.0)
+        bright_sat_min = _safe_float(params.get("blob_bright_sat_min"), default=35.0)
+        use_bright_rescue = _safe_bool(params.get("blob_use_bright_rescue"), default=True)
+        reject_large_border_components = _safe_bool(
+            params.get("blob_reject_large_border_components"),
+            default=True,
+        )
+        large_border_component_ratio = _safe_float(
+            params.get("blob_large_border_component_ratio"),
+            default=0.01,
+        )
+
+        if source_bgr is not None and source_bgr.ndim == 3 and source_bgr.shape[2] >= 3:
+            bgr = source_bgr[:, :, :3].copy()
+        else:
+            bgr = cv2.cvtColor(source_gray, cv2.COLOR_GRAY2BGR)
+
+        if blur_kernel_size > 1:
+            bgr = cv2.GaussianBlur(bgr, (blur_kernel_size, blur_kernel_size), 0)
+
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        h_channel, s_channel, v_channel = cv2.split(hsv)
+
+        border_px = max(2, int(round(min(source_gray.shape) * max(0.01, border_fraction))))
+        border_mask = np.zeros(source_gray.shape, dtype=bool)
+        border_mask[:border_px, :] = True
+        border_mask[-border_px:, :] = True
+        border_mask[:, :border_px] = True
+        border_mask[:, -border_px:] = True
+
+        background_hue = int(np.median(h_channel[border_mask])) if np.any(border_mask) else 110
+        hue_distance = _hue_distance(h_channel, background_hue)
+
+        foreground_primary = (
+            (hue_distance >= hue_delta)
+            & (s_channel >= sat_min)
+            & (v_channel >= val_min)
+        )
+        foreground_mask = foreground_primary.astype(np.uint8) * 255
+
+        if use_bright_rescue:
+            bright_rescue = ((v_channel >= bright_val_min) & (s_channel >= bright_sat_min)).astype(np.uint8) * 255
+            foreground_mask = np.where((foreground_mask > 0) | (bright_rescue > 0), 255, 0).astype(np.uint8)
+
+        post_morph = foreground_mask.copy()
+        if close_kernel_size > 1:
+            close_kernel = np.ones((close_kernel_size, close_kernel_size), dtype=np.uint8)
+            post_morph = cv2.morphologyEx(post_morph, cv2.MORPH_CLOSE, close_kernel)
+        if dilate_kernel_size > 1:
+            dilate_kernel = np.ones((dilate_kernel_size, dilate_kernel_size), dtype=np.uint8)
+            post_morph = cv2.dilate(post_morph, dilate_kernel, iterations=1)
+
+        component_count, labels, stats = _component_stats(post_morph)
+        passing_labels: list[int] = []
+        image_area = int(source_gray.shape[0] * source_gray.shape[1])
+        large_border_area_threshold = int(round(max(0.0, large_border_component_ratio) * image_area))
+
+        for label in range(1, component_count):
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            if area < int(min_component_area_px):
+                continue
+
+            if reject_large_border_components and area >= large_border_area_threshold:
+                x = int(stats[label, cv2.CC_STAT_LEFT])
+                y = int(stats[label, cv2.CC_STAT_TOP])
+                w = int(stats[label, cv2.CC_STAT_WIDTH])
+                h = int(stats[label, cv2.CC_STAT_HEIGHT])
+                touches_border = (
+                    x <= 0
+                    or y <= 0
+                    or (x + w) >= source_gray.shape[1]
+                    or (y + h) >= source_gray.shape[0]
+                )
+                if touches_border:
+                    continue
+
+            passing_labels.append(label)
+
+        components_union = np.zeros_like(post_morph, dtype=np.uint8)
+        for label in passing_labels:
+            components_union[labels == label] = 255
+
+        diagnostics: dict[str, object] = {
+            "num_components_total": max(0, component_count - 1),
+            "num_components_after_filter": len(passing_labels),
+            "selected_component_area": "",
+            "selected_component_bbox": "",
+            "contour_area": "",
+            "contour_bbox": "",
+            "blob_background_hue": background_hue,
+        }
+        debug_images: dict[str, np.ndarray] = {
+            "raw_edge": _black_on_white(foreground_mask),
+            "post_morph": _black_on_white(post_morph),
+            "components_before_selection": _black_on_white(components_union),
+        }
+
+        if not passing_labels:
+            return GeneratorOutput(
+                edge_binary=post_morph,
+                fallback_mask=post_morph,
+                contour=None,
+                primary_reason="no_valid_blob_component",
+                debug_images=debug_images,
+                quality_flags=("no_component_after_filter",),
+                diagnostics=diagnostics,
+            )
+
+        selected_label = max(
+            passing_labels,
+            key=lambda label: int(stats[label, cv2.CC_STAT_AREA]),
+        )
+        selected_mask = np.zeros_like(post_morph, dtype=np.uint8)
+        selected_mask[labels == selected_label] = 255
+        if fill_holes:
+            selected_mask = _fill_holes_binary(selected_mask)
+
+        selected_area = int(np.count_nonzero(selected_mask))
+        selected_bbox = _bbox_for_mask(selected_mask)
+        diagnostics["selected_component_area"] = selected_area
+        diagnostics["selected_component_bbox"] = selected_bbox
+        debug_images["selected_component"] = _black_on_white(selected_mask)
+
+        contours, _ = cv2.findContours(selected_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return GeneratorOutput(
+                edge_binary=post_morph,
+                fallback_mask=selected_mask,
+                contour=None,
+                primary_reason="no_external_contours",
+                debug_images=debug_images,
+                quality_flags=("no_external_contours",),
+                diagnostics=diagnostics,
+            )
+
+        contour = max(contours, key=lambda value: float(abs(cv2.contourArea(value))))
+        quality_flags, contour_area, contour_bbox, filled_area = _evaluate_contour_quality(
+            contour,
+            image_shape=source_gray.shape,
+            selected_component_area=selected_area,
+            min_component_area_px=int(min_component_area_px),
+        )
+        diagnostics["contour_area"] = contour_area
+        diagnostics["contour_bbox"] = contour_bbox
+        debug_images["external_contour"] = _render_contour_outline(source_gray.shape, contour)
+
+        final_mask = _filled_mask_from_contour(source_gray.shape, contour)
+        debug_images["final_filled"] = _black_on_white(final_mask)
+
+        if quality_flags:
+            return GeneratorOutput(
+                edge_binary=post_morph,
+                fallback_mask=selected_mask,
+                contour=None,
+                primary_reason=f"poor_blob_contour_{quality_flags[0]}",
                 debug_images=debug_images,
                 quality_flags=tuple(quality_flags),
                 diagnostics=diagnostics
@@ -522,6 +735,45 @@ def _bbox_for_component_stats(stats_row: np.ndarray) -> tuple[int, int, int, int
     w = int(stats_row[cv2.CC_STAT_WIDTH])
     h = int(stats_row[cv2.CC_STAT_HEIGHT])
     return (x, y, x + max(0, w - 1), y + max(0, h - 1))
+
+
+def _hue_distance(h_channel: np.ndarray, reference_hue: int) -> np.ndarray:
+    distance = np.abs(h_channel.astype(np.int16) - int(reference_hue))
+    return np.minimum(distance, 180 - distance)
+
+
+def _fill_holes_binary(mask: np.ndarray) -> np.ndarray:
+    if mask.ndim != 2:
+        return mask
+
+    flood = mask.copy()
+    h, w = flood.shape
+    flood_canvas = np.zeros((h + 2, w + 2), dtype=np.uint8)
+    cv2.floodFill(flood, flood_canvas, seedPoint=(0, 0), newVal=255)
+    flood_inv = cv2.bitwise_not(flood)
+    return cv2.bitwise_or(mask, flood_inv)
+
+
+def _safe_float(value: object, *, default: float) -> float:
+    if value is None:
+        return float(default)
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _safe_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    value_str = str(value).strip().lower()
+    if value_str in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value_str in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
 
 
 def _safe_ratio(numerator: int | float, denominator: int | float) -> float:

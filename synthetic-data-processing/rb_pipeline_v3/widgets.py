@@ -1,37 +1,30 @@
-"""ipywidgets-based notebook UI components for the RB v2 pipeline."""
+"""ipywidgets-based notebook UI components for the RB v3 threshold pipeline."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import cv2
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from IPython.display import display
 
-from rb_pipeline.image_io import read_grayscale_uint8, read_image_unchanged
+from rb_pipeline.image_io import read_grayscale_uint8
 from rb_pipeline.paths import list_input_runs, resolve_manifest_path
 
-from .algorithms import register_default_components
-from .config import NpyPackStageConfigV2, ShuffleStageConfigV2, SilhouetteStageConfigV2
+from .config import NpyPackStageConfigV3, ShuffleStageConfigV3, ThresholdStageConfigV3
 from .manifest import load_samples_csv, samples_csv_path
 from .paths import (
     find_project_root,
     input_run_paths,
-    list_training_v2_runs,
-    silhouette_run_paths,
-    training_v2_run_paths,
+    list_training_v3_runs,
+    threshold_run_paths,
+    training_v3_run_paths,
 )
-from .pipeline import STAGE_ORDER_V2, run_v2_stage_for_run
-from .registry import (
-    get_artifact_writer_by_mode,
-    get_fallback_strategy,
-    get_representation_generator,
-    list_registered_component_ids,
-)
-from .shuffle_stage import run_shuffle_stage_v2
+from .pipeline import STAGE_ORDER_V3, run_v3_stage_for_run
+from .shuffle_stage import run_shuffle_stage_v3
+from .threshold_stage import _filter_components, _gimp_threshold_binary, _render_threshold_artifact
 
 
 
@@ -79,53 +72,19 @@ def _safe_npy(path: Path | None) -> np.ndarray | None:
         return None
 
 
-
-def _safe_bgr_image(path: Path | None) -> np.ndarray | None:
-    if path is None:
-        return None
-    if not path.is_file():
-        return None
-    try:
-        image = read_image_unchanged(path)
-    except Exception:
-        return None
-
-    if image.ndim == 3 and image.shape[2] == 3:
-        return image
-    if image.ndim == 3 and image.shape[2] == 4:
-        return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
-    return None
-
-
-
-def _preferred_generator_id(generator_ids: list[str]) -> str | None:
-    if "silhouette.blob_bg_v1" in generator_ids:
-        return "silhouette.blob_bg_v1"
-    if "silhouette.contour_v2" in generator_ids:
-        return "silhouette.contour_v2"
-    if generator_ids:
-        return generator_ids[0]
-    return None
-
-
 _TRAINING_IMAGE_SOURCE_OPTIONS = [
-    ("Silhouette output", "silhouette_image_filename"),
-    ("Blob raw mask", "silhouette_debug_raw_edge_filename"),
-    ("Blob selected component", "silhouette_debug_selected_component_filename"),
-    ("Blob bg v1 (final filled)", "silhouette_debug_final_filled_filename"),
-    ("Blob debug amalgamated (overlay)", "silhouette_debug_amalgamated_filename"),
-    ("Edge debug (legacy)", "silhouette_edge_debug_filename"),
-    ("Post-morph debug", "silhouette_debug_post_morph_filename"),
-    ("Components debug", "silhouette_debug_components_mask_filename"),
-    ("External contour debug", "silhouette_debug_external_contour_filename"),
-    ("Fallback hull debug", "silhouette_debug_fallback_hull_filename"),
+    ("Threshold output", "threshold_image_filename"),
+    ("Threshold debug (raw binary)", "threshold_debug_binary_filename"),
+    ("Threshold debug (selected component)", "threshold_debug_selected_component_filename"),
+    ("Threshold debug (amalgamated)", "threshold_debug_amalgamated_filename"),
 ]
 
 
-def _draw_preview_grid_v2(
+
+def _draw_preview_grid_v3(
     source_img: np.ndarray | None,
-    edge_debug_img: np.ndarray | None,
-    silhouette_img: np.ndarray | None,
+    threshold_debug_img: np.ndarray | None,
+    threshold_img: np.ndarray | None,
     training_array: np.ndarray | None,
 ) -> None:
     if training_array is None:
@@ -140,8 +99,8 @@ def _draw_preview_grid_v2(
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     plots = [
         (axes[0, 0], source_img, "Source Image", (0, 255)),
-        (axes[0, 1], edge_debug_img, "Edge Debug", (0, 255)),
-        (axes[1, 0], silhouette_img, "Silhouette", (0, 255)),
+        (axes[0, 1], threshold_debug_img, "Threshold Debug", (0, 255)),
+        (axes[1, 0], threshold_img, "Threshold Output", (0, 255)),
         (axes[1, 1], training_array, "Training Array", training_range),
     ]
 
@@ -187,8 +146,8 @@ def _draw_three_panel_preview(
     plt.show()
 
 
-class PreviewPanelV2:
-    """Shared 4-panel preview: source, edge debug, silhouette, training array."""
+class PreviewPanelV3:
+    """Shared 4-panel preview: source, threshold debug, threshold output, training array."""
 
     def __init__(self, project_root: Path) -> None:
         self.project_root = project_root
@@ -211,7 +170,7 @@ class PreviewPanelV2:
     def widget(self) -> widgets.Widget:
         return widgets.VBox(
             [
-                widgets.HTML("<b>Preview Panel (V2)</b>"),
+                widgets.HTML("<b>Preview Panel (V3)</b>"),
                 self.run_dropdown,
                 self.sample_dropdown,
                 widgets.HBox([self.refresh_runs_button, self.refresh_preview_button]),
@@ -263,11 +222,11 @@ class PreviewPanelV2:
                 return
 
             input_paths = input_run_paths(self.project_root, run_name)
-            silhouette_paths = silhouette_run_paths(self.project_root, run_name)
-            training_paths = training_v2_run_paths(self.project_root, run_name)
+            threshold_paths = threshold_run_paths(self.project_root, run_name)
+            training_paths = training_v3_run_paths(self.project_root, run_name)
 
             input_df = _load_samples(input_paths.manifests_dir / "samples.csv")
-            silhouette_df = _load_samples(silhouette_paths.manifests_dir / "samples.csv")
+            threshold_df = _load_samples(threshold_paths.manifests_dir / "samples.csv")
             training_df = _load_samples(training_paths.manifests_dir / "samples.csv")
 
             if input_df is None or row_idx not in input_df.index:
@@ -275,8 +234,8 @@ class PreviewPanelV2:
                 return
 
             source_path = None
-            edge_debug_path = None
-            silhouette_path = None
+            threshold_debug_path = None
+            threshold_path = None
             npy_path = None
 
             try:
@@ -285,25 +244,33 @@ class PreviewPanelV2:
             except Exception:
                 source_path = None
 
-            if silhouette_df is not None and row_idx in silhouette_df.index:
-                if "silhouette_edge_debug_filename" in silhouette_df.columns:
+            if threshold_df is not None and row_idx in threshold_df.index:
+                for debug_column in [
+                    "threshold_debug_selected_component_filename",
+                    "threshold_debug_binary_filename",
+                    "threshold_debug_amalgamated_filename",
+                ]:
+                    if debug_column not in threshold_df.columns:
+                        continue
                     try:
-                        edge_debug_filename = silhouette_df.at[row_idx, "silhouette_edge_debug_filename"]
-                        if str(edge_debug_filename).strip():
-                            edge_debug_path = resolve_manifest_path(
-                                silhouette_paths.root, "images", edge_debug_filename
+                        debug_filename = threshold_df.at[row_idx, debug_column]
+                        if str(debug_filename).strip():
+                            threshold_debug_path = resolve_manifest_path(
+                                threshold_paths.root, "images", debug_filename
+                            )
+                            break
+                    except Exception:
+                        continue
+
+                if "threshold_image_filename" in threshold_df.columns:
+                    try:
+                        threshold_filename = threshold_df.at[row_idx, "threshold_image_filename"]
+                        if str(threshold_filename).strip():
+                            threshold_path = resolve_manifest_path(
+                                threshold_paths.root, "images", threshold_filename
                             )
                     except Exception:
-                        edge_debug_path = None
-                if "silhouette_image_filename" in silhouette_df.columns:
-                    try:
-                        silhouette_filename = silhouette_df.at[row_idx, "silhouette_image_filename"]
-                        if str(silhouette_filename).strip():
-                            silhouette_path = resolve_manifest_path(
-                                silhouette_paths.root, "images", silhouette_filename
-                            )
-                    except Exception:
-                        silhouette_path = None
+                        threshold_path = None
 
             if training_df is not None and row_idx in training_df.index and "npy_filename" in training_df.columns:
                 try:
@@ -314,28 +281,25 @@ class PreviewPanelV2:
                     npy_path = None
 
             source_img = _safe_gray_image(source_path)
-            edge_debug_img = _safe_gray_image(edge_debug_path)
-            silhouette_img = _safe_gray_image(silhouette_path)
+            threshold_debug_img = _safe_gray_image(threshold_debug_path)
+            threshold_img = _safe_gray_image(threshold_path)
             training_array = _safe_npy(npy_path)
 
-            _draw_preview_grid_v2(source_img, edge_debug_img, silhouette_img, training_array)
+            _draw_preview_grid_v3(source_img, threshold_debug_img, threshold_img, training_array)
 
 
-class PipelineLauncherV2:
-    """Notebook 00 launcher UI for v2 run/stage orchestration."""
+class PipelineLauncherV3:
+    """Notebook 00 launcher UI for v3 run/stage orchestration."""
 
     def __init__(self, project_root: Path | None = None) -> None:
         self.project_root = find_project_root(project_root or Path.cwd())
         self._is_running = False
 
-        register_default_components()
-        registered = list_registered_component_ids()
-
         self.run_select = widgets.SelectMultiple(description="Runs:", options=[])
         self.allow_multi_run_checkbox = widgets.Checkbox(value=False, description="Allow multi-run execution")
         self.stage_dropdown = widgets.Dropdown(
             description="Stage:",
-            options=[("all", "all"), ("silhouette", "silhouette"), ("npy", "npy")],
+            options=[("all", "all"), ("threshold", "threshold"), ("npy", "npy")],
             value="all",
         )
 
@@ -346,24 +310,17 @@ class PipelineLauncherV2:
         self.mode_dropdown = widgets.Dropdown(
             description="Mode:",
             options=[("outline", "outline"), ("filled", "filled")],
-            value="outline",
+            value="filled",
         )
-        self.generator_dropdown = widgets.Dropdown(
-            description="Generator:",
-            options=[(value, value) for value in registered["generators"]],
-            value=_preferred_generator_id(registered["generators"]),
-        )
-        self.fallback_dropdown = widgets.Dropdown(
-            description="Fallback:",
-            options=[(value, value) for value in registered["fallbacks"]],
-            value=registered["fallbacks"][0] if registered["fallbacks"] else None,
-        )
-        self.fill_holes_checkbox = widgets.Checkbox(value=True, description="Fill holes")
-        self.use_convex_hull_fallback_checkbox = widgets.Checkbox(value=True, description="Use convex-hull fallback")
-        self.persist_edge_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
+        self.threshold_low_slider = widgets.IntSlider(description="Threshold low", value=128, min=0, max=255, step=1)
+        self.threshold_high_slider = widgets.IntSlider(description="Threshold high", value=255, min=0, max=255, step=1)
+        self.invert_selection_checkbox = widgets.Checkbox(value=False, description="Invert threshold selection")
+        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=1, min=1, max=1_000_000)
+        self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
+        self.persist_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
         self.amalgamate_debug_checkbox = widgets.Checkbox(
             value=False,
-            description="Amalgamate debug outputs (overlay)",
+            description="Amalgamate debug outputs",
         )
         self.keep_individual_debug_checkbox = widgets.Checkbox(
             value=True,
@@ -372,35 +329,10 @@ class PipelineLauncherV2:
         self.sample_offset_input = widgets.BoundedIntText(description="Sample offset:", value=0, min=0, max=1_000_000)
         self.sample_limit_input = widgets.BoundedIntText(description="Sample limit:", value=0, min=0, max=1_000_000)
 
-        self.blur_kernel_slider = widgets.IntSlider(description="Blur k", value=5, min=1, max=31, step=2)
-        self.canny_low_slider = widgets.IntSlider(description="Canny low", value=50, min=0, max=255, step=1)
-        self.canny_high_slider = widgets.IntSlider(description="Canny high", value=150, min=0, max=255, step=1)
-        self.close_kernel_slider = widgets.IntSlider(description="Close k", value=1, min=1, max=31, step=1)
-        self.dilate_kernel_slider = widgets.IntSlider(description="Dilate k", value=1, min=1, max=31, step=1)
-        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=50, min=1, max=1_000_000)
-        self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
-        self.blob_border_fraction_input = widgets.FloatText(description="Blob border:", value=0.05)
-        self.blob_hue_delta_input = widgets.FloatText(description="Blob h delta:", value=16.0)
-        self.blob_sat_min_input = widgets.FloatText(description="Blob s min:", value=42.0)
-        self.blob_val_min_input = widgets.FloatText(description="Blob v min:", value=50.0)
-        self.blob_bright_val_min_input = widgets.FloatText(description="Blob bright v:", value=95.0)
-        self.blob_bright_sat_min_input = widgets.FloatText(description="Blob bright s:", value=35.0)
-        self.blob_use_bright_rescue_checkbox = widgets.Checkbox(value=True, description="Blob bright rescue")
-        self.blob_reject_large_border_checkbox = widgets.Checkbox(
-            value=True,
-            description="Blob reject border leaks",
-        )
-        self.blob_large_border_ratio_input = widgets.FloatText(description="Blob border ratio:", value=0.01)
-
-        self.array_exporter_dropdown = widgets.Dropdown(
-            description="Array exporter:",
-            options=[(value, value) for value in registered["array_exporters"]],
-            value=registered["array_exporters"][0] if registered["array_exporters"] else None,
-        )
         self.training_source_dropdown = widgets.Dropdown(
             description="Train source:",
             options=_TRAINING_IMAGE_SOURCE_OPTIONS,
-            value="silhouette_image_filename",
+            value="threshold_image_filename",
         )
         self.npy_dtype_dropdown = widgets.Dropdown(
             description="NPY dtype:",
@@ -431,7 +363,7 @@ class PipelineLauncherV2:
         self.progress = widgets.IntProgress(value=0, min=0, max=1, description="Progress")
         self.log_output = widgets.Output(layout=widgets.Layout(border="1px solid #ccc", padding="8px", height="280px"))
 
-        self.preview_panel = PreviewPanelV2(self.project_root)
+        self.preview_panel = PreviewPanelV3(self.project_root)
 
         self.refresh_runs_button.on_click(self._on_refresh_runs)
         self.execute_button.on_click(self._on_execute)
@@ -444,7 +376,7 @@ class PipelineLauncherV2:
     def display(self) -> None:
         control_panel = widgets.VBox(
             [
-                widgets.HTML("<b>Pipeline Launcher (V2)</b>"),
+                widgets.HTML("<b>Pipeline Launcher (V3)</b>"),
                 widgets.HBox([self.refresh_runs_button, self.execute_button]),
                 self.run_select,
                 self.allow_multi_run_checkbox,
@@ -452,36 +384,19 @@ class PipelineLauncherV2:
                 self.overwrite_checkbox,
                 self.dry_run_checkbox,
                 self.continue_on_error_checkbox,
-                widgets.HTML("<b>Silhouette Parameters</b>"),
+                widgets.HTML("<b>Threshold Parameters</b>"),
                 self.mode_dropdown,
-                self.generator_dropdown,
-                self.fallback_dropdown,
-                self.fill_holes_checkbox,
-                self.use_convex_hull_fallback_checkbox,
-                self.persist_edge_debug_checkbox,
+                self.threshold_low_slider,
+                self.threshold_high_slider,
+                self.invert_selection_checkbox,
+                self.min_component_area_input,
+                self.outline_thickness_slider,
+                self.persist_debug_checkbox,
                 self.amalgamate_debug_checkbox,
                 self.keep_individual_debug_checkbox,
                 self.sample_offset_input,
                 self.sample_limit_input,
-                self.blur_kernel_slider,
-                self.canny_low_slider,
-                self.canny_high_slider,
-                self.close_kernel_slider,
-                self.dilate_kernel_slider,
-                self.min_component_area_input,
-                self.outline_thickness_slider,
-                widgets.HTML("<b>Blob Branch Parameters</b>"),
-                self.blob_border_fraction_input,
-                self.blob_hue_delta_input,
-                self.blob_sat_min_input,
-                self.blob_val_min_input,
-                self.blob_bright_val_min_input,
-                self.blob_bright_sat_min_input,
-                self.blob_use_bright_rescue_checkbox,
-                self.blob_reject_large_border_checkbox,
-                self.blob_large_border_ratio_input,
                 widgets.HTML("<b>NPY + Pack Parameters</b>"),
-                self.array_exporter_dropdown,
                 self.training_source_dropdown,
                 self.npy_dtype_dropdown,
                 self.pack_dtype_dropdown,
@@ -573,44 +488,27 @@ class PipelineLauncherV2:
         if run_name in self.run_select.options and self.run_select.value != (run_name,):
             self.run_select.value = (run_name,)
 
-    def _build_silhouette_config(self) -> SilhouetteStageConfigV2:
-        return SilhouetteStageConfigV2(
+    def _build_threshold_config(self) -> ThresholdStageConfigV3:
+        return ThresholdStageConfigV3(
             representation_mode=self.mode_dropdown.value,
-            generator_id=self.generator_dropdown.value,
-            fallback_id=self.fallback_dropdown.value,
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=self.continue_on_error_checkbox.value,
-            blur_kernel_size=self.blur_kernel_slider.value,
-            canny_low_threshold=self.canny_low_slider.value,
-            canny_high_threshold=self.canny_high_slider.value,
-            close_kernel_size=self.close_kernel_slider.value,
-            dilate_kernel_size=self.dilate_kernel_slider.value,
+            threshold_low_value=self.threshold_low_slider.value,
+            threshold_high_value=self.threshold_high_slider.value,
+            invert_selection=self.invert_selection_checkbox.value,
             min_component_area_px=self.min_component_area_input.value,
             outline_thickness=self.outline_thickness_slider.value,
-            fill_holes=self.fill_holes_checkbox.value,
-            use_convex_hull_fallback=self.use_convex_hull_fallback_checkbox.value,
-            blob_border_fraction=self.blob_border_fraction_input.value,
-            blob_hue_delta=self.blob_hue_delta_input.value,
-            blob_sat_min=self.blob_sat_min_input.value,
-            blob_val_min=self.blob_val_min_input.value,
-            blob_bright_val_min=self.blob_bright_val_min_input.value,
-            blob_bright_sat_min=self.blob_bright_sat_min_input.value,
-            blob_use_bright_rescue=self.blob_use_bright_rescue_checkbox.value,
-            blob_reject_large_border_components=self.blob_reject_large_border_checkbox.value,
-            blob_large_border_component_ratio=self.blob_large_border_ratio_input.value,
-            persist_edge_debug=self.persist_edge_debug_checkbox.value,
-            debug_persist=self.persist_edge_debug_checkbox.value,
-            amalgamate_debug_outputs=self.amalgamate_debug_checkbox.value,
+            persist_debug=self.persist_debug_checkbox.value,
             keep_individual_debug_outputs=self.keep_individual_debug_checkbox.value,
+            amalgamate_debug_outputs=self.amalgamate_debug_checkbox.value,
             sample_offset=self.sample_offset_input.value,
             sample_limit=self.sample_limit_input.value,
         )
 
-    def _build_npy_pack_config(self) -> NpyPackStageConfigV2:
-        return NpyPackStageConfigV2(
+    def _build_npy_pack_config(self) -> NpyPackStageConfigV3:
+        return NpyPackStageConfigV3(
             representation_mode=self.mode_dropdown.value,
-            array_exporter_id=self.array_exporter_dropdown.value,
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=self.continue_on_error_checkbox.value,
@@ -648,12 +546,12 @@ class PipelineLauncherV2:
             selected_runs = [preferred] if preferred in selected_runs else [selected_runs[0]]
 
         selected_stage = self.stage_dropdown.value
-        stages = STAGE_ORDER_V2 if selected_stage == "all" else [selected_stage]
+        stages = STAGE_ORDER_V3 if selected_stage == "all" else [selected_stage]
 
         self._log(f"Selected runs: {', '.join(selected_runs)}")
         self._log(f"Selected stage: {selected_stage}")
 
-        silhouette_config = self._build_silhouette_config()
+        threshold_config = self._build_threshold_config()
         npy_pack_config = self._build_npy_pack_config()
 
         self.progress.max = max(1, len(selected_runs) * len(stages))
@@ -670,11 +568,11 @@ class PipelineLauncherV2:
 
                 for stage_name in stages:
                     try:
-                        summary = run_v2_stage_for_run(
+                        summary = run_v3_stage_for_run(
                             self.project_root,
                             run_name,
                             stage_name,
-                            silhouette_config=silhouette_config,
+                            threshold_config=threshold_config,
                             npy_pack_config=npy_pack_config,
                             log_sink=self._log,
                         )
@@ -696,14 +594,11 @@ class PipelineLauncherV2:
             self.refresh_runs_button.disabled = False
 
 
-class SilhouetteStagePanelV2:
-    """Notebook 01 UI for silhouette tuning and run execution."""
+class ThresholdStagePanelV3:
+    """Notebook 01 UI for threshold tuning and run execution."""
 
     def __init__(self, project_root: Path | None = None) -> None:
         self.project_root = find_project_root(project_root or Path.cwd())
-
-        register_default_components()
-        registered = list_registered_component_ids()
 
         self.run_dropdown = widgets.Dropdown(description="Run:", options=[])
         self.sample_dropdown = widgets.Dropdown(description="Sample:", options=[])
@@ -711,49 +606,22 @@ class SilhouetteStagePanelV2:
         self.mode_dropdown = widgets.Dropdown(
             description="Mode:",
             options=[("outline", "outline"), ("filled", "filled")],
-            value="outline",
+            value="filled",
         )
-        self.generator_dropdown = widgets.Dropdown(
-            description="Generator:",
-            options=[(value, value) for value in registered["generators"]],
-            value=_preferred_generator_id(registered["generators"]),
-        )
-        self.fallback_dropdown = widgets.Dropdown(
-            description="Fallback:",
-            options=[(value, value) for value in registered["fallbacks"]],
-            value=registered["fallbacks"][0] if registered["fallbacks"] else None,
-        )
-        self.fill_holes_checkbox = widgets.Checkbox(value=True, description="Fill holes")
-        self.use_convex_hull_fallback_checkbox = widgets.Checkbox(value=True, description="Use convex-hull fallback")
-
-        self.blur_kernel_slider = widgets.IntSlider(description="Blur k", value=5, min=1, max=31, step=2)
-        self.canny_low_slider = widgets.IntSlider(description="Canny low", value=50, min=0, max=255, step=1)
-        self.canny_high_slider = widgets.IntSlider(description="Canny high", value=150, min=0, max=255, step=1)
-        self.close_kernel_slider = widgets.IntSlider(description="Close k", value=1, min=1, max=31, step=1)
-        self.dilate_kernel_slider = widgets.IntSlider(description="Dilate k", value=1, min=1, max=31, step=1)
-        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=50, min=1, max=1_000_000)
+        self.threshold_low_slider = widgets.IntSlider(description="Threshold low", value=128, min=0, max=255, step=1)
+        self.threshold_high_slider = widgets.IntSlider(description="Threshold high", value=255, min=0, max=255, step=1)
+        self.invert_selection_checkbox = widgets.Checkbox(value=False, description="Invert threshold selection")
+        self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=1, min=1, max=1_000_000)
         self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
-        self.persist_edge_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
+        self.persist_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
         self.amalgamate_debug_checkbox = widgets.Checkbox(
             value=False,
-            description="Amalgamate debug outputs (overlay)",
+            description="Amalgamate debug outputs",
         )
         self.keep_individual_debug_checkbox = widgets.Checkbox(
             value=True,
             description="Keep individual debug files",
         )
-        self.blob_border_fraction_input = widgets.FloatText(description="Blob border:", value=0.05)
-        self.blob_hue_delta_input = widgets.FloatText(description="Blob h delta:", value=16.0)
-        self.blob_sat_min_input = widgets.FloatText(description="Blob s min:", value=42.0)
-        self.blob_val_min_input = widgets.FloatText(description="Blob v min:", value=50.0)
-        self.blob_bright_val_min_input = widgets.FloatText(description="Blob bright v:", value=95.0)
-        self.blob_bright_sat_min_input = widgets.FloatText(description="Blob bright s:", value=35.0)
-        self.blob_use_bright_rescue_checkbox = widgets.Checkbox(value=True, description="Blob bright rescue")
-        self.blob_reject_large_border_checkbox = widgets.Checkbox(
-            value=True,
-            description="Blob reject border leaks",
-        )
-        self.blob_large_border_ratio_input = widgets.FloatText(description="Blob border ratio:", value=0.01)
         self.sample_offset_input = widgets.BoundedIntText(description="Sample offset:", value=0, min=0, max=1_000_000)
         self.sample_limit_input = widgets.BoundedIntText(description="Sample limit:", value=0, min=0, max=1_000_000)
 
@@ -763,7 +631,7 @@ class SilhouetteStagePanelV2:
 
         self.refresh_runs_button = widgets.Button(description="Refresh Runs")
         self.preview_button = widgets.Button(description="Preview Sample")
-        self.execute_button = widgets.Button(description="Run Silhouette Stage")
+        self.execute_button = widgets.Button(description="Run Threshold Stage")
 
         self.preview_output = widgets.Output(layout=widgets.Layout(border="1px solid #ccc", padding="8px"))
         self.log_output = widgets.Output(layout=widgets.Layout(border="1px solid #ccc", padding="8px", height="220px"))
@@ -779,35 +647,19 @@ class SilhouetteStagePanelV2:
         display(
             widgets.VBox(
                 [
-                    widgets.HTML("<b>Silhouette Stage (V2)</b>"),
+                    widgets.HTML("<b>Threshold Stage (V3)</b>"),
                     widgets.HBox([self.refresh_runs_button, self.preview_button, self.execute_button]),
                     self.run_dropdown,
                     self.sample_dropdown,
                     self.mode_dropdown,
-                    self.generator_dropdown,
-                    self.fallback_dropdown,
-                    self.fill_holes_checkbox,
-                    self.use_convex_hull_fallback_checkbox,
-                    self.blur_kernel_slider,
-                    self.canny_low_slider,
-                    self.canny_high_slider,
-                    self.close_kernel_slider,
-                    self.dilate_kernel_slider,
+                    self.threshold_low_slider,
+                    self.threshold_high_slider,
+                    self.invert_selection_checkbox,
                     self.min_component_area_input,
                     self.outline_thickness_slider,
-                    self.persist_edge_debug_checkbox,
+                    self.persist_debug_checkbox,
                     self.amalgamate_debug_checkbox,
                     self.keep_individual_debug_checkbox,
-                    widgets.HTML("<b>Blob Branch Parameters</b>"),
-                    self.blob_border_fraction_input,
-                    self.blob_hue_delta_input,
-                    self.blob_sat_min_input,
-                    self.blob_val_min_input,
-                    self.blob_bright_val_min_input,
-                    self.blob_bright_sat_min_input,
-                    self.blob_use_bright_rescue_checkbox,
-                    self.blob_reject_large_border_checkbox,
-                    self.blob_large_border_ratio_input,
                     self.sample_offset_input,
                     self.sample_limit_input,
                     self.overwrite_checkbox,
@@ -852,19 +704,6 @@ class SilhouetteStagePanelV2:
     def _on_refresh_runs(self, _button: widgets.Button) -> None:
         self._refresh_runs()
 
-    def _blob_params(self) -> dict[str, object]:
-        return {
-            "blob_border_fraction": self.blob_border_fraction_input.value,
-            "blob_hue_delta": self.blob_hue_delta_input.value,
-            "blob_sat_min": self.blob_sat_min_input.value,
-            "blob_val_min": self.blob_val_min_input.value,
-            "blob_bright_val_min": self.blob_bright_val_min_input.value,
-            "blob_bright_sat_min": self.blob_bright_sat_min_input.value,
-            "blob_use_bright_rescue": self.blob_use_bright_rescue_checkbox.value,
-            "blob_reject_large_border_components": self.blob_reject_large_border_checkbox.value,
-            "blob_large_border_component_ratio": self.blob_large_border_ratio_input.value,
-        }
-
     def _on_preview(self, _button: widgets.Button) -> None:
         run_name = self.run_dropdown.value
         row_idx = self.sample_dropdown.value
@@ -885,67 +724,50 @@ class SilhouetteStagePanelV2:
             source_filename = samples_df.at[row_idx, "image_filename"]
             source_path = resolve_manifest_path(run_paths.root, "images", source_filename)
             source_gray = _safe_gray_image(source_path)
-            source_bgr = _safe_bgr_image(source_path)
 
             if source_gray is None:
                 print(f"Could not load source image: {source_path}")
                 return
 
-            generator = get_representation_generator(self.generator_dropdown.value)
-            fallback = get_fallback_strategy(self.fallback_dropdown.value)
-            writer = get_artifact_writer_by_mode(self.mode_dropdown.value)
+            low = int(self.threshold_low_slider.value)
+            high = int(self.threshold_high_slider.value)
+            if low > high:
+                low, high = high, low
 
-            generated = generator.generate(
+            gimp_binary = _gimp_threshold_binary(
                 source_gray,
-                source_bgr=source_bgr,
-                blur_kernel_size=max(1, int(self.blur_kernel_slider.value) | 1),
-                canny_low_threshold=self.canny_low_slider.value,
-                canny_high_threshold=self.canny_high_slider.value,
-                close_kernel_size=max(1, int(self.close_kernel_slider.value)),
-                dilate_kernel_size=max(1, int(self.dilate_kernel_slider.value)),
-                min_component_area_px=max(1, int(self.min_component_area_input.value)),
-                fill_holes=bool(self.fill_holes_checkbox.value),
-                experimental_params=self._blob_params(),
+                low_value=low,
+                high_value=high,
+                invert_selection=bool(self.invert_selection_checkbox.value),
             )
-
-            contour = generated.contour
-            fallback_reason = ""
-            if contour is None or contour.ndim != 3 or contour.shape[0] < 3:
-                if self.use_convex_hull_fallback_checkbox.value:
-                    contour, fallback_reason = fallback.recover(generated.fallback_mask)
-                else:
-                    contour = None
-                    fallback_reason = generated.primary_reason or "fallback_disabled"
-
-            if contour is None:
-                edge_preview = np.full(generated.edge_binary.shape, 255, dtype=np.uint8)
-                edge_preview[generated.edge_binary > 0] = 0
+            selected_mask = _filter_components(
+                gimp_binary,
+                min_component_area_px=max(1, int(self.min_component_area_input.value)),
+            )
+            if not np.any(selected_mask > 0):
                 _draw_three_panel_preview(
                     source_gray,
-                    edge_preview,
+                    gimp_binary,
                     None,
                     "Source",
-                    "Edge Debug",
-                    f"Silhouette Preview (fallback failed: {fallback_reason})",
+                    "Threshold (GIMP binary)",
+                    "Threshold Output (no component)",
                 )
                 return
 
-            silhouette_preview = writer.render(
-                source_gray.shape,
-                contour,
-                line_thickness=max(1, int(self.outline_thickness_slider.value)),
+            output_preview = _render_threshold_artifact(
+                selected_mask,
+                representation_mode=self.mode_dropdown.value,
+                outline_thickness=max(1, int(self.outline_thickness_slider.value)),
             )
-            edge_preview = np.full(generated.edge_binary.shape, 255, dtype=np.uint8)
-            edge_preview[generated.edge_binary > 0] = 0
 
-            suffix = f" (fallback: {fallback_reason})" if fallback_reason else ""
             _draw_three_panel_preview(
                 source_gray,
-                edge_preview,
-                silhouette_preview,
+                gimp_binary,
+                output_preview,
                 "Source",
-                "Edge Debug",
-                f"Silhouette Preview{suffix}",
+                "Threshold (GIMP binary)",
+                "Threshold Output",
             )
 
     def _on_execute(self, _button: widgets.Button) -> None:
@@ -956,64 +778,45 @@ class SilhouetteStagePanelV2:
             self._log("Select a run first.")
             return
 
-        config = SilhouetteStageConfigV2(
+        config = ThresholdStageConfigV3(
             representation_mode=self.mode_dropdown.value,
-            generator_id=self.generator_dropdown.value,
-            fallback_id=self.fallback_dropdown.value,
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=self.continue_on_error_checkbox.value,
-            blur_kernel_size=self.blur_kernel_slider.value,
-            canny_low_threshold=self.canny_low_slider.value,
-            canny_high_threshold=self.canny_high_slider.value,
-            close_kernel_size=self.close_kernel_slider.value,
-            dilate_kernel_size=self.dilate_kernel_slider.value,
+            threshold_low_value=self.threshold_low_slider.value,
+            threshold_high_value=self.threshold_high_slider.value,
+            invert_selection=self.invert_selection_checkbox.value,
             min_component_area_px=self.min_component_area_input.value,
             outline_thickness=self.outline_thickness_slider.value,
-            fill_holes=self.fill_holes_checkbox.value,
-            use_convex_hull_fallback=self.use_convex_hull_fallback_checkbox.value,
-            blob_border_fraction=self.blob_border_fraction_input.value,
-            blob_hue_delta=self.blob_hue_delta_input.value,
-            blob_sat_min=self.blob_sat_min_input.value,
-            blob_val_min=self.blob_val_min_input.value,
-            blob_bright_val_min=self.blob_bright_val_min_input.value,
-            blob_bright_sat_min=self.blob_bright_sat_min_input.value,
-            blob_use_bright_rescue=self.blob_use_bright_rescue_checkbox.value,
-            blob_reject_large_border_components=self.blob_reject_large_border_checkbox.value,
-            blob_large_border_component_ratio=self.blob_large_border_ratio_input.value,
-            persist_edge_debug=self.persist_edge_debug_checkbox.value,
-            debug_persist=self.persist_edge_debug_checkbox.value,
-            amalgamate_debug_outputs=self.amalgamate_debug_checkbox.value,
+            persist_debug=self.persist_debug_checkbox.value,
             keep_individual_debug_outputs=self.keep_individual_debug_checkbox.value,
+            amalgamate_debug_outputs=self.amalgamate_debug_checkbox.value,
             sample_offset=self.sample_offset_input.value,
             sample_limit=self.sample_limit_input.value,
         )
 
         try:
-            summary = run_v2_stage_for_run(
+            summary = run_v3_stage_for_run(
                 self.project_root,
                 run_name,
-                "silhouette",
-                silhouette_config=config,
+                "threshold",
+                threshold_config=config,
                 log_sink=self._log,
             )
             self._log(
-                f"Finished silhouette stage: success={summary.successful_rows}, failed={summary.failed_rows}, "
+                f"Finished threshold stage: success={summary.successful_rows}, failed={summary.failed_rows}, "
                 f"skipped={summary.skipped_rows}"
             )
         except Exception as exc:
-            self._log(f"Silhouette stage failed: {exc}")
+            self._log(f"Threshold stage failed: {exc}")
 
 
-class NpyPackPanelV2:
-    """Notebook 02 UI for v2 NPY conversion and NPZ packing."""
+class NpyPackPanelV3:
+    """Notebook 02 UI for v3 NPY conversion and NPZ packing."""
 
     def __init__(self, project_root: Path | None = None) -> None:
         self.project_root = find_project_root(project_root or Path.cwd())
         self._is_running = False
-
-        register_default_components()
-        registered = list_registered_component_ids()
 
         self.run_dropdown = widgets.Dropdown(description="Run:", options=[])
 
@@ -1022,17 +825,12 @@ class NpyPackPanelV2:
         self.mode_dropdown = widgets.Dropdown(
             description="Mode:",
             options=[("outline", "outline"), ("filled", "filled")],
-            value="outline",
-        )
-        self.array_exporter_dropdown = widgets.Dropdown(
-            description="Array exporter:",
-            options=[(value, value) for value in registered["array_exporters"]],
-            value=registered["array_exporters"][0] if registered["array_exporters"] else None,
+            value="filled",
         )
         self.training_source_dropdown = widgets.Dropdown(
             description="Train source:",
             options=_TRAINING_IMAGE_SOURCE_OPTIONS,
-            value="silhouette_image_filename",
+            value="threshold_image_filename",
         )
 
         self.overwrite_checkbox = widgets.Checkbox(value=False, description="Overwrite existing files")
@@ -1078,12 +876,11 @@ class NpyPackPanelV2:
         display(
             widgets.VBox(
                 [
-                    widgets.HTML("<b>NPY + Pack Stage (V2)</b>"),
+                    widgets.HTML("<b>NPY + Pack Stage (V3)</b>"),
                     widgets.HBox([self.refresh_runs_button, self.execute_button, self.inspect_button]),
                     self.run_dropdown,
                     self.run_npy_checkbox,
                     self.mode_dropdown,
-                    self.array_exporter_dropdown,
                     self.training_source_dropdown,
                     self.overwrite_checkbox,
                     self.dry_run_checkbox,
@@ -1112,10 +909,9 @@ class NpyPackPanelV2:
     def _on_refresh_runs(self, _button: widgets.Button) -> None:
         self._refresh_runs()
 
-    def _build_npy_pack_config(self) -> NpyPackStageConfigV2:
-        return NpyPackStageConfigV2(
+    def _build_npy_pack_config(self) -> NpyPackStageConfigV3:
+        return NpyPackStageConfigV3(
             representation_mode=self.mode_dropdown.value,
-            array_exporter_id=self.array_exporter_dropdown.value,
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=self.continue_on_error_checkbox.value,
@@ -1157,7 +953,7 @@ class NpyPackPanelV2:
             return
 
         try:
-            summary = run_v2_stage_for_run(
+            summary = run_v3_stage_for_run(
                 self.project_root,
                 run_name,
                 "npy",
@@ -1185,7 +981,7 @@ class NpyPackPanelV2:
         self._show_npz_summary(run_name)
 
     def _show_npz_summary(self, run_name: str) -> None:
-        training_paths = training_v2_run_paths(self.project_root, run_name)
+        training_paths = training_v3_run_paths(self.project_root, run_name)
         single_npz = training_paths.root / f"{run_name}.npz"
         shard_npz_paths = sorted(training_paths.root.glob(f"{run_name}_shard_*.npz"))
         npz_paths: list[Path] = []
@@ -1247,15 +1043,15 @@ class NpyPackPanelV2:
                 print(f"  {first_sample_id[idx]} | {float(first_y[idx]):.6f}")
 
 
-class ShuffleCorpusPanelV2:
-    """Notebook 04 UI for creating a shuffled v2 training corpus."""
+class ShuffleCorpusPanelV3:
+    """Notebook 04 UI for creating a shuffled v3 training corpus."""
 
     def __init__(self, project_root: Path | None = None) -> None:
         self.project_root = find_project_root(project_root or Path.cwd())
         self._is_running = False
 
         self.source_run_dropdown = widgets.Dropdown(description="Source Run:", options=[])
-        self.output_root_text = widgets.Text(description="Output Root:", value="training-data-v2-shuffled")
+        self.output_root_text = widgets.Text(description="Output Root:", value="training-data-v3-shuffled")
         self.output_run_text = widgets.Text(description="Output Run:", value="")
         self.seed_input = widgets.IntText(description="Seed:", value=42)
         self.ledger_filename_text = widgets.Text(description="Ledger:", value="shuffle_ledger.csv")
@@ -1283,7 +1079,7 @@ class ShuffleCorpusPanelV2:
         display(
             widgets.VBox(
                 [
-                    widgets.HTML("<b>Shuffle Training Corpus (V2)</b>"),
+                    widgets.HTML("<b>Shuffle Training Corpus (V3)</b>"),
                     widgets.HBox([self.refresh_runs_button, self.execute_button, self.inspect_button]),
                     self.source_run_dropdown,
                     self.output_root_text,
@@ -1310,7 +1106,7 @@ class ShuffleCorpusPanelV2:
         return f"{source_run}_shuffled"
 
     def _refresh_runs(self) -> None:
-        runs = list_training_v2_runs(self.project_root)
+        runs = list_training_v3_runs(self.project_root)
         self.source_run_dropdown.options = runs
         if runs and self.source_run_dropdown.value not in runs:
             self.source_run_dropdown.value = runs[0]
@@ -1325,11 +1121,11 @@ class ShuffleCorpusPanelV2:
     def _on_source_run_change(self, _change: dict) -> None:
         self.output_run_text.value = self._default_output_run_name(self.source_run_dropdown.value)
 
-    def _build_config(self) -> ShuffleStageConfigV2:
-        output_root_name = self.output_root_text.value.strip() or "training-data-v2-shuffled"
+    def _build_config(self) -> ShuffleStageConfigV3:
+        output_root_name = self.output_root_text.value.strip() or "training-data-v3-shuffled"
         ledger_filename = self.ledger_filename_text.value.strip() or "shuffle_ledger.csv"
 
-        return ShuffleStageConfigV2(
+        return ShuffleStageConfigV3(
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=True,
@@ -1371,7 +1167,7 @@ class ShuffleCorpusPanelV2:
         config = self._build_config()
 
         try:
-            summary = run_shuffle_stage_v2(
+            summary = run_shuffle_stage_v3(
                 self.project_root,
                 source_run_name=source_run,
                 output_run_name=output_run,
@@ -1391,7 +1187,7 @@ class ShuffleCorpusPanelV2:
             self.refresh_runs_button.disabled = False
 
     def _on_inspect(self, _button: widgets.Button) -> None:
-        output_root_name = self.output_root_text.value.strip() or "training-data-v2-shuffled"
+        output_root_name = self.output_root_text.value.strip() or "training-data-v3-shuffled"
         output_run = self.output_run_text.value.strip()
         ledger_filename = self.ledger_filename_text.value.strip() or "shuffle_ledger.csv"
 

@@ -40,6 +40,8 @@ class RepresentationGenerator(Protocol):
         dilate_kernel_size: int,
         min_component_area_px: int,
         fill_holes: bool,
+        source_bgr: np.ndarray | None = None,
+        experimental_params: dict[str, object] | None = None,
     ) -> GeneratorOutput:
         ...
 

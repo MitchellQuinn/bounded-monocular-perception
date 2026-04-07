@@ -1,4 +1,4 @@
-"""Stage 2 (v2): silhouette PNG -> NPY -> NPZ shards."""
+"""Stage 2 (v3): threshold PNG -> NPY -> NPZ shards."""
 
 from __future__ import annotations
 
@@ -18,58 +18,52 @@ from rb_pipeline.validation import (
     validate_run_structure,
 )
 
-from .algorithms import register_default_components
-from .config import NpyPackStageConfigV2, StageSummaryV2
+from .array_exporters import GrayscaleArrayExporterV1
+from .config import NpyPackStageConfigV3, StageSummaryV3
 from .manifest import (
     NPY_STAGE_COLUMNS,
     PACK_STAGE_COLUMNS,
-    SILHOUETTE_STAGE_COLUMNS,
+    THRESHOLD_STAGE_COLUMNS,
     UNITY_REQUIRED_COLUMNS,
     append_columns,
     copy_run_json,
     load_run_json,
     load_samples_csv,
     samples_csv_path,
-    upsert_preprocessing_contract_v2,
+    upsert_preprocessing_contract_v3,
     write_samples_csv,
 )
 from .paths import (
-    ensure_run_dirs_v2,
+    ensure_run_dirs_v3,
     normalize_relative_filename,
     resolve_manifest_path,
-    silhouette_run_paths,
+    threshold_run_paths,
     to_posix_path,
-    training_v2_run_paths,
+    training_v3_run_paths,
 )
-from .registry import get_array_exporter
-
-
 _VALID_PACK_OUTPUT_DTYPES = {"preserve", "float32", "float16", "uint8"}
 
 
-def run_npy_pack_stage_v2(
+def run_npy_pack_stage_v3(
     project_root: Path,
     run_name: str,
-    config: NpyPackStageConfigV2,
+    config: NpyPackStageConfigV3,
     *,
     log_sink: Callable[[str], None] | None = None,
-) -> StageSummaryV2:
-    """Run interleaved npy+pack for v2 silhouette outputs."""
-
-    register_default_components()
+) -> StageSummaryV3:
+    """Run interleaved npy+pack for v3 threshold outputs."""
 
     mode = config.normalized_representation_mode()
-    exporter_id = config.normalized_array_exporter_id()
     npy_output_dtype = config.normalized_npy_output_dtype()
     pack_output_dtype = config.normalized_pack_output_dtype()
     shard_size = config.normalized_shard_size()
     source_image_column = config.normalized_training_image_source_column()
     use_shards = shard_size > 0
 
-    exporter = get_array_exporter(exporter_id)
+    exporter = GrayscaleArrayExporterV1()
 
-    source_paths = silhouette_run_paths(project_root, run_name)
-    output_paths = training_v2_run_paths(project_root, run_name)
+    source_paths = threshold_run_paths(project_root, run_name)
+    output_paths = training_v3_run_paths(project_root, run_name)
 
     validation_errors = validate_run_structure(source_paths, require_images=True)
     if validation_errors:
@@ -78,7 +72,7 @@ def run_npy_pack_stage_v2(
     source_samples_path = samples_csv_path(source_paths.manifests_dir)
     samples_df = load_samples_csv(source_samples_path)
 
-    required_columns = UNITY_REQUIRED_COLUMNS + SILHOUETTE_STAGE_COLUMNS
+    required_columns = UNITY_REQUIRED_COLUMNS + THRESHOLD_STAGE_COLUMNS
     if source_image_column not in required_columns:
         required_columns = required_columns + [source_image_column]
     validation_errors.extend(validate_required_columns(samples_df, required_columns))
@@ -93,7 +87,7 @@ def run_npy_pack_stage_v2(
     samples_df["pack_stage_status"] = samples_df["pack_stage_status"].astype("string")
     samples_df["pack_stage_error"] = samples_df["pack_stage_error"].astype("string")
 
-    ensure_run_dirs_v2(output_paths, dry_run=config.dry_run)
+    ensure_run_dirs_v3(output_paths, dry_run=config.dry_run)
     copy_run_json(source_paths.manifests_dir, output_paths.manifests_dir, dry_run=config.dry_run)
 
     run_payload = load_run_json(output_paths.manifests_dir)
@@ -102,12 +96,12 @@ def run_npy_pack_stage_v2(
         prior_contract.get("CurrentRepresentation", {}) if isinstance(prior_contract, dict) else {}
     )
 
-    upsert_preprocessing_contract_v2(
+    upsert_preprocessing_contract_v3(
         output_paths.manifests_dir,
         stage_name="npy",
         stage_parameters={
             "RepresentationMode": mode,
-            "ArrayExporterId": exporter_id,
+            "ArrayExporterId": exporter.exporter_id,
             "SourceImageColumn": source_image_column,
             "Normalize": bool(config.normalize),
             "Invert": bool(config.invert),
@@ -131,7 +125,7 @@ def run_npy_pack_stage_v2(
     effective_pack_array_dtype = (
         pack_output_dtype if pack_output_dtype != "preserve" else npy_output_dtype
     )
-    upsert_preprocessing_contract_v2(
+    upsert_preprocessing_contract_v3(
         output_paths.manifests_dir,
         stage_name="pack",
         stage_parameters={
@@ -167,12 +161,12 @@ def run_npy_pack_stage_v2(
         dry_run=config.dry_run,
         sink=log_sink,
     )
-    logger.log(f"Running v2 npy+pack stage for run '{run_name}'")
+    logger.log(f"Running v3 npy+pack stage for run '{run_name}'")
     logger.log_parameters(
         config.to_log_dict()
         | {
             "representation_mode_used": mode,
-            "array_exporter_id_used": exporter_id,
+            "array_exporter_id_used": exporter.exporter_id,
             "npy_output_dtype_used": npy_output_dtype,
             "pack_output_dtype_used": pack_output_dtype,
             "source_image_column_used": source_image_column,
@@ -210,8 +204,10 @@ def run_npy_pack_stage_v2(
     image_filenames_buffer: list[str] = []
     optional_filename_columns: list[str] = []
     for column in [
-        "silhouette_image_filename",
-        "silhouette_edge_debug_filename",
+        "threshold_image_filename",
+        "threshold_debug_binary_filename",
+        "threshold_debug_selected_component_filename",
+        "threshold_debug_amalgamated_filename",
         source_image_column,
         "npy_filename",
         "npy_source_image_filename",
@@ -318,25 +314,25 @@ def run_npy_pack_stage_v2(
             samples_df.at[row_idx, "pack_stage_status"] = "skipped"
             samples_df.at[row_idx, "pack_stage_error"] = "npy_stage_status is not success"
 
-            silhouette_status = str(samples_df.at[row_idx, "silhouette_stage_status"]).strip().lower()
-            silhouette_mode = str(samples_df.at[row_idx, "silhouette_mode"]).strip().lower()
+            threshold_status = str(samples_df.at[row_idx, "threshold_stage_status"]).strip().lower()
+            threshold_mode = str(samples_df.at[row_idx, "threshold_mode"]).strip().lower()
 
-            if silhouette_status != "success":
+            if threshold_status != "success":
                 samples_df.at[row_idx, "npy_filename"] = ""
                 samples_df.at[row_idx, "npy_stage_status"] = "skipped"
-                samples_df.at[row_idx, "npy_stage_error"] = "silhouette_stage_status is not success"
+                samples_df.at[row_idx, "npy_stage_error"] = "threshold_stage_status is not success"
                 samples_df.at[row_idx, "pack_stage_status"] = "skipped"
-                samples_df.at[row_idx, "pack_stage_error"] = "silhouette_stage_status is not success"
+                samples_df.at[row_idx, "pack_stage_error"] = "threshold_stage_status is not success"
                 continue
 
-            if silhouette_mode and silhouette_mode != mode:
+            if threshold_mode and threshold_mode != mode:
                 samples_df.at[row_idx, "npy_filename"] = ""
                 samples_df.at[row_idx, "npy_stage_status"] = "skipped"
                 samples_df.at[row_idx, "npy_stage_error"] = (
-                    f"silhouette_mode '{silhouette_mode}' does not match configured mode '{mode}'"
+                    f"threshold_mode '{threshold_mode}' does not match configured mode '{mode}'"
                 )
                 samples_df.at[row_idx, "pack_stage_status"] = "skipped"
-                samples_df.at[row_idx, "pack_stage_error"] = "silhouette mode mismatch"
+                samples_df.at[row_idx, "pack_stage_error"] = "threshold mode mismatch"
                 continue
 
             source_image_value = samples_df.at[row_idx, source_image_column]
@@ -489,9 +485,9 @@ def run_npy_pack_stage_v2(
         pack_log_path.write_text("\n".join(logger.lines) + "\n", encoding="utf-8")
 
     if aborted:
-        raise RuntimeError("Interleaved v2 npy+pack stage stopped after failure (continue_on_error=False).")
+        raise RuntimeError("Interleaved v3 npy+pack stage stopped after failure (continue_on_error=False).")
 
-    return StageSummaryV2(
+    return StageSummaryV3(
         run_name=run_name,
         stage_name="npy",
         total_rows=total_rows,
@@ -560,8 +556,8 @@ def _coerce_pack_array_dtype(array: np.ndarray, output_dtype: str) -> np.ndarray
 
 
 def _representation_kind_for_source(source_image_column: str, mode: str) -> str:
-    if source_image_column == "silhouette_image_filename":
-        return f"silhouette_{mode}_array"
+    if source_image_column == "threshold_image_filename":
+        return f"threshold_{mode}_array"
     stem = str(source_image_column).strip()
     if stem.endswith("_filename"):
         stem = stem[: -len("_filename")]

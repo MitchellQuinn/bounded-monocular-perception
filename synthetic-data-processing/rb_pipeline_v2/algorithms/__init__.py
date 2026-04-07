@@ -10,6 +10,7 @@ from ..registry import (
 )
 from .array_exporters import GrayscaleArrayExporterV1
 from .silhouette_algorithms import (
+    BlobBackgroundSilhouetteGeneratorV1,
     ConvexHullFallbackV1,
     ContourSilhouetteGeneratorV1,
     ContourSilhouetteGeneratorV2,
@@ -23,6 +24,7 @@ def register_default_components() -> None:
 
     register_representation_generator(ContourSilhouetteGeneratorV1())
     register_representation_generator(ContourSilhouetteGeneratorV2())
+    register_representation_generator(BlobBackgroundSilhouetteGeneratorV1())
     register_fallback_strategy(ConvexHullFallbackV1())
 
     register_artifact_writer(OutlineArtifactWriterV1())

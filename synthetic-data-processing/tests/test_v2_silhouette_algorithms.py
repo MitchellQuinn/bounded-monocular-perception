@@ -18,9 +18,9 @@ from rb_pipeline_v2.algorithms.silhouette_algorithms import (
     OutlineArtifactWriterV1,
 )
 from rb_pipeline_v2.config import SilhouetteStageConfigV2
-from rb_pipeline_v2.inspect import save_contour_comparison_debug_batch
+from rb_pipeline_v2.inspect import save_blob_branch_sanity_batch, save_contour_comparison_debug_batch
 from rb_pipeline_v2.manifest import load_samples_csv, samples_csv_path
-from rb_pipeline_v2.registry import list_registered_component_ids
+from rb_pipeline_v2.registry import get_representation_generator, list_registered_component_ids
 from rb_pipeline_v2.silhouette_stage import run_silhouette_stage_v2
 
 
@@ -29,6 +29,40 @@ class SilhouetteV2UnitTests(unittest.TestCase):
         register_default_components()
         ids = list_registered_component_ids()
         self.assertIn("silhouette.contour_v2", ids["generators"])
+        self.assertIn("silhouette.blob_bg_v1", ids["generators"])
+
+    def test_blob_generator_isolates_single_foreground_blob(self) -> None:
+        register_default_components()
+        generator = get_representation_generator("silhouette.blob_bg_v1")
+
+        source_bgr = self._controlled_scene_bgr()
+        source_gray = cv2.cvtColor(source_bgr, cv2.COLOR_BGR2GRAY)
+
+        generated = generator.generate(
+            source_gray,
+            source_bgr=source_bgr,
+            blur_kernel_size=5,
+            canny_low_threshold=50,
+            canny_high_threshold=150,
+            close_kernel_size=1,
+            dilate_kernel_size=1,
+            min_component_area_px=50,
+            fill_holes=True,
+            experimental_params={
+                "blob_border_fraction": 0.05,
+                "blob_hue_delta": 16.0,
+                "blob_sat_min": 42.0,
+                "blob_val_min": 50.0,
+                "blob_bright_val_min": 95.0,
+                "blob_bright_sat_min": 35.0,
+            },
+        )
+
+        self.assertIsNotNone(generated.contour)
+        filled = FilledArtifactWriterV1().render(source_gray.shape, generated.contour, line_thickness=1)
+        fg = (filled == 0).astype(np.uint8)
+        count, _, _, _ = cv2.connectedComponentsWithStats(fg, connectivity=8)
+        self.assertEqual(count - 1, 1)
 
     def test_contour_v2_prefers_single_external_blob(self) -> None:
         image = self._internal_and_detached_edges_image()
@@ -177,6 +211,27 @@ class SilhouetteV2UnitTests(unittest.TestCase):
             grid_files = sorted(output_dir.glob("*.png"))
             self.assertGreaterEqual(len(grid_files), 1)
 
+    def test_blob_sanity_batch_writes_grids_and_manifest(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_blob_compare"
+            self._make_project_fixture(
+                project_root,
+                run_name,
+                [self._controlled_scene_bgr(), self._controlled_scene_bgr()],
+            )
+
+            output_dir = save_blob_branch_sanity_batch(
+                project_root,
+                run_name,
+                sample_limit=2,
+            )
+
+            self.assertTrue(output_dir.is_dir())
+            self.assertTrue((output_dir / "blob_sanity_manifest.csv").is_file())
+            grid_files = sorted(output_dir.glob("*.png"))
+            self.assertGreaterEqual(len(grid_files), 1)
+
     def _make_project_fixture(
         self,
         project_root: Path,
@@ -244,6 +299,15 @@ class SilhouetteV2UnitTests(unittest.TestCase):
         cv2.line(image, (22, 28), (50, 46), color=0, thickness=1)
         # Detached tiny junk blob.
         cv2.circle(image, (68, 68), 1, color=0, thickness=-1)
+        return image
+
+    @staticmethod
+    def _controlled_scene_bgr() -> np.ndarray:
+        image = np.zeros((160, 240, 3), dtype=np.uint8)
+        image[:, :] = (45, 32, 24)  # dark blue-ish controlled background
+        cv2.rectangle(image, (104, 48), (136, 96), color=(40, 60, 210), thickness=-1)  # red-ish body
+        cv2.rectangle(image, (106, 42), (134, 56), color=(170, 120, 200), thickness=-1)  # magenta roof
+        cv2.rectangle(image, (108, 58), (132, 70), color=(120, 170, 180), thickness=-1)  # windshield detail
         return image
 
 

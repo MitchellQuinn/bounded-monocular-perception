@@ -18,6 +18,15 @@ from rb_pipeline_v2.silhouette_stage import run_silhouette_stage_v2
 
 
 class V2PipelineIntegrationTests(unittest.TestCase):
+    def test_npy_pack_config_rejects_unknown_training_source_column(self) -> None:
+        config = NpyPackStageConfigV2(
+            representation_mode="filled",
+            array_exporter_id="array.grayscale_v1",
+            training_image_source_column="unknown_column",
+        )
+        with self.assertRaisesRegex(ValueError, "Unsupported training_image_source_column"):
+            config.normalized_training_image_source_column()
+
     def test_v2_pipeline_subset_then_pack_one_mode(self) -> None:
         with TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -48,6 +57,7 @@ class V2PipelineIntegrationTests(unittest.TestCase):
                 npy_output_dtype="float32",
                 pack_output_dtype="preserve",
                 shard_size=1,
+                training_image_source_column="silhouette_debug_selected_component_filename",
             )
 
             npy_pack_summary = run_npy_pack_stage_v2(project_root, run_name, npy_pack_config)
@@ -69,6 +79,11 @@ class V2PipelineIntegrationTests(unittest.TestCase):
 
             success_rows = samples[samples["pack_stage_status"] == "success"]
             self.assertEqual(len(success_rows), 1)
+            self.assertEqual(
+                str(success_rows.iloc[0]["npy_source_image_column"]),
+                "silhouette_debug_selected_component_filename",
+            )
+            self.assertTrue(str(success_rows.iloc[0]["npy_source_image_filename"]).strip())
 
             npz_paths = sorted(training_run_root.glob("*.npz"))
             self.assertEqual(len(npz_paths), 1)
@@ -79,6 +94,58 @@ class V2PipelineIntegrationTests(unittest.TestCase):
                 self.assertEqual(payload["X"].shape[0], 1)
                 self.assertEqual(payload["X"].ndim, 3)
                 self.assertEqual(str(payload["X"].dtype), "float32")
+
+    def test_npy_pack_from_amalgamated_debug_source(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_amalgamated_source"
+
+            self._make_project_fixture(
+                project_root,
+                run_name,
+                [self._rectangle_image()],
+            )
+
+            silhouette_config = SilhouetteStageConfigV2(
+                representation_mode="filled",
+                generator_id="silhouette.contour_v2",
+                fallback_id="fallback.convex_hull_v1",
+                sample_limit=1,
+                persist_edge_debug=True,
+                amalgamate_debug_outputs=True,
+                keep_individual_debug_outputs=False,
+            )
+            silhouette_summary = run_silhouette_stage_v2(project_root, run_name, silhouette_config)
+            self.assertEqual(silhouette_summary.successful_rows, 1)
+
+            silhouette_samples = load_samples_csv(
+                samples_csv_path(project_root / "silhouette-images-v2" / run_name / "manifests")
+            )
+            self.assertTrue(str(silhouette_samples.at[0, "silhouette_debug_amalgamated_filename"]).strip())
+            raw_edge_value = silhouette_samples.at[0, "silhouette_debug_raw_edge_filename"]
+            self.assertTrue(pd.isna(raw_edge_value) or str(raw_edge_value).strip() == "")
+
+            npy_pack_config = NpyPackStageConfigV2(
+                representation_mode="filled",
+                array_exporter_id="array.grayscale_v1",
+                npy_output_dtype="float32",
+                pack_output_dtype="preserve",
+                shard_size=1,
+                training_image_source_column="silhouette_debug_amalgamated_filename",
+            )
+            npy_pack_summary = run_npy_pack_stage_v2(project_root, run_name, npy_pack_config)
+            self.assertEqual(npy_pack_summary.successful_rows, 1)
+            self.assertEqual(npy_pack_summary.failed_rows, 0)
+
+            training_run_root = project_root / "training-data-v2" / run_name
+            npz_paths = sorted(training_run_root.glob("*.npz"))
+            self.assertEqual(len(npz_paths), 1)
+
+            with np.load(npz_paths[0], allow_pickle=False) as payload:
+                self.assertIn("X", payload)
+                self.assertEqual(payload["X"].shape[0], 1)
+                # amalgamated debug overlay matches source frame geometry
+                self.assertEqual(payload["X"].shape[1:], (64, 64))
 
     def _make_project_fixture(
         self,

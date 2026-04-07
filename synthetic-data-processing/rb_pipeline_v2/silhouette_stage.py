@@ -8,7 +8,7 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from rb_pipeline.image_io import read_grayscale_uint8, write_grayscale_png
+from rb_pipeline.image_io import read_image_unchanged, to_grayscale_uint8, write_grayscale_png
 from rb_pipeline.logging_utils import StageLogger
 from rb_pipeline.validation import (
     PipelineValidationError,
@@ -61,7 +61,10 @@ def run_silhouette_stage_v2(
     generator_id = config.normalized_generator_id()
     fallback_id = config.normalized_fallback_id()
     debug_persist = config.normalized_debug_persist()
+    amalgamate_debug = bool(config.amalgamate_debug_outputs)
+    keep_individual_debug = bool(config.keep_individual_debug_outputs)
     use_convex_hull_fallback = bool(config.use_convex_hull_fallback)
+    blob_params = config.blob_params()
 
     generator = get_representation_generator(generator_id)
     fallback = get_fallback_strategy(fallback_id)
@@ -123,7 +126,10 @@ def run_silhouette_stage_v2(
             "OutlineThicknessPxUsed": int(config.normalized_outline_thickness()),
             "FillHoles": bool(config.fill_holes),
             "UseConvexHullFallback": use_convex_hull_fallback,
+            "BlobParams": blob_params,
             "PersistEdgeDebug": debug_persist,
+            "AmalgamateDebugOutputs": amalgamate_debug,
+            "KeepIndividualDebugOutputs": keep_individual_debug,
             "SampleOffset": int(config.normalized_sample_offset()),
             "SampleLimit": int(config.normalized_sample_limit()),
         },
@@ -160,7 +166,10 @@ def run_silhouette_stage_v2(
             "min_component_area_px_used": config.normalized_min_component_area_px(),
             "fill_holes_used": bool(config.fill_holes),
             "use_convex_hull_fallback": use_convex_hull_fallback,
+            "blob_params_used": blob_params,
             "debug_persist_used": debug_persist,
+            "amalgamate_debug_outputs_used": amalgamate_debug,
+            "keep_individual_debug_outputs_used": keep_individual_debug,
         }
     )
 
@@ -199,6 +208,7 @@ def run_silhouette_stage_v2(
         samples_df.at[row_idx, "silhouette_debug_external_contour_filename"] = ""
         samples_df.at[row_idx, "silhouette_debug_final_filled_filename"] = ""
         samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = ""
+        samples_df.at[row_idx, "silhouette_debug_amalgamated_filename"] = ""
 
         row_capture_success = bool(capture_mask.loc[row_idx])
         source_filename = samples_df.at[row_idx, "image_filename"]
@@ -224,17 +234,21 @@ def run_silhouette_stage_v2(
         external_contour_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.external_contour.png")
         final_filled_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.final_filled.png")
         fallback_hull_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.fallback_hull.png")
+        amalgamated_rel = silhouette_rel.with_name(f"{silhouette_rel.stem}.debug.amalgamated.png")
 
         samples_df.at[row_idx, "silhouette_image_filename"] = to_posix_path(silhouette_rel)
         if debug_persist:
-            samples_df.at[row_idx, "silhouette_edge_debug_filename"] = to_posix_path(edge_debug_rel)
-            samples_df.at[row_idx, "silhouette_debug_raw_edge_filename"] = to_posix_path(raw_edge_rel)
-            samples_df.at[row_idx, "silhouette_debug_post_morph_filename"] = to_posix_path(post_morph_rel)
-            samples_df.at[row_idx, "silhouette_debug_components_mask_filename"] = to_posix_path(components_rel)
-            samples_df.at[row_idx, "silhouette_debug_selected_component_filename"] = to_posix_path(selected_component_rel)
-            samples_df.at[row_idx, "silhouette_debug_external_contour_filename"] = to_posix_path(external_contour_rel)
-            samples_df.at[row_idx, "silhouette_debug_final_filled_filename"] = to_posix_path(final_filled_rel)
-            samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = to_posix_path(fallback_hull_rel)
+            if keep_individual_debug:
+                samples_df.at[row_idx, "silhouette_edge_debug_filename"] = to_posix_path(edge_debug_rel)
+                samples_df.at[row_idx, "silhouette_debug_raw_edge_filename"] = to_posix_path(raw_edge_rel)
+                samples_df.at[row_idx, "silhouette_debug_post_morph_filename"] = to_posix_path(post_morph_rel)
+                samples_df.at[row_idx, "silhouette_debug_components_mask_filename"] = to_posix_path(components_rel)
+                samples_df.at[row_idx, "silhouette_debug_selected_component_filename"] = to_posix_path(selected_component_rel)
+                samples_df.at[row_idx, "silhouette_debug_external_contour_filename"] = to_posix_path(external_contour_rel)
+                samples_df.at[row_idx, "silhouette_debug_final_filled_filename"] = to_posix_path(final_filled_rel)
+                samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = to_posix_path(fallback_hull_rel)
+            if amalgamate_debug:
+                samples_df.at[row_idx, "silhouette_debug_amalgamated_filename"] = to_posix_path(amalgamated_rel)
 
         if row_idx not in selected_rows:
             samples_df.at[row_idx, "silhouette_stage_status"] = "skipped"
@@ -256,6 +270,7 @@ def run_silhouette_stage_v2(
         external_contour_path = output_paths.images_dir / external_contour_rel
         final_filled_path = output_paths.images_dir / final_filled_rel
         fallback_hull_path = output_paths.images_dir / fallback_hull_rel
+        amalgamated_path = output_paths.images_dir / amalgamated_rel
 
         if silhouette_path.exists() and not config.overwrite:
             samples_df.at[row_idx, "silhouette_stage_status"] = "skipped"
@@ -263,10 +278,17 @@ def run_silhouette_stage_v2(
             continue
 
         try:
-            source_gray = read_grayscale_uint8(source_path)
+            source_image = read_image_unchanged(source_path)
+            source_gray = to_grayscale_uint8(source_image)
+            source_bgr = None
+            if source_image.ndim == 3 and source_image.shape[2] == 3:
+                source_bgr = source_image
+            elif source_image.ndim == 3 and source_image.shape[2] == 4:
+                source_bgr = cv2.cvtColor(source_image, cv2.COLOR_BGRA2BGR)
 
             generated = generator.generate(
                 source_gray,
+                source_bgr=source_bgr,
                 blur_kernel_size=config.normalized_blur_kernel_size(),
                 canny_low_threshold=config.canny_low_threshold,
                 canny_high_threshold=config.canny_high_threshold,
@@ -274,6 +296,7 @@ def run_silhouette_stage_v2(
                 dilate_kernel_size=config.normalized_dilate_kernel_size(),
                 min_component_area_px=config.normalized_min_component_area_px(),
                 fill_holes=bool(config.fill_holes),
+                experimental_params=blob_params,
             )
 
             contour = generated.contour
@@ -331,32 +354,56 @@ def run_silhouette_stage_v2(
             if debug_persist:
                 edge_debug = np.full(generated.edge_binary.shape, 255, dtype=np.uint8)
                 edge_debug[generated.edge_binary > 0] = 0
-                write_grayscale_png(edge_debug_path, edge_debug, dry_run=config.dry_run)
                 debug_images = generated.debug_images or {}
-                _write_debug_if_present(debug_images, "raw_edge", raw_edge_path, dry_run=config.dry_run)
-                _write_debug_if_present(debug_images, "post_morph", post_morph_path, dry_run=config.dry_run)
-                _write_debug_if_present(
-                    debug_images,
-                    "components_before_selection",
-                    components_path,
-                    dry_run=config.dry_run,
-                )
-                _write_debug_if_present(
-                    debug_images,
-                    "selected_component",
-                    selected_component_path,
-                    dry_run=config.dry_run,
-                )
-                _write_debug_if_present(
-                    debug_images,
-                    "external_contour",
-                    external_contour_path,
-                    dry_run=config.dry_run,
-                )
-                write_grayscale_png(final_filled_path, final_filled_img, dry_run=config.dry_run)
+                fallback_hull_img = None
                 if fallback_used and hull_contour is not None:
                     fallback_hull_img = filled_writer.render(source_gray.shape, hull_contour, line_thickness=1)
-                    write_grayscale_png(fallback_hull_path, fallback_hull_img, dry_run=config.dry_run)
+
+                if keep_individual_debug:
+                    write_grayscale_png(edge_debug_path, edge_debug, dry_run=config.dry_run)
+                    _write_debug_if_present(debug_images, "raw_edge", raw_edge_path, dry_run=config.dry_run)
+                    _write_debug_if_present(debug_images, "post_morph", post_morph_path, dry_run=config.dry_run)
+                    _write_debug_if_present(
+                        debug_images,
+                        "components_before_selection",
+                        components_path,
+                        dry_run=config.dry_run,
+                    )
+                    _write_debug_if_present(
+                        debug_images,
+                        "selected_component",
+                        selected_component_path,
+                        dry_run=config.dry_run,
+                    )
+                    _write_debug_if_present(
+                        debug_images,
+                        "external_contour",
+                        external_contour_path,
+                        dry_run=config.dry_run,
+                    )
+                    write_grayscale_png(final_filled_path, final_filled_img, dry_run=config.dry_run)
+                    if fallback_hull_img is not None:
+                        write_grayscale_png(fallback_hull_path, fallback_hull_img, dry_run=config.dry_run)
+
+                if amalgamate_debug:
+                    amalgamated = _assemble_debug_overlay(
+                        source_gray.shape,
+                        edge_debug=edge_debug,
+                        raw_edge=debug_images.get("raw_edge"),
+                        post_morph=debug_images.get("post_morph"),
+                        components_before_selection=debug_images.get("components_before_selection"),
+                        selected_component=debug_images.get("selected_component"),
+                        external_contour=debug_images.get("external_contour"),
+                        final_filled=final_filled_img,
+                        fallback_hull=fallback_hull_img,
+                    )
+                    write_grayscale_png(amalgamated_path, amalgamated, dry_run=config.dry_run)
+
+                if fallback_used and hull_contour is not None:
+                    if not keep_individual_debug:
+                        samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = ""
+            else:
+                samples_df.at[row_idx, "silhouette_debug_amalgamated_filename"] = ""
 
             area_px, bbox = _contour_geometry(contour)
             contour_area = _safe_int(diagnostics.get("contour_area"), default=area_px)
@@ -391,8 +438,18 @@ def run_silhouette_stage_v2(
             samples_df.at[row_idx, "silhouette_num_components_total"] = str(num_components_total)
             samples_df.at[row_idx, "silhouette_num_components_after_filter"] = str(num_components_after_filter)
             samples_df.at[row_idx, "silhouette_quality_flags"] = ";".join(sorted(set(quality_flags)))
-            if not fallback_used:
+            if not fallback_used or not keep_individual_debug:
                 samples_df.at[row_idx, "silhouette_debug_fallback_hull_filename"] = ""
+            if not keep_individual_debug:
+                samples_df.at[row_idx, "silhouette_edge_debug_filename"] = ""
+                samples_df.at[row_idx, "silhouette_debug_raw_edge_filename"] = ""
+                samples_df.at[row_idx, "silhouette_debug_post_morph_filename"] = ""
+                samples_df.at[row_idx, "silhouette_debug_components_mask_filename"] = ""
+                samples_df.at[row_idx, "silhouette_debug_selected_component_filename"] = ""
+                samples_df.at[row_idx, "silhouette_debug_external_contour_filename"] = ""
+                samples_df.at[row_idx, "silhouette_debug_final_filled_filename"] = ""
+            if not amalgamate_debug:
+                samples_df.at[row_idx, "silhouette_debug_amalgamated_filename"] = ""
 
             samples_df.at[row_idx, "silhouette_stage_status"] = "success"
             samples_df.at[row_idx, "silhouette_stage_error"] = ""
@@ -499,6 +556,50 @@ def _write_debug_if_present(
     if image.dtype != np.uint8:
         image = np.clip(image, 0, 255).astype(np.uint8)
     write_grayscale_png(output_path, image, dry_run=dry_run)
+
+
+def _assemble_debug_overlay(
+    image_shape: tuple[int, int],
+    *,
+    edge_debug: np.ndarray | None,
+    raw_edge: np.ndarray | None,
+    post_morph: np.ndarray | None,
+    components_before_selection: np.ndarray | None,
+    selected_component: np.ndarray | None,
+    external_contour: np.ndarray | None,
+    final_filled: np.ndarray | None,
+    fallback_hull: np.ndarray | None,
+) -> np.ndarray:
+    height = int(image_shape[0])
+    width = int(image_shape[1])
+    blank = np.full((height, width), 255, dtype=np.uint8)
+
+    layers = [
+        _as_uint8_gray(edge_debug, fallback=blank),
+        _as_uint8_gray(raw_edge, fallback=blank),
+        _as_uint8_gray(post_morph, fallback=blank),
+        _as_uint8_gray(components_before_selection, fallback=blank),
+        _as_uint8_gray(selected_component, fallback=blank),
+        _as_uint8_gray(external_contour, fallback=blank),
+        _as_uint8_gray(final_filled, fallback=blank),
+        _as_uint8_gray(fallback_hull, fallback=blank),
+    ]
+
+    assembled = blank.copy()
+    for layer in layers:
+        assembled[layer < 255] = 0
+    return assembled
+
+
+def _as_uint8_gray(image: np.ndarray | None, *, fallback: np.ndarray) -> np.ndarray:
+    if image is None:
+        return fallback.copy()
+    if image.ndim != 2:
+        return fallback.copy()
+    normalized = np.clip(image, 0, 255).astype(np.uint8) if image.dtype != np.uint8 else image
+    if normalized.shape != fallback.shape:
+        return cv2.resize(normalized, (fallback.shape[1], fallback.shape[0]), interpolation=cv2.INTER_NEAREST)
+    return normalized
 
 
 def _safe_int(value: object, *, default: int) -> int:

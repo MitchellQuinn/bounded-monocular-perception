@@ -12,6 +12,7 @@ from .config import (
 )
 from .inspect import (
     load_source_edge_silhouette_preview,
+    save_blob_branch_sanity_batch,
     save_contour_comparison_debug_batch,
     show_source_edge_silhouette_preview,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "load_source_edge_silhouette_preview",
     "show_source_edge_silhouette_preview",
     "save_contour_comparison_debug_batch",
+    "save_blob_branch_sanity_batch",
     "list_registered_component_ids",
     "PreviewPanelV2",
     "PipelineLauncherV2",

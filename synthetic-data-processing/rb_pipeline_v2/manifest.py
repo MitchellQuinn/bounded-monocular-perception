@@ -53,10 +53,13 @@ SILHOUETTE_STAGE_COLUMNS = [
     "silhouette_debug_external_contour_filename",
     "silhouette_debug_final_filled_filename",
     "silhouette_debug_fallback_hull_filename",
+    "silhouette_debug_amalgamated_filename",
 ]
 
 NPY_STAGE_COLUMNS = [
     "npy_filename",
+    "npy_source_image_column",
+    "npy_source_image_filename",
     "npy_stage_status",
     "npy_stage_error",
 ]
