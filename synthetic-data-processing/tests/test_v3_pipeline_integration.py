@@ -50,6 +50,19 @@ class V3PipelineIntegrationTests(unittest.TestCase):
             self.assertEqual(threshold_summary.successful_rows, 1)
             self.assertEqual(threshold_summary.skipped_rows, 1)
 
+            threshold_samples = load_samples_csv(
+                samples_csv_path(project_root / "threshold-images-v3" / run_name / "manifests")
+            )
+            threshold_filename = str(threshold_samples.at[0, "threshold_image_filename"])
+            threshold_image = cv2.imread(
+                str(project_root / "threshold-images-v3" / run_name / "images" / threshold_filename),
+                cv2.IMREAD_GRAYSCALE,
+            )
+            self.assertIsNotNone(threshold_image)
+            # Foreground should be white on black in v3 outputs.
+            self.assertEqual(int(threshold_image[32, 32]), 255)
+            self.assertEqual(int(threshold_image[0, 0]), 0)
+
             npy_pack_config = NpyPackStageConfigV3(
                 representation_mode="filled",
                 npy_output_dtype="float16",
@@ -98,6 +111,10 @@ class V3PipelineIntegrationTests(unittest.TestCase):
             self.assertEqual(len(npy_paths), 1)
             npy_array = np.load(npy_paths[0], allow_pickle=False)
             self.assertEqual(str(npy_array.dtype), "float16")
+            self.assertGreaterEqual(float(np.min(npy_array)), 0.0)
+            self.assertLessEqual(float(np.max(npy_array)), 255.0)
+            self.assertEqual(float(npy_array[32, 32]), 255.0)
+            self.assertEqual(float(npy_array[0, 0]), 0.0)
 
     def test_threshold_bounds_are_sorted_when_low_gt_high(self) -> None:
         config = ThresholdStageConfigV3(
@@ -153,6 +170,9 @@ class V3PipelineIntegrationTests(unittest.TestCase):
     def _scene_image() -> np.ndarray:
         image = np.full((64, 64), 20, dtype=np.uint8)
         cv2.rectangle(image, (20, 20), (42, 44), color=230, thickness=-1)
+        # Deliberate dark pinholes inside the bright foreground target.
+        image[32, 32] = 20
+        image[35, 30] = 20
         cv2.rectangle(image, (6, 6), (10, 10), color=245, thickness=-1)
         return image
 

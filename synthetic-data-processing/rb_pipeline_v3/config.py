@@ -31,6 +31,8 @@ class ThresholdStageConfigV3:
     invert_selection: bool = False
 
     min_component_area_px: int = 1
+    fill_internal_holes: bool = True
+    hole_close_kernel_size: int = 3
     outline_thickness: int = 1
 
     persist_debug: bool = False
@@ -65,6 +67,12 @@ class ThresholdStageConfigV3:
     def normalized_min_component_area_px(self) -> int:
         return max(1, int(self.min_component_area_px))
 
+    def normalized_hole_close_kernel_size(self) -> int:
+        kernel = max(1, int(self.hole_close_kernel_size))
+        if kernel % 2 == 0:
+            kernel += 1
+        return kernel
+
     def normalized_sample_offset(self) -> int:
         return max(0, int(self.sample_offset))
 
@@ -85,8 +93,8 @@ class NpyPackStageConfigV3:
     dry_run: bool = False
     continue_on_error: bool = True
 
-    normalize: bool = True
-    invert: bool = True
+    normalize: bool = False
+    invert: bool = False
     npy_output_dtype: str = "float32"
 
     pack_output_dtype: str = "preserve"

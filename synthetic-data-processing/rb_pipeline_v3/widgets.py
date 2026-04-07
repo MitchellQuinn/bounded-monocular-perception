@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
+from typing import Callable
 
+import cv2
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,7 +27,7 @@ from .paths import (
 )
 from .pipeline import STAGE_ORDER_V3, run_v3_stage_for_run
 from .shuffle_stage import run_shuffle_stage_v3
-from .threshold_stage import _filter_components, _gimp_threshold_binary, _render_threshold_artifact
+from .threshold_stage import _filter_components, _gimp_threshold_binary, _postprocess_selected_mask, _render_threshold_artifact
 
 
 
@@ -146,25 +149,100 @@ def _draw_three_panel_preview(
     plt.show()
 
 
-class PreviewPanelV3:
-    """Shared 4-panel preview: source, threshold debug, threshold output, training array."""
+def _draw_vertical_preview(
+    source: np.ndarray | None,
+    gimp_binary: np.ndarray | None,
+    output: np.ndarray | None,
+) -> None:
+    panels = [
+        ("Source", source),
+        ("Threshold (GIMP binary)", gimp_binary),
+        ("Threshold Output (white on black)", output),
+    ]
 
-    def __init__(self, project_root: Path) -> None:
+    plt.close("all")
+    fig, axes = plt.subplots(3, 1, figsize=(12, 18))
+    for axis, (title, image) in zip(axes, panels):
+        axis.set_title(title)
+        axis.axis("off")
+        if image is None:
+            axis.text(0.5, 0.5, "Not available", ha="center", va="center")
+        else:
+            vmin = 0.0 if image.dtype.kind == "f" else 0
+            vmax = 1.0 if image.dtype.kind == "f" else 255
+            axis.imshow(image, cmap="gray", vmin=vmin, vmax=vmax)
+    plt.tight_layout()
+    plt.show()
+    plt.close(fig)
+
+
+def _to_png_bytes(image: np.ndarray | None) -> bytes:
+    if image is None:
+        return b""
+
+    if image.ndim != 2:
+        return b""
+
+    if image.dtype.kind == "f":
+        arr = np.clip(image, 0.0, 1.0) * 255.0
+        img_u8 = np.rint(arr).astype(np.uint8)
+    else:
+        img_u8 = np.clip(image, 0, 255).astype(np.uint8)
+
+    ok, encoded = cv2.imencode(".png", img_u8)
+    if not ok:
+        return b""
+    return encoded.tobytes()
+
+
+class PreviewPanelV3:
+    """Apply current threshold parameters to one input sample and preview the result."""
+
+    def __init__(
+        self,
+        project_root: Path,
+        threshold_config_factory: Callable[[], ThresholdStageConfigV3] | None = None,
+    ) -> None:
         self.project_root = project_root
+        self.threshold_config_factory = threshold_config_factory
+        self._previewing = False
+        self._last_preview_at = 0.0
 
         self.run_dropdown = widgets.Dropdown(description="Run:", options=[])
-        self.sample_dropdown = widgets.Dropdown(description="Sample:", options=[])
-
         self.refresh_runs_button = widgets.Button(description="Refresh Runs")
-        self.refresh_preview_button = widgets.Button(description="Refresh Preview")
+        self.preview_button = widgets.Button(description="Preview")
+        self.status_html = widgets.HTML()
 
-        self.output = widgets.Output(layout=widgets.Layout(border="1px solid #ccc", padding="8px"))
+        image_layout = widgets.Layout(
+            width="100%",
+            max_width="1100px",
+            border="1px solid #ccc",
+        )
+        self.source_image = widgets.Image(format="png", value=b"", layout=image_layout)
+        self.gimp_binary_image = widgets.Image(format="png", value=b"", layout=image_layout)
+        self.output_image = widgets.Image(format="png", value=b"", layout=image_layout)
 
+        self.preview_container = widgets.VBox(
+            [
+                widgets.HTML("<b>Source</b>"),
+                self.source_image,
+                widgets.HTML("<b>Threshold (GIMP binary)</b>"),
+                self.gimp_binary_image,
+                widgets.HTML("<b>Threshold Output (white on black)</b>"),
+                self.output_image,
+            ],
+            layout=widgets.Layout(
+                width="100%",
+                overflow_x="auto",
+            ),
+        )
+
+        self.refresh_runs_button.on_click(self._on_refresh_runs, remove=True)
+        self.preview_button.on_click(self._on_preview, remove=True)
         self.refresh_runs_button.on_click(self._on_refresh_runs)
-        self.refresh_preview_button.on_click(self._on_refresh_preview)
-        self.run_dropdown.observe(self._on_run_change, names="value")
+        self.preview_button.on_click(self._on_preview)
 
-        self._refresh_runs()
+        self.refresh_runs()
 
     @property
     def widget(self) -> widgets.Widget:
@@ -172,120 +250,123 @@ class PreviewPanelV3:
             [
                 widgets.HTML("<b>Preview Panel (V3)</b>"),
                 self.run_dropdown,
-                self.sample_dropdown,
-                widgets.HBox([self.refresh_runs_button, self.refresh_preview_button]),
-                self.output,
-            ]
+                widgets.HBox([self.refresh_runs_button, self.preview_button]),
+                self.status_html,
+                self.preview_container,
+            ],
+            layout=widgets.Layout(width="100%"),
         )
 
-    def _on_refresh_runs(self, _button: widgets.Button) -> None:
-        self._refresh_runs()
-
-    def _on_run_change(self, _change: dict) -> None:
-        self._refresh_samples()
-
-    def _on_refresh_preview(self, _button: widgets.Button) -> None:
-        self.render_preview()
-
-    def _refresh_runs(self) -> None:
+    def refresh_runs(self) -> None:
         runs = list_input_runs(self.project_root)
         self.run_dropdown.options = runs
         if runs and self.run_dropdown.value not in runs:
             self.run_dropdown.value = runs[0]
-        self._refresh_samples()
 
-    def _refresh_samples(self) -> None:
-        run_name = self.run_dropdown.value
-        if not run_name:
-            self.sample_dropdown.options = []
+    def _refresh_runs(self) -> None:
+        self.refresh_runs()
+
+    def _on_refresh_runs(self, _button: widgets.Button) -> None:
+        self.refresh_runs()
+
+    def _on_preview(self, _button: widgets.Button) -> None:
+        now = time.monotonic()
+        if now - self._last_preview_at < 0.3:
             return
+        self._last_preview_at = now
 
-        input_paths = input_run_paths(self.project_root, run_name)
-        samples_df = _load_samples(input_paths.manifests_dir / "samples.csv")
-        options = _sample_options(samples_df)
+        if self._previewing:
+            return
+        self._previewing = True
+        self.preview_button.disabled = True
+        try:
+            self.render_preview()
+        finally:
+            self.preview_button.disabled = False
+            self._previewing = False
 
-        self.sample_dropdown.options = options
-        if options:
-            option_values = [value for _, value in options]
-            if self.sample_dropdown.value not in option_values:
-                self.sample_dropdown.value = option_values[0]
+    def _current_threshold_config(self) -> ThresholdStageConfigV3:
+        if self.threshold_config_factory is None:
+            return ThresholdStageConfigV3(representation_mode="filled")
+        return self.threshold_config_factory()
 
     def render_preview(self) -> None:
         run_name = self.run_dropdown.value
-        row_idx = self.sample_dropdown.value
 
-        with self.output:
-            self.output.clear_output(wait=True)
+        self.status_html.value = ""
+        self.source_image.value = b""
+        self.gimp_binary_image.value = b""
+        self.output_image.value = b""
 
-            if run_name is None or row_idx is None:
-                print("Select a run and sample first.")
-                return
+        if not run_name:
+            self.status_html.value = "Select a run first."
+            return
 
-            input_paths = input_run_paths(self.project_root, run_name)
-            threshold_paths = threshold_run_paths(self.project_root, run_name)
-            training_paths = training_v3_run_paths(self.project_root, run_name)
+        config = self._current_threshold_config()
+        low, high = config.normalized_threshold_bounds()
 
-            input_df = _load_samples(input_paths.manifests_dir / "samples.csv")
-            threshold_df = _load_samples(threshold_paths.manifests_dir / "samples.csv")
-            training_df = _load_samples(training_paths.manifests_dir / "samples.csv")
+        input_paths = input_run_paths(self.project_root, run_name)
+        input_df = _load_samples(input_paths.manifests_dir / "samples.csv")
+        if input_df is None or len(input_df) == 0:
+            self.status_html.value = "No samples.csv rows found for this run."
+            return
 
-            if input_df is None or row_idx not in input_df.index:
-                print("Sample not available in input manifest.")
-                return
+        rows = list(input_df.index)
+        offset = config.normalized_sample_offset()
+        if offset >= len(rows):
+            self.status_html.value = f"Sample offset {offset} is out of range for {len(rows)} rows."
+            return
 
-            source_path = None
-            threshold_debug_path = None
-            threshold_path = None
-            npy_path = None
+        row_idx = rows[offset]
+        source_filename = str(input_df.at[row_idx, "image_filename"])
+        source_path = resolve_manifest_path(input_paths.root, "images", source_filename)
+        source_gray = _safe_gray_image(source_path)
+        if source_gray is None:
+            self.status_html.value = f"Could not load source image: {source_path}"
+            return
 
-            try:
-                source_filename = input_df.at[row_idx, "image_filename"]
-                source_path = resolve_manifest_path(input_paths.root, "images", source_filename)
-            except Exception:
-                source_path = None
+        sample_id = (
+            str(input_df.at[row_idx, "sample_id"])
+            if "sample_id" in input_df.columns
+            else f"row_{row_idx}"
+        )
+        self.status_html.value = (
+            f"Preview row index: {row_idx} | sample_id: {sample_id} | image: {source_filename}<br>"
+            f"Params: mode={config.normalized_representation_mode()}, "
+            f"threshold=[{low}, {high}], invert_selection={bool(config.invert_selection)}, "
+            f"min_component_area_px={config.normalized_min_component_area_px()}, "
+            f"fill_internal_holes={bool(config.fill_internal_holes)}, "
+            f"hole_close_kernel_size={config.normalized_hole_close_kernel_size()}, "
+            f"outline_thickness={config.normalized_outline_thickness()}"
+        )
 
-            if threshold_df is not None and row_idx in threshold_df.index:
-                for debug_column in [
-                    "threshold_debug_selected_component_filename",
-                    "threshold_debug_binary_filename",
-                    "threshold_debug_amalgamated_filename",
-                ]:
-                    if debug_column not in threshold_df.columns:
-                        continue
-                    try:
-                        debug_filename = threshold_df.at[row_idx, debug_column]
-                        if str(debug_filename).strip():
-                            threshold_debug_path = resolve_manifest_path(
-                                threshold_paths.root, "images", debug_filename
-                            )
-                            break
-                    except Exception:
-                        continue
+        gimp_binary = _gimp_threshold_binary(
+            source_gray,
+            low_value=low,
+            high_value=high,
+            invert_selection=bool(config.invert_selection),
+        )
+        selected_mask = _filter_components(
+            gimp_binary,
+            min_component_area_px=config.normalized_min_component_area_px(),
+        )
+        selected_mask = _postprocess_selected_mask(
+            selected_mask,
+            fill_internal_holes=bool(config.fill_internal_holes),
+            hole_close_kernel_size=config.normalized_hole_close_kernel_size(),
+        )
 
-                if "threshold_image_filename" in threshold_df.columns:
-                    try:
-                        threshold_filename = threshold_df.at[row_idx, "threshold_image_filename"]
-                        if str(threshold_filename).strip():
-                            threshold_path = resolve_manifest_path(
-                                threshold_paths.root, "images", threshold_filename
-                            )
-                    except Exception:
-                        threshold_path = None
+        output_preview: np.ndarray | None = None
+        if np.any(selected_mask > 0):
+            output_preview = _render_threshold_artifact(
+                selected_mask,
+                representation_mode=config.normalized_representation_mode(),
+                outline_thickness=config.normalized_outline_thickness(),
+            )
 
-            if training_df is not None and row_idx in training_df.index and "npy_filename" in training_df.columns:
-                try:
-                    npy_filename = training_df.at[row_idx, "npy_filename"]
-                    if str(npy_filename).strip():
-                        npy_path = resolve_manifest_path(training_paths.root, "arrays", npy_filename)
-                except Exception:
-                    npy_path = None
-
-            source_img = _safe_gray_image(source_path)
-            threshold_debug_img = _safe_gray_image(threshold_debug_path)
-            threshold_img = _safe_gray_image(threshold_path)
-            training_array = _safe_npy(npy_path)
-
-            _draw_preview_grid_v3(source_img, threshold_debug_img, threshold_img, training_array)
+        self.source_image.value = _to_png_bytes(source_gray)
+        self.gimp_binary_image.value = _to_png_bytes(gimp_binary)
+        self.output_image.value = _to_png_bytes(output_preview)
 
 
 class PipelineLauncherV3:
@@ -316,6 +397,14 @@ class PipelineLauncherV3:
         self.threshold_high_slider = widgets.IntSlider(description="Threshold high", value=255, min=0, max=255, step=1)
         self.invert_selection_checkbox = widgets.Checkbox(value=False, description="Invert threshold selection")
         self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=1, min=1, max=1_000_000)
+        self.fill_internal_holes_checkbox = widgets.Checkbox(value=True, description="Fill internal holes")
+        self.hole_close_kernel_slider = widgets.IntSlider(
+            description="Hole close k",
+            value=3,
+            min=1,
+            max=31,
+            step=2,
+        )
         self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
         self.persist_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
         self.amalgamate_debug_checkbox = widgets.Checkbox(
@@ -363,7 +452,7 @@ class PipelineLauncherV3:
         self.progress = widgets.IntProgress(value=0, min=0, max=1, description="Progress")
         self.log_output = widgets.Output(layout=widgets.Layout(border="1px solid #ccc", padding="8px", height="280px"))
 
-        self.preview_panel = PreviewPanelV3(self.project_root)
+        self.preview_panel = PreviewPanelV3(self.project_root, self._build_threshold_config)
 
         self.refresh_runs_button.on_click(self._on_refresh_runs)
         self.execute_button.on_click(self._on_execute)
@@ -390,6 +479,8 @@ class PipelineLauncherV3:
                 self.threshold_high_slider,
                 self.invert_selection_checkbox,
                 self.min_component_area_input,
+                self.fill_internal_holes_checkbox,
+                self.hole_close_kernel_slider,
                 self.outline_thickness_slider,
                 self.persist_debug_checkbox,
                 self.amalgamate_debug_checkbox,
@@ -405,10 +496,35 @@ class PipelineLauncherV3:
                 self.pack_delete_npy_checkbox,
                 self.progress,
                 self.log_output,
-            ]
+            ],
+            layout=widgets.Layout(
+                width="420px",
+                min_width="420px",
+                max_width="420px",
+                overflow_y="auto",
+            ),
         )
 
-        display(widgets.HBox([control_panel, self.preview_panel.widget]))
+        preview_column = widgets.VBox(
+            [self.preview_panel.widget],
+            layout=widgets.Layout(
+                width="100%",
+                min_width="760px",
+                flex="1 1 auto",
+                overflow_x="auto",
+            ),
+        )
+
+        display(
+            widgets.HBox(
+                [control_panel, preview_column],
+                layout=widgets.Layout(
+                    width="100%",
+                    align_items="flex-start",
+                    overflow_x="auto",
+                ),
+            )
+        )
 
     def _log(self, message: str) -> None:
         with self.log_output:
@@ -498,6 +614,8 @@ class PipelineLauncherV3:
             threshold_high_value=self.threshold_high_slider.value,
             invert_selection=self.invert_selection_checkbox.value,
             min_component_area_px=self.min_component_area_input.value,
+            fill_internal_holes=self.fill_internal_holes_checkbox.value,
+            hole_close_kernel_size=self.hole_close_kernel_slider.value,
             outline_thickness=self.outline_thickness_slider.value,
             persist_debug=self.persist_debug_checkbox.value,
             keep_individual_debug_outputs=self.keep_individual_debug_checkbox.value,
@@ -512,8 +630,8 @@ class PipelineLauncherV3:
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=self.continue_on_error_checkbox.value,
-            normalize=True,
-            invert=True,
+            normalize=False,
+            invert=False,
             npy_output_dtype=self.npy_dtype_dropdown.value,
             pack_output_dtype=self.pack_dtype_dropdown.value,
             compress=self.pack_compress_checkbox.value,
@@ -612,6 +730,14 @@ class ThresholdStagePanelV3:
         self.threshold_high_slider = widgets.IntSlider(description="Threshold high", value=255, min=0, max=255, step=1)
         self.invert_selection_checkbox = widgets.Checkbox(value=False, description="Invert threshold selection")
         self.min_component_area_input = widgets.BoundedIntText(description="Min area:", value=1, min=1, max=1_000_000)
+        self.fill_internal_holes_checkbox = widgets.Checkbox(value=True, description="Fill internal holes")
+        self.hole_close_kernel_slider = widgets.IntSlider(
+            description="Hole close k",
+            value=3,
+            min=1,
+            max=31,
+            step=2,
+        )
         self.outline_thickness_slider = widgets.IntSlider(description="Outline px", value=1, min=1, max=10, step=1)
         self.persist_debug_checkbox = widgets.Checkbox(value=False, description="Persist debug outputs")
         self.amalgamate_debug_checkbox = widgets.Checkbox(
@@ -656,6 +782,8 @@ class ThresholdStagePanelV3:
                     self.threshold_high_slider,
                     self.invert_selection_checkbox,
                     self.min_component_area_input,
+                    self.fill_internal_holes_checkbox,
+                    self.hole_close_kernel_slider,
                     self.outline_thickness_slider,
                     self.persist_debug_checkbox,
                     self.amalgamate_debug_checkbox,
@@ -744,6 +872,14 @@ class ThresholdStagePanelV3:
                 gimp_binary,
                 min_component_area_px=max(1, int(self.min_component_area_input.value)),
             )
+            kernel_size = max(1, int(self.hole_close_kernel_slider.value))
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+            selected_mask = _postprocess_selected_mask(
+                selected_mask,
+                fill_internal_holes=bool(self.fill_internal_holes_checkbox.value),
+                hole_close_kernel_size=kernel_size,
+            )
             if not np.any(selected_mask > 0):
                 _draw_three_panel_preview(
                     source_gray,
@@ -787,6 +923,8 @@ class ThresholdStagePanelV3:
             threshold_high_value=self.threshold_high_slider.value,
             invert_selection=self.invert_selection_checkbox.value,
             min_component_area_px=self.min_component_area_input.value,
+            fill_internal_holes=self.fill_internal_holes_checkbox.value,
+            hole_close_kernel_size=self.hole_close_kernel_slider.value,
             outline_thickness=self.outline_thickness_slider.value,
             persist_debug=self.persist_debug_checkbox.value,
             keep_individual_debug_outputs=self.keep_individual_debug_checkbox.value,
@@ -915,8 +1053,8 @@ class NpyPackPanelV3:
             overwrite=self.overwrite_checkbox.value,
             dry_run=self.dry_run_checkbox.value,
             continue_on_error=self.continue_on_error_checkbox.value,
-            normalize=True,
-            invert=True,
+            normalize=False,
+            invert=False,
             npy_output_dtype=self.npy_dtype_dropdown.value,
             pack_output_dtype=self.pack_dtype_dropdown.value,
             compress=self.pack_compress_checkbox.value,

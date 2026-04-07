@@ -52,6 +52,7 @@ def run_threshold_stage_v3(
     mode = config.normalized_representation_mode()
     low_value, high_value = config.normalized_threshold_bounds()
     min_component_area_px = config.normalized_min_component_area_px()
+    hole_close_kernel_size = config.normalized_hole_close_kernel_size()
     outline_thickness = config.normalized_outline_thickness()
     persist_debug = bool(config.persist_debug)
     keep_individual_debug = bool(config.keep_individual_debug_outputs)
@@ -103,6 +104,9 @@ def run_threshold_stage_v3(
             "InvertSelection": bool(config.invert_selection),
             "MinComponentAreaPx": int(config.min_component_area_px),
             "MinComponentAreaPxUsed": int(min_component_area_px),
+            "FillInternalHoles": bool(config.fill_internal_holes),
+            "HoleCloseKernelSize": int(config.hole_close_kernel_size),
+            "HoleCloseKernelSizeUsed": int(hole_close_kernel_size),
             "OutlineThicknessPx": int(config.outline_thickness),
             "OutlineThicknessPxUsed": int(outline_thickness),
             "PersistDebug": persist_debug,
@@ -116,7 +120,7 @@ def run_threshold_stage_v3(
             "RepresentationMode": mode,
             "StorageFormat": "png",
             "ColorSpace": "grayscale",
-            "ForegroundEncoding": "black_on_white",
+            "ForegroundEncoding": "white_on_black",
             "ThresholdSemantics": "gimp_inclusive_range",
             "Geometry": f"full_frame_threshold_{mode}",
         },
@@ -139,6 +143,8 @@ def run_threshold_stage_v3(
             "threshold_low_value_used": low_value,
             "threshold_high_value_used": high_value,
             "min_component_area_px_used": min_component_area_px,
+            "fill_internal_holes_used": bool(config.fill_internal_holes),
+            "hole_close_kernel_size_used": hole_close_kernel_size,
             "outline_thickness_used": outline_thickness,
         }
     )
@@ -221,6 +227,11 @@ def run_threshold_stage_v3(
                 invert_selection=bool(config.invert_selection),
             )
             selected_mask = _filter_components(gimp_binary, min_component_area_px=min_component_area_px)
+            selected_mask = _postprocess_selected_mask(
+                selected_mask,
+                fill_internal_holes=bool(config.fill_internal_holes),
+                hole_close_kernel_size=hole_close_kernel_size,
+            )
 
             num_components_total, num_components_after_filter = _component_counts(
                 gimp_binary,
@@ -376,6 +387,36 @@ def _component_counts(gimp_binary: np.ndarray, *, min_component_area_px: int) ->
     return total, passing
 
 
+def _postprocess_selected_mask(
+    selected_mask: np.ndarray,
+    *,
+    fill_internal_holes: bool,
+    hole_close_kernel_size: int,
+) -> np.ndarray:
+    processed = selected_mask.copy()
+
+    kernel_size = max(1, int(hole_close_kernel_size))
+    if kernel_size > 1:
+        kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+        processed = cv2.morphologyEx(processed, cv2.MORPH_CLOSE, kernel)
+
+    if fill_internal_holes:
+        processed = _fill_internal_holes(processed)
+
+    return processed
+
+
+def _fill_internal_holes(mask: np.ndarray) -> np.ndarray:
+    if mask.ndim != 2:
+        raise ValueError("mask must be 2D")
+
+    flood = mask.copy()
+    h, w = flood.shape
+    floodfill_mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
+    cv2.floodFill(flood, floodfill_mask, seedPoint=(0, 0), newVal=255)
+    holes = cv2.bitwise_not(flood)
+    return cv2.bitwise_or(mask, holes)
+
 
 def _render_threshold_artifact(
     selected_mask: np.ndarray,
@@ -383,10 +424,10 @@ def _render_threshold_artifact(
     representation_mode: str,
     outline_thickness: int,
 ) -> np.ndarray:
-    canvas = np.full(selected_mask.shape, 255, dtype=np.uint8)
+    canvas = np.zeros(selected_mask.shape, dtype=np.uint8)
 
     if representation_mode == "filled":
-        canvas[selected_mask > 0] = 0
+        canvas[selected_mask > 0] = 255
         return canvas
 
     contours, _ = cv2.findContours(selected_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -397,7 +438,7 @@ def _render_threshold_artifact(
         canvas,
         contours,
         contourIdx=-1,
-        color=0,
+        color=255,
         thickness=max(1, int(outline_thickness)),
         lineType=cv2.LINE_AA,
     )
@@ -420,7 +461,7 @@ def _mask_geometry(mask: np.ndarray) -> tuple[int, tuple[int, int, int, int]]:
 
 
 def _assemble_debug_overlay(*, gimp_binary: np.ndarray, selected_mask: np.ndarray) -> np.ndarray:
-    overlay = np.full(gimp_binary.shape, 255, dtype=np.uint8)
-    overlay[gimp_binary > 0] = 0
-    overlay[selected_mask > 0] = 0
+    overlay = np.zeros(gimp_binary.shape, dtype=np.uint8)
+    overlay[gimp_binary > 0] = 127
+    overlay[selected_mask > 0] = 255
     return overlay
