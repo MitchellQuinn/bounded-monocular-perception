@@ -23,7 +23,15 @@ REQUIRED_SAMPLES_COLUMNS = {
     "npz_row_index",
 }
 
-REQUIRED_NPZ_KEYS = {"X", "y", "sample_id", "npz_row_index", "image_filename"}
+REQUIRED_NPZ_KEYS = {"sample_id", "npz_row_index", "image_filename"}
+LEGACY_IMAGE_ARRAY_KEY = "X"
+LEGACY_TARGET_ARRAY_KEY = "y"
+DUAL_STREAM_IMAGE_ARRAY_KEY = "silhouette_crop"
+DUAL_STREAM_TARGET_ARRAY_KEY = "y_distance_m"
+SUPPORTED_NPZ_LAYOUTS: tuple[tuple[str, str], ...] = (
+    (LEGACY_IMAGE_ARRAY_KEY, LEGACY_TARGET_ARRAY_KEY),
+    (DUAL_STREAM_IMAGE_ARRAY_KEY, DUAL_STREAM_TARGET_ARRAY_KEY),
+)
 
 ALLOWED_PADDING_MODES = {"disabled", "pad_to_max_bottom_right"}
 ALLOWED_TRAIN_SHUFFLE_MODES = {"sequential", "shard", "active_shard_reservoir"}
@@ -97,6 +105,26 @@ def discover_corpus_infos(data_root: Path, source_root: str) -> list[CorpusInfo]
     return infos
 
 
+def _resolve_npz_layout(key_set: set[str]) -> tuple[str, str]:
+    for image_key, target_key in SUPPORTED_NPZ_LAYOUTS:
+        if image_key in key_set and target_key in key_set:
+            return image_key, target_key
+    layout_text = ", ".join(f"({image_key}, {target_key})" for image_key, target_key in SUPPORTED_NPZ_LAYOUTS)
+    raise ValueError(
+        "NPZ shard is missing a supported input/target layout. "
+        f"Expected one of [{layout_text}], found keys={sorted(key_set)}."
+    )
+
+
+def _list_npz_keys(npz_path: Path) -> tuple[list[str], set[str]]:
+    with zipfile.ZipFile(npz_path) as archive:
+        member_names = [
+            member.filename for member in archive.infolist() if member.filename.endswith(".npy")
+        ]
+    keys = sorted(Path(name).stem for name in member_names)
+    return keys, set(keys)
+
+
 def load_root_metadata(
     data_root: Path,
     source_root: str,
@@ -107,7 +135,7 @@ def load_root_metadata(
     frames: list[pd.DataFrame] = []
 
     for info in infos:
-        df = pd.read_csv(info.samples_csv_path)
+        df = pd.read_csv(info.samples_csv_path, low_memory=False)
         if df.empty:
             raise ValueError(f"Samples manifest is empty: {info.samples_csv_path}")
         missing_cols = sorted(REQUIRED_SAMPLES_COLUMNS - set(df.columns))
@@ -125,15 +153,59 @@ def load_root_metadata(
             )
         df["distance_m"] = distance_numeric.astype(np.float32)
 
-        npz_row_numeric = pd.to_numeric(df["npz_row_index"], errors="coerce")
-        if npz_row_numeric.isna().any():
-            bad = int(npz_row_numeric.isna().sum())
+        npz_filename_text = (
+            df["npz_filename"].astype("string").fillna("").str.strip()
+        )
+        npz_row_text = (
+            df["npz_row_index"].astype("string").fillna("").str.strip()
+        )
+        npz_row_numeric = pd.to_numeric(npz_row_text, errors="coerce")
+
+        invalid_npz_row_mask = npz_row_text.ne("") & npz_row_numeric.isna()
+        if invalid_npz_row_mask.any():
+            bad = int(invalid_npz_row_mask.sum())
             raise ValueError(
                 f"npz_row_index must be numeric in {info.samples_csv_path}; "
                 f"found {bad} invalid rows."
             )
-        df["npz_row_index"] = npz_row_numeric.astype(np.int64)
-        df["npz_filename"] = df["npz_filename"].astype(str)
+
+        has_npz_filename = npz_filename_text.ne("")
+        has_npz_row = npz_row_numeric.notna()
+        partially_populated_npz_ref = has_npz_filename ^ has_npz_row
+        if partially_populated_npz_ref.any():
+            bad = int(partially_populated_npz_ref.sum())
+            raise ValueError(
+                "Manifest rows must either provide both npz_filename and npz_row_index or "
+                "leave both empty. "
+                f"Found {bad} inconsistent rows in {info.samples_csv_path}."
+            )
+
+        include_mask = has_npz_filename & has_npz_row
+        if "pack_dual_stream_stage_status" in df.columns:
+            status = (
+                df["pack_dual_stream_stage_status"]
+                .astype("string")
+                .fillna("")
+                .str.strip()
+                .str.lower()
+            )
+            success_without_npz = status.eq("success") & ~include_mask
+            if success_without_npz.any():
+                bad = int(success_without_npz.sum())
+                raise ValueError(
+                    "pack_dual_stream_stage_status is 'success' but npz references are missing "
+                    f"in {bad} rows of {info.samples_csv_path}."
+                )
+
+        if not include_mask.any():
+            raise ValueError(
+                "No rows with populated npz_filename/npz_row_index were found in "
+                f"{info.samples_csv_path}."
+            )
+
+        df = df.loc[include_mask].copy()
+        df["npz_filename"] = npz_filename_text.loc[include_mask].astype(str)
+        df["npz_row_index"] = npz_row_numeric.loc[include_mask].astype(np.int64)
 
         df["source_root"] = info.source_root
         df["source_root_path"] = str(info.source_root_path)
@@ -243,12 +315,10 @@ def inspect_shard_schema(metadata_df: pd.DataFrame) -> pd.DataFrame:
         path = Path(npz_path)
         if not path.exists():
             raise FileNotFoundError(f"Shard not found during inspection: {path}")
-        with zipfile.ZipFile(path) as archive:
-            member_names = [member.filename for member in archive.infolist() if member.filename.endswith(".npy")]
-        keys = sorted(Path(name).stem for name in member_names)
-        key_set = set(keys)
-        x_dtype, x_shape, _ = _read_npy_header_from_npz_member(path, "X.npy")
-        y_dtype, y_shape, _ = _read_npy_header_from_npz_member(path, "y.npy")
+        keys, key_set = _list_npz_keys(path)
+        image_key, target_key = _resolve_npz_layout(key_set)
+        x_dtype, x_shape, _ = _read_npy_header_from_npz_member(path, f"{image_key}.npy")
+        y_dtype, y_shape, _ = _read_npy_header_from_npz_member(path, f"{target_key}.npy")
         sid_dtype, sid_shape, _ = _read_npy_header_from_npz_member(path, "sample_id.npy")
         ridx_dtype, ridx_shape, _ = _read_npy_header_from_npz_member(path, "npz_row_index.npy")
         height, width, channels = _infer_frame_geometry(tuple(int(v) for v in x_shape))
@@ -258,6 +328,8 @@ def inspect_shard_schema(metadata_df: pd.DataFrame) -> pd.DataFrame:
                 "dataset_id": str(group["dataset_id"].iloc[0]),
                 "npz_path": str(path.resolve()),
                 "npz_filename": path.name,
+                "image_array_key": image_key,
+                "target_array_key": target_key,
                 "keys": keys,
                 "key_count": len(keys),
                 "missing_required_keys": sorted(REQUIRED_NPZ_KEYS - key_set),
@@ -300,6 +372,8 @@ def validate_root_schema(metadata_df: pd.DataFrame, root_name: str) -> pd.DataFr
 
     for record in schema_df.to_dict(orient="records"):
         npz_path = Path(record["npz_path"])
+        image_array_key = str(record.get("image_array_key", LEGACY_IMAGE_ARRAY_KEY))
+        target_array_key = str(record.get("target_array_key", LEGACY_TARGET_ARRAY_KEY))
         n_x = int(record["n_rows_from_x"])
         n_manifest = int(record["n_rows_manifest"])
         y_shape = tuple(record["y_shape"])
@@ -309,11 +383,12 @@ def validate_root_schema(metadata_df: pd.DataFrame, root_name: str) -> pd.DataFr
         if n_x != n_manifest:
             raise ValueError(
                 f"{root_name}: shard row mismatch for {npz_path.name}; "
-                f"X has {n_x}, manifest rows {n_manifest}."
+                f"{image_array_key} has {n_x}, manifest rows {n_manifest}."
             )
         if y_shape != (n_x,):
             raise ValueError(
-                f"{root_name}: y shape mismatch in {npz_path.name}; expected {(n_x,)}, got {y_shape}."
+                f"{root_name}: {target_array_key} shape mismatch in {npz_path.name}; "
+                f"expected {(n_x,)}, got {y_shape}."
             )
         if sid_shape != (n_x,):
             raise ValueError(
@@ -337,7 +412,7 @@ def validate_root_schema(metadata_df: pd.DataFrame, root_name: str) -> pd.DataFr
         with np.load(npz_path, allow_pickle=False) as payload:
             shard_index = payload["npz_row_index"].astype(np.int64)
             shard_sample_id = payload["sample_id"].astype(str)
-            shard_y = payload["y"].astype(np.float32)
+            shard_y = payload[target_array_key].astype(np.float32)
             shard_img = payload["image_filename"].astype(str)
 
         expected_index = np.arange(n_x, dtype=np.int64)
@@ -365,7 +440,7 @@ def validate_root_schema(metadata_df: pd.DataFrame, root_name: str) -> pd.DataFr
         diff = float(np.max(np.abs(csv_distance - shard_y))) if n_x else 0.0
         if diff > 1e-5:
             raise ValueError(
-                f"{root_name}: distance_m does not match shard y in {npz_path.name}; "
+                f"{root_name}: distance_m does not match shard {target_array_key} in {npz_path.name}; "
                 f"max abs diff={diff}."
             )
 
@@ -518,7 +593,7 @@ class NpyRowStream:
 
 
 class ShardArrayCache:
-    """Memory-budgeted LRU cache for decoded shard `X` arrays."""
+    """Memory-budgeted LRU cache for decoded shard image arrays."""
 
     def __init__(self, max_bytes: int, name: str) -> None:
         self.max_bytes = int(max(0, max_bytes))
@@ -529,6 +604,7 @@ class ShardArrayCache:
         self.misses = 0
         self.evictions = 0
         self.skipped_too_large = 0
+        self._array_key_cache: dict[str, str] = {}
 
     @property
     def bytes_used(self) -> int:
@@ -537,13 +613,25 @@ class ShardArrayCache:
     def _key(self, npz_path: Path) -> str:
         return str(npz_path.resolve())
 
+    def _resolve_image_array_key(self, npz_path: Path) -> str:
+        key = self._key(npz_path)
+        cached = self._array_key_cache.get(key)
+        if cached is not None:
+            return cached
+        _, key_set = _list_npz_keys(npz_path)
+        image_array_key, _ = _resolve_npz_layout(key_set)
+        self._array_key_cache[key] = image_array_key
+        return image_array_key
+
     def _required_x_bytes(self, npz_path: Path) -> int:
-        dtype, shape, _ = _read_npy_header_from_npz_member(npz_path, "X.npy")
+        image_array_key = self._resolve_image_array_key(npz_path)
+        dtype, shape, _ = _read_npy_header_from_npz_member(npz_path, f"{image_array_key}.npy")
         return int(np.prod(shape)) * int(dtype.itemsize)
 
     def _load_x_array(self, npz_path: Path) -> np.ndarray:
+        image_array_key = self._resolve_image_array_key(npz_path)
         with np.load(npz_path, allow_pickle=False) as payload:
-            return np.asarray(payload["X"])
+            return np.asarray(payload[image_array_key])
 
     def _evict_until_fits(self, required_bytes: int) -> None:
         while self._entries and (self._bytes_used + required_bytes) > self.max_bytes:
@@ -718,6 +806,16 @@ def iter_batches(
     image_buffer: list[np.ndarray] = []
     target_buffer: list[float] = []
     row_buffer: list[dict[str, Any]] = []
+    image_array_key_by_shard: dict[str, str] = {}
+
+    def _resolve_image_array_key_for_shard(shard_path: str) -> str:
+        cached = image_array_key_by_shard.get(shard_path)
+        if cached is not None:
+            return cached
+        _, key_set = _list_npz_keys(Path(shard_path))
+        image_array_key, _ = _resolve_npz_layout(key_set)
+        image_array_key_by_shard[shard_path] = image_array_key
+        return image_array_key
 
     def _emit_if_ready() -> Iterator[Batch]:
         if len(image_buffer) >= batch_size:
@@ -839,7 +937,8 @@ def iter_batches(
                 yield from _append_sample(image=image, row_record=row_record)
                 request_pointer += 1
         else:
-            with NpyRowStream(Path(shard_path), array_key="X") as stream:
+            image_array_key = _resolve_image_array_key_for_shard(shard_path)
+            with NpyRowStream(Path(shard_path), array_key=image_array_key) as stream:
                 for row_index, image in stream.iter_rows():
                     if row_index > last_required_index:
                         break
@@ -869,12 +968,20 @@ def iter_batches(
         )
 
 
-def read_image_preview(npz_path: Path, npz_row_index: int) -> np.ndarray:
+def read_image_preview(
+    npz_path: Path,
+    npz_row_index: int,
+    array_key: str | None = None,
+) -> np.ndarray:
     """Read one raw image sample for notebook inspection."""
     target_index = int(npz_row_index)
     if target_index < 0:
         raise ValueError(f"npz_row_index must be non-negative; got {target_index}")
-    with NpyRowStream(npz_path, array_key="X") as stream:
+    resolved_array_key = array_key
+    if resolved_array_key is None:
+        _, key_set = _list_npz_keys(npz_path)
+        resolved_array_key, _ = _resolve_npz_layout(key_set)
+    with NpyRowStream(npz_path, array_key=str(resolved_array_key)) as stream:
         for idx, image in stream.iter_rows():
             if idx == target_index:
                 return np.array(image)

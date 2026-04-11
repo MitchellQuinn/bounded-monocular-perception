@@ -369,10 +369,33 @@ def _resolve_preprocessing_contract(
             "saved model artifacts cannot fully reconstruct preprocessing for inference."
         ]
 
+    def _canonicalize_contract_for_compatibility(contract: dict[str, Any]) -> dict[str, Any]:
+        canonical = json.loads(json.dumps(contract))
+        stages = canonical.get("Stages")
+        if isinstance(stages, dict):
+            for stage_payload in stages.values():
+                if isinstance(stage_payload, dict):
+                    # These fields only control subset selection during preprocessing runs.
+                    stage_payload.pop("SampleOffset", None)
+                    stage_payload.pop("SampleLimit", None)
+        return canonical
+
+    warnings: list[str] = []
+    raw_signatures: set[str] = set()
     grouped: dict[str, list[dict[str, Any]]] = {}
     for record in present:
+        raw_signatures.add(
+            json.dumps(
+                record["preprocessing_contract"],
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        canonical_contract = _canonicalize_contract_for_compatibility(
+            dict(record["preprocessing_contract"])
+        )
         signature = json.dumps(
-            record["preprocessing_contract"],
+            canonical_contract,
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -389,8 +412,16 @@ def _resolve_preprocessing_contract(
             f"Conflicting run.json files: {mismatched_paths}"
         )
 
-    resolved_contract = present[0]["preprocessing_contract"]
-    return dict(resolved_contract), []
+    if len(raw_signatures) > 1:
+        warnings.append(
+            "PreprocessingContract values differ only by sample-selection fields "
+            "(SampleOffset/SampleLimit); treating them as compatible."
+        )
+
+    resolved_contract = _canonicalize_contract_for_compatibility(
+        dict(present[0]["preprocessing_contract"])
+    )
+    return dict(resolved_contract), warnings
 
 
 def _describe_input_representation(preprocessing_contract: dict[str, Any] | None) -> str:
