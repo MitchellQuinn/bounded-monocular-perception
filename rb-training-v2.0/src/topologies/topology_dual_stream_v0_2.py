@@ -1,26 +1,9 @@
-"""Dual-stream monocular distance regressor topology.
+"""Dual-stream monocular distance regressor topology, v0.2.
 
-Dual-stream model for a known vehicle instance observed by a fixed, calibrated
-camera. The model estimates 3D position (or scalar distance) from two
-complementary views of a single frame:
-
-- Geometric stream: a small MLP over YOLO-derived bounding-box features,
-  carrying the projective-geometry signal (image-plane location + apparent
-  size -> direction + coarse depth).
-- Shape stream: a compact 2D CNN over a fixed-size silhouette crop in which
-  the vehicle is NOT rescaled -- it sits at its native pixel size, padded
-  with background to fill the canvas. This preserves apparent-size as a
-  depth cue and lets the CNN learn a pose-dependent refinement.
-
-The two streams are fused in a small head that produces the final prediction.
-
-Required exports for registry integration:
-- TOPOLOGY_ID
-- MODEL_CLASS_NAME
-- DEFAULT_VARIANT
-- supported_variants()
-- build_model(topology_variant, topology_params)
-- architecture_text(model)
+This is a conservative reset of the v0.1 dual-stream experiment after that
+variant showed unstable validation behavior. The tensor contract stays the
+same, but the shape stream removes batch-dependent normalization and disables
+dropout by default so the architecture is easier to reason about.
 """
 
 from __future__ import annotations
@@ -32,8 +15,8 @@ from torch import nn
 
 TOPOLOGY_ID = "distance_regressor_dual_stream"
 MODEL_CLASS_NAME = "DistanceRegressorDualStream"
-DEFAULT_VARIANT = "dual_stream_v0_1"
-_SUPPORTED_VARIANTS = {"dual_stream_v0_1"}
+DEFAULT_VARIANT = "dual_stream_v0_2"
+_SUPPORTED_VARIANTS = {"dual_stream_v0_2"}
 
 _SUPPORTED_OUTPUT_MODES = {"position_3d", "scalar_distance"}
 
@@ -49,6 +32,25 @@ _SUPPORTED_PARAM_KEYS = (
     "shape_feature_dim",
     "fusion_hidden",
 )
+
+
+def _make_group_norm(num_channels: int, max_groups: int = 8) -> nn.GroupNorm:
+    channel_count = int(num_channels)
+    if channel_count <= 0:
+        raise ValueError(f"num_channels must be positive; got {channel_count}")
+    for group_count in range(min(int(max_groups), channel_count), 0, -1):
+        if channel_count % group_count == 0:
+            return nn.GroupNorm(group_count, channel_count)
+    raise ValueError(
+        f"Could not derive a valid GroupNorm group count for num_channels={channel_count}"
+    )
+
+
+def _make_dropout(dropout_p: float) -> nn.Module:
+    rate = float(dropout_p)
+    if rate <= 0.0:
+        return nn.Identity()
+    return nn.Dropout(p=rate)
 
 
 class DistanceRegressorDualStream(nn.Module):
@@ -73,7 +75,7 @@ class DistanceRegressorDualStream(nn.Module):
         canvas_size: int = 224,
         output_dim: int = 1,
         output_mode: str = "scalar_distance",
-        dropout_p: float = 0.1,
+        dropout_p: float = 0.0,
         geom_hidden: int = 64,
         geom_feature_dim: int = 32,
         shape_feature_dim: int = 128,
@@ -108,6 +110,8 @@ class DistanceRegressorDualStream(nn.Module):
             raise ValueError(f"bbox_feature_dim must be >= 1, got {bbox_feature_dim}")
         if canvas_size < 32:
             raise ValueError(f"canvas_size must be >= 32, got {canvas_size}")
+        if not (0.0 <= float(dropout_p) < 1.0):
+            raise ValueError(f"dropout_p must be in [0, 1); got {dropout_p}")
 
         self.architecture_variant = architecture_variant
         self.input_channels = int(input_channels)
@@ -121,7 +125,6 @@ class DistanceRegressorDualStream(nn.Module):
         self.shape_feature_dim = int(shape_feature_dim)
         self.fusion_hidden = int(fusion_hidden)
 
-        # Geometric stream: small MLP over bbox features.
         self.geom_mlp = nn.Sequential(
             nn.Linear(self.bbox_feature_dim, self.geom_hidden),
             nn.ReLU(inplace=True),
@@ -131,43 +134,34 @@ class DistanceRegressorDualStream(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # Shape stream: compact 2D CNN over the fixed-canvas silhouette crop.
-        # Five stride-2 conv stages -> global average pool.
-        # At canvas_size=224 the spatial flow is 224 -> 112 -> 56 -> 28 -> 14 -> 7 -> 1.
         self.shape_cnn = nn.Sequential(
             nn.Conv2d(self.input_channels, 16, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
+            _make_group_norm(16),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
+            _make_group_norm(32),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
+            _make_group_norm(64),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
+            _make_group_norm(128),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(128, self.shape_feature_dim, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(self.shape_feature_dim),
+            _make_group_norm(self.shape_feature_dim),
             nn.ReLU(inplace=True),
-
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
         )
 
-        # Fusion head.
         fused_dim = self.geom_feature_dim + self.shape_feature_dim
         self.fusion_head = nn.Sequential(
             nn.Linear(fused_dim, self.fusion_hidden),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=self.dropout_p),
+            _make_dropout(self.dropout_p),
             nn.Linear(self.fusion_hidden, self.fusion_hidden // 2),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=self.dropout_p),
+            _make_dropout(self.dropout_p),
             nn.Linear(self.fusion_hidden // 2, self.output_dim),
         )
 
@@ -175,11 +169,6 @@ class DistanceRegressorDualStream(nn.Module):
         self,
         silhouette_crop: torch.Tensor,
     ) -> torch.Tensor:
-        """Derive normalized bbox-style features from silhouette pixels.
-
-        This keeps the dual-stream topology compatible with existing scalar
-        training/evaluation loops that currently pass only an image tensor.
-        """
         if silhouette_crop.ndim != 4:
             raise ValueError(
                 "silhouette_crop must have shape (B, C, H, W); "
@@ -189,11 +178,10 @@ class DistanceRegressorDualStream(nn.Module):
         device = silhouette_crop.device
         dtype = silhouette_crop.dtype
 
-        # Treat non-zero pixels as foreground.
-        mask = silhouette_crop.amax(dim=1) > 0  # (B, H, W)
-        row_any = mask.any(dim=2)               # (B, H)
-        col_any = mask.any(dim=1)               # (B, W)
-        valid = row_any.any(dim=1) & col_any.any(dim=1)  # (B,)
+        mask = silhouette_crop.amax(dim=1) > 0
+        row_any = mask.any(dim=2)
+        col_any = mask.any(dim=1)
+        valid = row_any.any(dim=1) & col_any.any(dim=1)
 
         row_idx = torch.arange(height, device=device, dtype=torch.int64).unsqueeze(0)
         col_idx = torch.arange(width, device=device, dtype=torch.int64).unsqueeze(0)
@@ -237,7 +225,7 @@ class DistanceRegressorDualStream(nn.Module):
                 y_max_f / height_denom,
             ],
             dim=1,
-        )  # (B, 10)
+        )
 
         feature_dim = int(self.bbox_feature_dim)
         if base_features.shape[1] == feature_dim:
@@ -306,10 +294,10 @@ class DistanceRegressorDualStream(nn.Module):
                 f"tensor silhouette input; got {type(batch).__name__}"
             )
 
-        geom = self.geom_mlp(bbox_features)          # (B, geom_feature_dim)
-        shape = self.shape_cnn(silhouette_crop)      # (B, shape_feature_dim)
-        fused = torch.cat([geom, shape], dim=1)      # (B, fused_dim)
-        out = self.fusion_head(fused)                # (B, output_dim)
+        geom = self.geom_mlp(bbox_features)
+        shape = self.shape_cnn(silhouette_crop)
+        fused = torch.cat([geom, shape], dim=1)
+        out = self.fusion_head(fused)
 
         if self.output_mode == "scalar_distance":
             out = out.squeeze(-1)
@@ -317,7 +305,7 @@ class DistanceRegressorDualStream(nn.Module):
 
 
 def supported_variants() -> tuple[str, ...]:
-    """Return all allowed topology variants."""
+    """Return all allowed variants."""
     return tuple(sorted(_SUPPORTED_VARIANTS))
 
 
@@ -325,11 +313,7 @@ def build_model(
     topology_variant: str,
     topology_params: Mapping[str, Any] | None = None,
 ) -> nn.Module:
-    """Build one dual-stream model instance from topology variant + params.
-
-    Strict parsing: unknown keys raise ValueError, preventing silent typos in
-    launch JSON.
-    """
+    """Build one dual-stream model instance from topology variant + params."""
     params = dict(topology_params or {})
 
     input_channels = int(params.pop("input_channels", 1))
@@ -337,7 +321,8 @@ def build_model(
     canvas_size = int(params.pop("canvas_size", 224))
     output_dim = int(params.pop("output_dim", 1))
     output_mode = str(params.pop("output_mode", "scalar_distance"))
-    dropout_p = float(params.pop("dropout_p", 0.1))
+    raw_dropout_p = params.pop("dropout_p", None)
+    dropout_p = 0.0 if raw_dropout_p is None else float(raw_dropout_p)
     geom_hidden = int(params.pop("geom_hidden", 64))
     geom_feature_dim = int(params.pop("geom_feature_dim", 32))
     shape_feature_dim = int(params.pop("shape_feature_dim", 128))

@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping
 
 from torch import nn
 
-from . import topology_2d_cnn, topology_dual_stream_v0_1, topology_global_pool_cnn
+from . import topology_2d_cnn, topology_dual_stream_v0_2, topology_global_pool_cnn
 
 
 @dataclass(frozen=True)
@@ -63,13 +63,13 @@ _REGISTRY: dict[str, TopologyDefinition] = {
         build_model_fn=topology_global_pool_cnn.build_model,
         architecture_text_fn=topology_global_pool_cnn.architecture_text,
     ),
-    topology_dual_stream_v0_1.TOPOLOGY_ID: TopologyDefinition(
-        topology_id=topology_dual_stream_v0_1.TOPOLOGY_ID,
-        model_class_name=topology_dual_stream_v0_1.MODEL_CLASS_NAME,
-        default_variant=topology_dual_stream_v0_1.DEFAULT_VARIANT,
-        supported_variants=topology_dual_stream_v0_1.supported_variants(),
-        build_model_fn=topology_dual_stream_v0_1.build_model,
-        architecture_text_fn=topology_dual_stream_v0_1.architecture_text,
+    topology_dual_stream_v0_2.TOPOLOGY_ID: TopologyDefinition(
+        topology_id=topology_dual_stream_v0_2.TOPOLOGY_ID,
+        model_class_name=topology_dual_stream_v0_2.MODEL_CLASS_NAME,
+        default_variant=topology_dual_stream_v0_2.DEFAULT_VARIANT,
+        supported_variants=topology_dual_stream_v0_2.supported_variants(),
+        build_model_fn=topology_dual_stream_v0_2.build_model,
+        architecture_text_fn=topology_dual_stream_v0_2.architecture_text,
     ),
 }
 

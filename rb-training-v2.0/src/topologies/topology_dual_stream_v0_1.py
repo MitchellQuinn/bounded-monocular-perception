@@ -1,4 +1,7 @@
-"""Dual-stream monocular distance regressor topology.
+"""Deprecated dual-stream monocular distance regressor topology.
+
+This module is kept only as an archival reference for the retired v0.1
+experiment. It is no longer registered for new runs.
 
 Dual-stream model for a known vehicle instance observed by a fixed, calibrated
 camera. The model estimates 3D position (or scalar distance) from two
