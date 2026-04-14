@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f2e1a4797908b94ea7a4cfbefeedede, type: 3}
+  m_Name: RunConfigAsset
+  m_EditorClassIdentifier: Assembly-CSharp::RaccoonBall.SyntheticData.Config.RunConfigAsset
+  _config:
+    RunId: 26-04-11_v019-validate
+    DatasetName: def90_synth_v019-validate
+    Output:
+      OutputRoot: SyntheticDataset
+      ImagesFolderName: images
+      ManifestFolderName: manifests
+      ManifestFileName: samples.csv
+      RunMetadataFileName: run.json
+    Capture:
+      ImageWidthPx: 1920
+      ImageHeightPx: 1200
+    Sweep:
+      TotalSamples: 50000
+      MovementPlaneY: 0.5
+      DepthBandCount: 12
+      LateralBinCount: 10
+      UsableDepthMinM: 1
+      UsableDepthMaxM: 6
+      EdgeMarginPx: 12
+      MinProjectedWidthPx: 64
+      MaxProjectedWidthPx: 0
+      MinProjectedHeightPx: 48
+      MaxProjectedHeightPx: 0
+      MinProjectedAreaPx: 4096
+      MaxProjectedAreaPx: 0
+      MaxAttemptsPerSample: 200
+      MaxAttemptsPerCell: 200000
+      FeasibilityProbeAttemptsPerCell: 2000
+      AcceptanceProbeAttemptsPerCell: 2000
+      MinSamplesPerFeasibleCell: 4
+      MinAcceptanceRateForWeight: 0.01
+      AcceptanceWeightExponent: 1
+      LogCellAcceptanceStats: 0
+    CoordinateConvention:
+      CameraPosition: {x: 0, y: 1.65, z: 0}
+      CameraRotationEulerDeg: {x: 30, y: 0, z: 0}
+      VehicleBasePositionAtSweepStart: {x: 0, y: 0.5, z: 1}
+      VehicleBaseRotationEulerDeg: {x: 0, y: 180, z: 0}
+      SweepAxisName: Z
+      WorldUpAxisName: Y
+      MovingObjectName: Vehicle
+      FixedObjectName: Camera
+      DistanceDefinition: Euclidean distance from camera position to vehicle root
+        position
+    JitterPolicy:
+      PosXMinM: -0.2
+      PosXMaxM: 0.2
+      PosZMinM: -0.2
+      PosZMaxM: 0.2
+      RotYMinDeg: -6.25
+      RotYMaxDeg: 6.25
+    RandomSeed: 13
+    Notes: Stratified camera-footprint placement over flat movement plane; yaw jitter
+      only.

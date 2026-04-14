@@ -71,6 +71,16 @@ class ContourSilhouetteGeneratorV2:
         }
 
         if not passing_labels:
+            recovered_output = _build_intensity_recovery_output(
+                processed_gray=processed,
+                edge_binary=post_morph,
+                debug_images=debug_images,
+                diagnostics=diagnostics,
+                min_component_area_px=int(min_component_area_px),
+                fill_holes=bool(fill_holes),
+            )
+            if recovered_output is not None:
+                return recovered_output
             return GeneratorOutput(
                 edge_binary=post_morph,
                 fallback_mask=post_morph,
@@ -93,6 +103,16 @@ class ContourSilhouetteGeneratorV2:
 
         contours, _ = cv2.findContours(selected_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
+            recovered_output = _build_intensity_recovery_output(
+                processed_gray=processed,
+                edge_binary=post_morph,
+                debug_images=debug_images,
+                diagnostics=diagnostics,
+                min_component_area_px=int(min_component_area_px),
+                fill_holes=bool(fill_holes),
+            )
+            if recovered_output is not None:
+                return recovered_output
             return GeneratorOutput(
                 edge_binary=post_morph,
                 fallback_mask=selected_mask,
@@ -130,6 +150,21 @@ class ContourSilhouetteGeneratorV2:
         debug_images["final_filled"] = _black_on_white(final_mask)
 
         if quality_flags:
+            recovered_output = _build_intensity_recovery_output(
+                processed_gray=processed,
+                edge_binary=post_morph,
+                debug_images=debug_images,
+                diagnostics=diagnostics
+                | {
+                    "filled_area": filled_area,
+                    "filled_to_component_ratio": _safe_ratio(filled_area, selected_area),
+                    "initial_quality_flags": tuple(quality_flags),
+                },
+                min_component_area_px=int(min_component_area_px),
+                fill_holes=bool(fill_holes),
+            )
+            if recovered_output is not None:
+                return recovered_output
             return GeneratorOutput(
                 edge_binary=post_morph,
                 fallback_mask=selected_mask,
@@ -313,6 +348,168 @@ class FilledArtifactWriterV1:
 
 
 
+def _build_intensity_recovery_output(
+    *,
+    processed_gray: np.ndarray,
+    edge_binary: np.ndarray,
+    debug_images: dict[str, np.ndarray],
+    diagnostics: dict[str, object],
+    min_component_area_px: int,
+    fill_holes: bool,
+) -> GeneratorOutput | None:
+    recovered = _recover_contour_via_intensity_threshold(
+        processed_gray,
+        min_component_area_px=int(min_component_area_px),
+    )
+    if recovered is None:
+        return None
+
+    contour, selected_mask, recovery_meta = recovered
+    selected_area = int(np.count_nonzero(selected_mask))
+    if selected_area <= 0:
+        return None
+
+    quality_flags, contour_area, contour_bbox, filled_area = _evaluate_contour_quality(
+        contour,
+        image_shape=processed_gray.shape,
+        selected_component_area=selected_area,
+        min_component_area_px=int(min_component_area_px),
+    )
+    if quality_flags:
+        return None
+
+    if fill_holes:
+        final_mask = _filled_mask_from_contour(processed_gray.shape, contour)
+        recontours, _ = cv2.findContours(final_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if recontours:
+            contour = max(recontours, key=lambda value: float(abs(cv2.contourArea(value))))
+            contour_area = int(round(abs(float(cv2.contourArea(contour)))))
+            contour_bbox = _bbox_for_contour(contour)
+    else:
+        final_mask = _filled_mask_from_contour(processed_gray.shape, contour)
+
+    filled_area = int(np.count_nonzero(final_mask))
+    selected_bbox = _bbox_for_mask(selected_mask)
+
+    recovered_debug = dict(debug_images)
+    recovered_debug["selected_component"] = _black_on_white(selected_mask)
+    recovered_debug["external_contour"] = _render_contour_outline(processed_gray.shape, contour)
+    recovered_debug["final_filled"] = _black_on_white(final_mask)
+
+    recovered_diagnostics = dict(diagnostics)
+    recovered_diagnostics.update(
+        {
+            "selected_component_area": selected_area,
+            "selected_component_bbox": selected_bbox,
+            "contour_area": contour_area,
+            "contour_bbox": contour_bbox,
+            "filled_area": filled_area,
+            "filled_to_component_ratio": _safe_ratio(filled_area, selected_area),
+            "recovered_via": "intensity_otsu_v1",
+        }
+    )
+    recovered_diagnostics.update(recovery_meta)
+
+    return GeneratorOutput(
+        edge_binary=edge_binary,
+        fallback_mask=selected_mask,
+        contour=contour,
+        primary_reason="",
+        debug_images=recovered_debug,
+        diagnostics=recovered_diagnostics,
+    )
+
+
+def _recover_contour_via_intensity_threshold(
+    processed_gray: np.ndarray,
+    *,
+    min_component_area_px: int,
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]] | None:
+    if processed_gray.ndim != 2:
+        return None
+
+    height, width = processed_gray.shape
+    total_pixels = max(1, int(height * width))
+    min_area_ratio = min(0.02, max(0.0, (float(max(1, int(min_component_area_px))) / float(total_pixels)) * 2.0))
+
+    best_candidate: tuple[float, np.ndarray, dict[str, object]] | None = None
+    for prefer_non_border in (True, False):
+        local_best: tuple[float, np.ndarray, dict[str, object]] | None = None
+        for threshold_mode, mode_name in (
+            (cv2.THRESH_BINARY, "binary"),
+            (cv2.THRESH_BINARY_INV, "binary_inv"),
+        ):
+            threshold_value, thresholded = cv2.threshold(
+                processed_gray,
+                0,
+                255,
+                int(threshold_mode) | int(cv2.THRESH_OTSU),
+            )
+            component_count, labels, stats = _component_stats(thresholded)
+            for label in range(1, component_count):
+                area = int(stats[label, cv2.CC_STAT_AREA])
+                if area < int(min_component_area_px):
+                    continue
+
+                x = int(stats[label, cv2.CC_STAT_LEFT])
+                y = int(stats[label, cv2.CC_STAT_TOP])
+                w = int(stats[label, cv2.CC_STAT_WIDTH])
+                h = int(stats[label, cv2.CC_STAT_HEIGHT])
+                touches_border = x == 0 or y == 0 or (x + w) >= width or (y + h) >= height
+                if prefer_non_border and touches_border:
+                    continue
+                if (not prefer_non_border) and (not touches_border):
+                    continue
+
+                area_ratio = float(area) / float(total_pixels)
+                if area_ratio < min_area_ratio:
+                    continue
+
+                component_mask = np.zeros_like(thresholded, dtype=np.uint8)
+                component_mask[labels == label] = 255
+                ys, xs = np.where(component_mask > 0)
+                if xs.size == 0:
+                    continue
+
+                bbox_area = int((xs.max() - xs.min() + 1) * (ys.max() - ys.min() + 1))
+                fill_ratio = _safe_ratio(area, bbox_area)
+                border_pixels = int(
+                    np.count_nonzero(
+                        (xs == 0) | (xs == (width - 1)) | (ys == 0) | (ys == (height - 1))
+                    )
+                )
+                border_ratio = _safe_ratio(border_pixels, area)
+                score = (fill_ratio * area_ratio) - (0.15 * border_ratio) - (0.10 if touches_border else 0.0)
+
+                meta = {
+                    "recovery_threshold_mode": mode_name,
+                    "recovery_threshold_value": float(threshold_value),
+                    "recovery_component_area": area,
+                    "recovery_component_area_ratio": area_ratio,
+                    "recovery_component_fill_ratio": fill_ratio,
+                    "recovery_component_border_ratio": border_ratio,
+                    "recovery_component_touches_border": bool(touches_border),
+                }
+                row = (score, component_mask, meta)
+                if local_best is None or score > local_best[0]:
+                    local_best = row
+
+        if local_best is not None:
+            best_candidate = local_best
+            break
+
+    if best_candidate is None:
+        return None
+
+    _score, best_mask, best_meta = best_candidate
+    contours, _ = cv2.findContours(best_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    contour = max(contours, key=lambda value: float(abs(cv2.contourArea(value))))
+    return contour, best_mask, best_meta
+
+
 def _component_stats(binary_mask: np.ndarray) -> tuple[int, np.ndarray, np.ndarray]:
     labels_source = (binary_mask > 0).astype(np.uint8)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(labels_source, connectivity=8)
@@ -348,6 +545,9 @@ def _evaluate_contour_quality(
     filled_area = int(np.count_nonzero(filled_mask))
     if _safe_ratio(filled_area, selected_component_area) < 0.20:
         flags.append("contour_fill_ratio_small")
+    bbox_area = int(max(1, w * h))
+    if _safe_ratio(filled_area, bbox_area) < 0.12:
+        flags.append("contour_bbox_fill_ratio_small")
 
     return flags, contour_area, contour_bbox, filled_area
 
@@ -387,6 +587,13 @@ def _bbox_for_component_stats(stats_row: np.ndarray) -> tuple[int, int, int, int
     h = int(stats_row[cv2.CC_STAT_HEIGHT])
     return (x, y, x + max(0, w - 1), y + max(0, h - 1))
 
+
+
+def _bbox_for_mask(mask: np.ndarray) -> tuple[int, int, int, int]:
+    ys, xs = np.where(mask > 0)
+    if xs.size == 0:
+        return (0, 0, 0, 0)
+    return (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
 
 
 def _safe_ratio(numerator: int, denominator: int) -> float:

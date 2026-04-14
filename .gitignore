@@ -80,6 +80,31 @@ checkpoints/
 *.zip
 
 # ------------------------------
+# Unity project generated and user-specific files
+# ------------------------------
+rb_synthetic-data_3/[Ll]ibrary/
+rb_synthetic-data_3/[Tt]emp/
+rb_synthetic-data_3/[Oo]bj/
+rb_synthetic-data_3/[Ll]ogs/
+rb_synthetic-data_3/[Uu]ser[Ss]ettings/
+rb_synthetic-data_3/[Mm]emoryCaptures/
+rb_synthetic-data_3/[Rr]ecordings/
+rb_synthetic-data_3/[Bb]uild/
+rb_synthetic-data_3/[Bb]uilds/
+rb_synthetic-data_3/SyntheticDataset/
+rb_synthetic-data_3/Assets/_Recovery/
+rb_synthetic-data_3/Assets/_Recovery.meta
+rb_synthetic-data_3/*.csproj
+rb_synthetic-data_3/*.sln
+rb_synthetic-data_3/*.slnx
+rb_synthetic-data_3/.vs/
+rb_synthetic-data_3/.idea/
+rb_synthetic-data_3/.vscode/
+
+# Keep Unity source assets trackable even with broad repo image ignores
+!rb_synthetic-data_3/Assets/**/*.png
+
+# ------------------------------
 # Ambiguous experiment metadata (ignore by default)
 # ------------------------------
 **/manifests/
