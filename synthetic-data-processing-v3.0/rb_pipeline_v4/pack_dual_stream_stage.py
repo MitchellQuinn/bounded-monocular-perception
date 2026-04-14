@@ -1,4 +1,4 @@
-"""Stage 3 (v4): silhouette + bbox metadata -> dual-stream NPZ shards."""
+"""Stage 3 (v4): ROI grayscale + bbox metadata -> dual-stream NPZ shards."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from .config import PackDualStreamStageConfigV4, StageSummaryV4
 from .constants import (
     BBOX_FEATURE_SCHEMA,
     DETECT_STAGE_COLUMNS,
+    ORIENTATION_TARGET_COLUMNS,
     PACK_STAGE_COLUMNS,
     POSITION_TARGET_COLUMNS,
     SILHOUETTE_STAGE_COLUMNS,
@@ -30,6 +31,7 @@ from .manifest import (
 )
 from .paths import (
     ensure_run_dirs,
+    input_run_paths,
     resolve_manifest_path,
     silhouette_run_paths,
     training_run_paths,
@@ -43,6 +45,8 @@ from .validation import (
     validate_run_structure,
 )
 
+_YAW_SOURCE_COLUMNS = ("yaw_deg", "final_rot_y_deg")
+
 
 
 def run_pack_dual_stream_stage_v4(
@@ -54,10 +58,12 @@ def run_pack_dual_stream_stage_v4(
 ) -> StageSummaryV4:
     """Pack dual-stream training inputs into NPZ shards."""
 
+    input_paths = input_run_paths(project_root, run_name)
     source_paths = silhouette_run_paths(project_root, run_name)
     output_paths = training_run_paths(project_root, run_name)
 
     validation_errors = validate_run_structure(source_paths, require_images=True)
+    validation_errors.extend(validate_run_structure(input_paths, require_images=True))
     if validation_errors:
         raise PipelineValidationError("\n".join(validation_errors))
 
@@ -66,11 +72,15 @@ def run_pack_dual_stream_stage_v4(
 
     required_columns = UNITY_REQUIRED_COLUMNS + DETECT_STAGE_COLUMNS + SILHOUETTE_STAGE_COLUMNS + POSITION_TARGET_COLUMNS
     validation_errors.extend(validate_required_columns(samples_df, required_columns))
+    validation_errors.extend(_validate_yaw_source_columns(samples_df))
     if validation_errors:
         raise PipelineValidationError("\n".join(validation_errors))
 
     append_columns(samples_df, PACK_STAGE_COLUMNS)
     for column in PACK_STAGE_COLUMNS:
+        samples_df[column] = samples_df[column].astype("object")
+    append_columns(samples_df, ORIENTATION_TARGET_COLUMNS)
+    for column in ORIENTATION_TARGET_COLUMNS:
         samples_df[column] = samples_df[column].astype("object")
     capture_mask = capture_success_mask(samples_df)
 
@@ -98,6 +108,7 @@ def run_pack_dual_stream_stage_v4(
             "CanvasWidth": int(canvas_w),
             "CanvasHeight": int(canvas_h),
             "ClipPolicy": clip_policy,
+            "ImageRepresentationMode": "roi_grayscale_inverted_vehicle_on_white",
             "IncludeV1CompatArrays": bool(config.include_v1_compat_arrays),
             "IncludeOptionalMetadataArrays": bool(config.include_optional_metadata_arrays),
             "UseIntermediateNpy": bool(config.use_intermediate_npy),
@@ -110,13 +121,23 @@ def run_pack_dual_stream_stage_v4(
         current_representation={
             "Kind": "dual_stream_npz",
             "StorageFormat": "npz",
-            "ArrayKeys": ["silhouette_crop", "bbox_features", "y_position_3d", "y_distance_m"],
-            "TargetModes": ["position_3d", "scalar_distance"],
+            "ArrayKeys": [
+                "silhouette_crop",
+                "bbox_features",
+                "y_position_3d",
+                "y_distance_m",
+                "y_yaw_deg",
+                "y_yaw_sin",
+                "y_yaw_cos",
+            ],
+            "TargetModes": ["position_3d", "scalar_distance", "orientation_yaw_deg_sincos"],
             "SilhouetteCropLayout": "N,C,H,W",
             "BBoxFeatureSchema": list(BBOX_FEATURE_SCHEMA),
             "BBoxFeatureDim": int(len(BBOX_FEATURE_SCHEMA)),
             "CanvasWidth": int(canvas_w),
             "CanvasHeight": int(canvas_h),
+            "ImagePolarity": "dark_vehicle_detail_on_white_background",
+            "ImageContent": "grayscale_vehicle_detail_inside_silhouette",
             "SilhouetteScaling": "disabled",
         },
         dry_run=config.dry_run,
@@ -162,6 +183,9 @@ def run_pack_dual_stream_stage_v4(
     bbox_buffer: list[np.ndarray] = []
     y3_buffer: list[np.ndarray] = []
     y_dist_buffer: list[np.float32] = []
+    y_yaw_deg_buffer: list[np.float32] = []
+    y_yaw_sin_buffer: list[np.float32] = []
+    y_yaw_cos_buffer: list[np.float32] = []
     sample_id_buffer: list[str] = []
     image_filename_buffer: list[str] = []
     detect_bbox_buffer: list[np.ndarray] = []
@@ -208,6 +232,9 @@ def run_pack_dual_stream_stage_v4(
         bbox_buffer.clear()
         y3_buffer.clear()
         y_dist_buffer.clear()
+        y_yaw_deg_buffer.clear()
+        y_yaw_sin_buffer.clear()
+        y_yaw_cos_buffer.clear()
         sample_id_buffer.clear()
         image_filename_buffer.clear()
         detect_bbox_buffer.clear()
@@ -253,6 +280,9 @@ def run_pack_dual_stream_stage_v4(
             bbox_features = np.stack(bbox_buffer, axis=0).astype(np.float32)
             y_position_3d = np.stack(y3_buffer, axis=0).astype(np.float32)
             y_distance_m = np.asarray(y_dist_buffer, dtype=np.float32)
+            y_yaw_deg = np.asarray(y_yaw_deg_buffer, dtype=np.float32)
+            y_yaw_sin = np.asarray(y_yaw_sin_buffer, dtype=np.float32)
+            y_yaw_cos = np.asarray(y_yaw_cos_buffer, dtype=np.float32)
             sample_id = np.asarray(sample_id_buffer, dtype=str)
             image_filename = np.asarray(image_filename_buffer, dtype=str)
             npz_row_index = np.arange(silhouette_crop.shape[0], dtype=np.int64)
@@ -262,6 +292,9 @@ def run_pack_dual_stream_stage_v4(
                 "bbox_features": bbox_features,
                 "y_position_3d": y_position_3d,
                 "y_distance_m": y_distance_m,
+                "y_yaw_deg": y_yaw_deg,
+                "y_yaw_sin": y_yaw_sin,
+                "y_yaw_cos": y_yaw_cos,
                 "sample_id": sample_id,
                 "image_filename": image_filename,
                 "npz_row_index": npz_row_index,
@@ -395,10 +428,32 @@ def run_pack_dual_stream_stage_v4(
 
             roi_path = resolve_manifest_path(source_paths.root, "images", roi_rel)
             roi_gray = read_grayscale_uint8(roi_path)
-            roi_mask = _silhouette_to_foreground_mask(roi_gray)
+            silhouette_background_mask = _silhouette_to_background_mask(roi_gray)
 
-            canvas, clipped = _place_mask_on_canvas(
-                roi_mask,
+            source_image_rel = str(samples_df.at[row_idx, "image_filename"]).strip()
+            source_image_path = resolve_manifest_path(input_paths.root, "images", source_image_rel)
+            source_gray = read_grayscale_uint8(source_image_path)
+
+            roi_request_xyxy, roi_source_xyxy, roi_canvas_insert_xyxy, roi_padding = _roi_geometry_from_row(
+                samples_df.loc[row_idx],
+                canvas_width=canvas_w,
+                canvas_height=canvas_h,
+            )
+
+            roi_source_gray = _reconstruct_roi_canvas_from_source(
+                source_gray,
+                source_xyxy=roi_source_xyxy,
+                canvas_insert_xyxy=roi_canvas_insert_xyxy,
+                canvas_width=canvas_w,
+                canvas_height=canvas_h,
+            )
+            roi_repr = _render_inverted_vehicle_detail_on_white(
+                roi_source_gray,
+                silhouette_background_mask,
+            )
+
+            canvas, clipped = _place_image_on_canvas(
+                roi_repr,
                 canvas_height=canvas_h,
                 canvas_width=canvas_w,
                 clip_policy=clip_policy,
@@ -435,16 +490,15 @@ def run_pack_dual_stream_stage_v4(
                 ],
                 dtype=np.int32,
             )
-            roi_request_xyxy, roi_source_xyxy, roi_canvas_insert_xyxy, roi_padding = _roi_geometry_from_row(
-                samples_df.loc[row_idx],
-                canvas_width=canvas_w,
-                canvas_height=canvas_h,
-            )
+            yaw_deg, yaw_sin, yaw_cos = _yaw_targets_from_row(samples_df.loc[row_idx])
+            samples_df.at[row_idx, "yaw_deg"] = float(yaw_deg)
+            samples_df.at[row_idx, "yaw_sin"] = float(yaw_sin)
+            samples_df.at[row_idx, "yaw_cos"] = float(yaw_cos)
             compat_full_mask: np.ndarray | None = None
             if config.include_v1_compat_arrays:
                 full_path = resolve_manifest_path(source_paths.root, "images", full_rel)
                 full_gray = read_grayscale_uint8(full_path)
-                compat_full_mask = _silhouette_to_foreground_mask(full_gray)
+                compat_full_mask = _silhouette_to_background_mask(full_gray)
 
             if stage_via_intermediate_npy:
                 stage_npy_path = stage_npy_dir / f"row_{int(row_idx):08d}.npy"
@@ -456,6 +510,9 @@ def run_pack_dual_stream_stage_v4(
             bbox_buffer.append(bbox_features)
             y3_buffer.append(y_position_3d)
             y_dist_buffer.append(y_distance)
+            y_yaw_deg_buffer.append(yaw_deg)
+            y_yaw_sin_buffer.append(yaw_sin)
+            y_yaw_cos_buffer.append(yaw_cos)
             sample_id_buffer.append(str(samples_df.at[row_idx, "sample_id"]))
             image_filename_buffer.append(str(samples_df.at[row_idx, "image_filename"]))
             detect_bbox_buffer.append(detect_bbox_xyxy)
@@ -552,7 +609,7 @@ def run_pack_dual_stream_stage_v4(
 
 
 
-def _silhouette_to_foreground_mask(gray_image: np.ndarray) -> np.ndarray:
+def _silhouette_to_background_mask(gray_image: np.ndarray) -> np.ndarray:
     if gray_image.ndim != 2:
         raise ValueError(f"Expected 2D grayscale image, got {gray_image.shape}")
     white_count = int(np.count_nonzero(gray_image > 127))
@@ -566,21 +623,44 @@ def _silhouette_to_foreground_mask(gray_image: np.ndarray) -> np.ndarray:
 
 
 
-def _place_mask_on_canvas(
-    mask: np.ndarray,
+def _render_inverted_vehicle_detail_on_white(
+    roi_source_gray: np.ndarray,
+    background_mask: np.ndarray,
+) -> np.ndarray:
+    if roi_source_gray.ndim != 2:
+        raise ValueError(f"Expected 2D grayscale ROI source image, got {roi_source_gray.shape}")
+    if background_mask.ndim != 2:
+        raise ValueError(f"Expected 2D background mask, got {background_mask.shape}")
+    if roi_source_gray.shape != background_mask.shape:
+        raise ValueError(
+            "ROI source and silhouette mask shape mismatch: "
+            f"source={roi_source_gray.shape}, mask={background_mask.shape}"
+        )
+
+    source_u8 = np.clip(roi_source_gray, 0, 255).astype(np.uint8)
+    inverted = 255 - source_u8
+    out_u8 = np.full(source_u8.shape, 255, dtype=np.uint8)
+    vehicle_mask = background_mask < 0.5
+    out_u8[vehicle_mask] = inverted[vehicle_mask]
+    return out_u8.astype(np.float32) / 255.0
+
+
+
+def _place_image_on_canvas(
+    image: np.ndarray,
     *,
     canvas_height: int,
     canvas_width: int,
     clip_policy: str,
 ) -> tuple[np.ndarray, bool]:
-    if mask.ndim != 2:
-        raise ValueError("mask must be 2D")
+    if image.ndim != 2:
+        raise ValueError("image must be 2D")
 
-    src_h, src_w = int(mask.shape[0]), int(mask.shape[1])
+    src_h, src_w = int(image.shape[0]), int(image.shape[1])
     clipped = src_h > canvas_height or src_w > canvas_width
     if clipped and clip_policy == "fail":
         raise ValueError(
-            f"silhouette ROI {src_h}x{src_w} exceeds canvas {canvas_height}x{canvas_width}"
+            f"ROI image {src_h}x{src_w} exceeds canvas {canvas_height}x{canvas_width}"
         )
 
     src_y0 = max(0, (src_h - canvas_height) // 2)
@@ -588,16 +668,104 @@ def _place_mask_on_canvas(
     src_y1 = min(src_h, src_y0 + canvas_height)
     src_x1 = min(src_w, src_x0 + canvas_width)
 
-    cropped = mask[src_y0:src_y1, src_x0:src_x1]
+    cropped = image[src_y0:src_y1, src_x0:src_x1]
 
-    out = np.zeros((canvas_height, canvas_width), dtype=np.float32)
+    out = np.ones((canvas_height, canvas_width), dtype=np.float32)
     dst_y0 = max(0, (canvas_height - cropped.shape[0]) // 2)
     dst_x0 = max(0, (canvas_width - cropped.shape[1]) // 2)
     dst_y1 = dst_y0 + cropped.shape[0]
     dst_x1 = dst_x0 + cropped.shape[1]
-    out[dst_y0:dst_y1, dst_x0:dst_x1] = cropped
+    out[dst_y0:dst_y1, dst_x0:dst_x1] = np.asarray(cropped, dtype=np.float32)
 
     return out, clipped
+
+
+
+def _reconstruct_roi_canvas_from_source(
+    source_gray: np.ndarray,
+    *,
+    source_xyxy: np.ndarray,
+    canvas_insert_xyxy: np.ndarray,
+    canvas_width: int,
+    canvas_height: int,
+) -> np.ndarray:
+    if source_gray.ndim != 2:
+        raise ValueError(f"Expected 2D source grayscale image, got {source_gray.shape}")
+
+    src_x1, src_y1, src_x2, src_y2 = _xyxy_to_int_bounds(source_xyxy, name="roi_source_xyxy_px")
+    ins_x1, ins_y1, ins_x2, ins_y2 = _xyxy_to_int_bounds(
+        canvas_insert_xyxy,
+        name="roi_canvas_insert_xyxy_px",
+    )
+
+    source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
+    if src_x1 < 0 or src_y1 < 0 or src_x2 > source_w or src_y2 > source_h:
+        raise ValueError(
+            "roi_source_xyxy_px is outside source image bounds: "
+            f"source={source_w}x{source_h}, bounds={[src_x1, src_y1, src_x2, src_y2]}"
+        )
+
+    canvas_w = int(canvas_width)
+    canvas_h = int(canvas_height)
+    if ins_x1 < 0 or ins_y1 < 0 or ins_x2 > canvas_w or ins_y2 > canvas_h:
+        raise ValueError(
+            "roi_canvas_insert_xyxy_px is outside ROI canvas bounds: "
+            f"canvas={canvas_w}x{canvas_h}, bounds={[ins_x1, ins_y1, ins_x2, ins_y2]}"
+        )
+
+    source_patch = np.asarray(source_gray[src_y1:src_y2, src_x1:src_x2], dtype=np.uint8)
+    expected_h = int(ins_y2 - ins_y1)
+    expected_w = int(ins_x2 - ins_x1)
+    if source_patch.shape != (expected_h, expected_w):
+        raise ValueError(
+            "ROI source patch shape does not match canvas insertion geometry: "
+            f"source_patch={source_patch.shape}, expected={(expected_h, expected_w)}"
+        )
+
+    roi_canvas = np.full((canvas_h, canvas_w), 255, dtype=np.uint8)
+    roi_canvas[ins_y1:ins_y2, ins_x1:ins_x2] = source_patch
+    return roi_canvas
+
+
+
+def _xyxy_to_int_bounds(bounds_xyxy: np.ndarray, *, name: str) -> tuple[int, int, int, int]:
+    if bounds_xyxy.shape != (4,):
+        raise ValueError(f"{name} must have shape (4,), got {bounds_xyxy.shape}")
+
+    x1 = int(round(float(bounds_xyxy[0])))
+    y1 = int(round(float(bounds_xyxy[1])))
+    x2 = int(round(float(bounds_xyxy[2])))
+    y2 = int(round(float(bounds_xyxy[3])))
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError(f"{name} is degenerate: {[x1, y1, x2, y2]}")
+    return x1, y1, x2, y2
+
+
+
+def _validate_yaw_source_columns(samples_df: pd.DataFrame) -> list[str]:
+    for column in _YAW_SOURCE_COLUMNS:
+        if column in samples_df.columns:
+            return []
+    return [
+        "Missing yaw source column for orientation targets; expected one of: "
+        + ", ".join(_YAW_SOURCE_COLUMNS)
+    ]
+
+
+
+def _yaw_targets_from_row(row: pd.Series) -> tuple[np.float32, np.float32, np.float32]:
+    yaw_deg = None
+    for column in _YAW_SOURCE_COLUMNS:
+        yaw_deg = _safe_float(row.get(column))
+        if yaw_deg is not None:
+            break
+    if yaw_deg is None:
+        raise ValueError("missing yaw source value in row")
+
+    yaw_rad = np.deg2rad(float(yaw_deg))
+    yaw_sin = float(np.sin(yaw_rad))
+    yaw_cos = float(np.cos(yaw_rad))
+    return np.float32(float(yaw_deg)), np.float32(yaw_sin), np.float32(yaw_cos)
 
 
 

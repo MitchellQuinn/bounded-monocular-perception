@@ -12,7 +12,7 @@ RUN_JSON_FILENAME = "run.json"
 SAMPLES_FILENAME = "samples.csv"
 
 PREPROCESSING_CONTRACT_KEY = "PreprocessingContract"
-PREPROCESSING_CONTRACT_VERSION_V4 = "rb-preprocess-v4-dual-stream"
+PREPROCESSING_CONTRACT_VERSION_V4 = "rb-preprocess-v4-dual-stream-orientation-v1"
 PREPROCESSING_STAGE_ORDER_V4 = ("detect", "silhouette", "pack_dual_stream")
 
 KNOWN_STAGE_SUBDIRS = {"images", "arrays", "manifests"}
@@ -32,6 +32,12 @@ POSITION_TARGET_COLUMNS = [
     "final_pos_x_m",
     "final_pos_y_m",
     "final_pos_z_m",
+]
+
+ORIENTATION_TARGET_COLUMNS = [
+    "yaw_deg",
+    "yaw_sin",
+    "yaw_cos",
 ]
 
 DETECT_STAGE_COLUMNS = [
@@ -109,6 +115,9 @@ REQUIRED_DUAL_STREAM_NPZ_KEYS = {
     "bbox_features",
     "y_position_3d",
     "y_distance_m",
+    "y_yaw_deg",
+    "y_yaw_sin",
+    "y_yaw_cos",
     "sample_id",
     "image_filename",
     "npz_row_index",

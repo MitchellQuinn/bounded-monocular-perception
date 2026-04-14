@@ -113,6 +113,9 @@ def validate_dual_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: b
         bbox_features = data["bbox_features"]
         y_position_3d = data["y_position_3d"]
         y_distance_m = data["y_distance_m"]
+        y_yaw_deg = data["y_yaw_deg"]
+        y_yaw_sin = data["y_yaw_sin"]
+        y_yaw_cos = data["y_yaw_cos"]
         sample_id = data["sample_id"]
         image_filename = data["image_filename"]
         row_index = data["npz_row_index"]
@@ -121,6 +124,9 @@ def validate_dual_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: b
         _assert_numeric("bbox_features", bbox_features)
         _assert_numeric("y_position_3d", y_position_3d)
         _assert_numeric("y_distance_m", y_distance_m)
+        _assert_numeric("y_yaw_deg", y_yaw_deg)
+        _assert_numeric("y_yaw_sin", y_yaw_sin)
+        _assert_numeric("y_yaw_cos", y_yaw_cos)
 
         if silhouette.ndim != 4:
             raise ValueError(f"silhouette_crop must have shape (N, C, H, W), got {silhouette.shape}")
@@ -130,12 +136,21 @@ def validate_dual_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: b
             raise ValueError(f"y_position_3d must have shape (N, 3), got {y_position_3d.shape}")
         if y_distance_m.ndim != 1:
             raise ValueError(f"y_distance_m must have shape (N,), got {y_distance_m.shape}")
+        if y_yaw_deg.ndim != 1:
+            raise ValueError(f"y_yaw_deg must have shape (N,), got {y_yaw_deg.shape}")
+        if y_yaw_sin.ndim != 1:
+            raise ValueError(f"y_yaw_sin must have shape (N,), got {y_yaw_sin.shape}")
+        if y_yaw_cos.ndim != 1:
+            raise ValueError(f"y_yaw_cos must have shape (N,), got {y_yaw_cos.shape}")
 
         n = int(silhouette.shape[0])
         lengths = {
             "bbox_features": int(bbox_features.shape[0]),
             "y_position_3d": int(y_position_3d.shape[0]),
             "y_distance_m": int(y_distance_m.shape[0]),
+            "y_yaw_deg": int(y_yaw_deg.shape[0]),
+            "y_yaw_sin": int(y_yaw_sin.shape[0]),
+            "y_yaw_cos": int(y_yaw_cos.shape[0]),
             "sample_id": int(sample_id.shape[0]),
             "image_filename": int(image_filename.shape[0]),
             "npz_row_index": int(row_index.shape[0]),
@@ -149,6 +164,21 @@ def validate_dual_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: b
 
         if np.isnan(bbox_features).any() or np.isinf(bbox_features).any():
             raise ValueError("bbox_features contains NaN or Inf")
+
+        if np.isnan(y_yaw_deg).any() or np.isinf(y_yaw_deg).any():
+            raise ValueError("y_yaw_deg contains NaN or Inf")
+        if np.isnan(y_yaw_sin).any() or np.isinf(y_yaw_sin).any():
+            raise ValueError("y_yaw_sin contains NaN or Inf")
+        if np.isnan(y_yaw_cos).any() or np.isinf(y_yaw_cos).any():
+            raise ValueError("y_yaw_cos contains NaN or Inf")
+
+        yaw_rad = np.deg2rad(y_yaw_deg.astype(np.float64))
+        expected_sin = np.sin(yaw_rad)
+        expected_cos = np.cos(yaw_rad)
+        if not np.allclose(y_yaw_sin.astype(np.float64), expected_sin, atol=1e-5, rtol=1e-5):
+            raise ValueError("y_yaw_sin is inconsistent with y_yaw_deg")
+        if not np.allclose(y_yaw_cos.astype(np.float64), expected_cos, atol=1e-5, rtol=1e-5):
+            raise ValueError("y_yaw_cos is inconsistent with y_yaw_deg")
 
         if require_v1_compat_arrays:
             if "X" not in data or "y" not in data:

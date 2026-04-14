@@ -12,7 +12,7 @@ from .config import DetectStageConfigV4
 from .paths import find_project_root
 from .widgets import PipelineLauncherV4
 
-WIDGETS_UI_BUILD_V05 = "2026-04-10-edge-only-v05-pack-shard-npycleanup-preview-init-v8"
+WIDGETS_UI_BUILD_V05 = "2026-04-14-edge-only-v05-pack-grayscale-yaw-preview-v9"
 
 
 class PipelineLauncherV5(PipelineLauncherV4):

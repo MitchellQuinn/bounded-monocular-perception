@@ -1,4 +1,4 @@
-# Synthetic Data Processing v2.0
+# Synthetic Data Processing v3.0
 
 Minimal dual-stream preprocessing pipeline for Raccoon Ball.
 
@@ -7,10 +7,13 @@ Minimal dual-stream preprocessing pipeline for Raccoon Ball.
 1. `detect` - YOLO defender detection metadata.
 2. `silhouette` - ROI silhouette generation with full-frame compatibility image.
 3. `pack_dual_stream` - writes NPZ shards with:
-   - `silhouette_crop` `(N, C, H, W)`
+   - `silhouette_crop` `(N, C, H, W)` as inverted ROI grayscale detail (dark vehicle detail on white background, no rescaling)
    - `bbox_features` `(N, 10)`
    - `y_position_3d` `(N, 3)`
    - `y_distance_m` `(N,)`
+   - `y_yaw_deg` `(N,)`
+   - `y_yaw_sin` `(N,)`
+   - `y_yaw_cos` `(N,)`
 
 Optional:
 

@@ -97,6 +97,9 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 samples_csv_path(project_root / "training-data-v4" / run_name / "manifests")
             )
             self.assertIn("bbox_feat_area_norm", output_samples.columns)
+            self.assertIn("yaw_deg", output_samples.columns)
+            self.assertIn("yaw_sin", output_samples.columns)
+            self.assertIn("yaw_cos", output_samples.columns)
             self.assertTrue((output_samples["pack_dual_stream_stage_status"] == "success").all())
 
             npz_paths = sorted((project_root / "training-data-v4" / run_name).glob("*.npz"))
@@ -118,9 +121,22 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             with np.load(npz_paths[0], allow_pickle=False) as payload:
                 self.assertIn("silhouette_crop", payload)
                 self.assertIn("bbox_features", payload)
+                self.assertIn("y_yaw_deg", payload)
+                self.assertIn("y_yaw_sin", payload)
+                self.assertIn("y_yaw_cos", payload)
                 self.assertEqual(payload["silhouette_crop"].shape[1:], (1, 64, 64))
                 self.assertEqual(payload["bbox_features"].shape[1], 10)
                 self.assertEqual(payload["y_position_3d"].shape[1], 3)
+                self.assertEqual(payload["y_yaw_deg"].shape, (1,))
+                self.assertEqual(payload["y_yaw_sin"].shape, (1,))
+                self.assertEqual(payload["y_yaw_cos"].shape, (1,))
+                yaw_deg = float(payload["y_yaw_deg"][0])
+                yaw_sin = float(payload["y_yaw_sin"][0])
+                yaw_cos = float(payload["y_yaw_cos"][0])
+                self.assertAlmostEqual(yaw_sin, float(np.sin(np.deg2rad(yaw_deg))), places=5)
+                self.assertAlmostEqual(yaw_cos, float(np.cos(np.deg2rad(yaw_deg))), places=5)
+                packed_u8 = np.rint(np.clip(payload["silhouette_crop"][0, 0], 0.0, 1.0) * 255.0).astype(np.uint8)
+                self.assertGreater(len(np.unique(packed_u8)), 2)
                 self.assertIn("X", payload)
                 self.assertIn("y", payload)
 
@@ -217,7 +233,9 @@ class V4PipelineIntegrationTests(unittest.TestCase):
         rows: list[dict[str, object]] = []
         for idx in range(2):
             image = np.full((64, 64), 255, dtype=np.uint8)
-            cv2.rectangle(image, (18, 18), (46, 46), color=0, thickness=2)
+            cv2.rectangle(image, (18, 18), (46, 46), color=170, thickness=-1)
+            cv2.circle(image, (32, 32), 9, color=90, thickness=-1)
+            cv2.line(image, (20, 44), (44, 20), color=30, thickness=2)
 
             filename = f"frame_{idx:03d}.png"
             path = images_dir / filename
@@ -238,6 +256,7 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                     "final_pos_x_m": float(idx) * 0.1,
                     "final_pos_y_m": 0.5,
                     "final_pos_z_m": 4.0 + float(idx) * 0.2,
+                    "final_rot_y_deg": 170.0 + float(idx) * 7.5,
                 }
             )
 

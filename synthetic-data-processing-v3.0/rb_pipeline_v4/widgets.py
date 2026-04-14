@@ -31,7 +31,7 @@ from .silhouette_algorithms import (
     OutlineArtifactWriterV1,
 )
 
-WIDGETS_UI_BUILD = "2026-04-10-pack-shard-npycleanup-preview-init-v13"
+WIDGETS_UI_BUILD = "2026-04-14-pack-grayscale-yaw-preview-v14"
 
 
 def _load_samples(manifests_dir: Path) -> pd.DataFrame | None:
@@ -281,36 +281,57 @@ def _render_is_empty(gray_image: np.ndarray) -> bool:
     return gray_image.ndim != 2 or not bool(np.any(gray_image < 255))
 
 
-def _foreground_mask_from_binary_image(gray_image: np.ndarray) -> np.ndarray:
-    """Return foreground mask (1.0=foreground) supporting both polarity conventions."""
+def _background_mask_from_binary_silhouette(gray_image: np.ndarray) -> np.ndarray:
+    """Return white-background mask (1.0=background) supporting both polarity conventions."""
     if gray_image.ndim != 2:
         raise ValueError(f"Expected 2D grayscale image, got {gray_image.shape}")
 
     white_count = int(np.count_nonzero(gray_image > 127))
     black_count = int(gray_image.size - white_count)
 
-    # Foreground is usually minority pixels; infer polarity from that.
     if white_count <= black_count:
-        return (gray_image > 127).astype(np.float32)  # white-on-black
-    return (gray_image < 128).astype(np.float32)      # legacy black-on-white
+        return (gray_image < 128).astype(np.float32)
+    return (gray_image > 127).astype(np.float32)
 
 
-def _place_mask_on_canvas_for_preview(
-    mask: np.ndarray,
+def _render_inverted_vehicle_detail_on_white_for_preview(
+    roi_source_gray: np.ndarray,
+    background_mask: np.ndarray,
+) -> np.ndarray:
+    if roi_source_gray.ndim != 2:
+        raise ValueError(f"Expected 2D grayscale ROI source image, got {roi_source_gray.shape}")
+    if background_mask.ndim != 2:
+        raise ValueError(f"Expected 2D background mask, got {background_mask.shape}")
+    if roi_source_gray.shape != background_mask.shape:
+        raise ValueError(
+            "ROI source and silhouette mask shape mismatch: "
+            f"source={roi_source_gray.shape}, mask={background_mask.shape}"
+        )
+
+    source_u8 = np.clip(roi_source_gray, 0, 255).astype(np.uint8)
+    inverted = 255 - source_u8
+    out_u8 = np.full(source_u8.shape, 255, dtype=np.uint8)
+    vehicle_mask = background_mask < 0.5
+    out_u8[vehicle_mask] = inverted[vehicle_mask]
+    return out_u8.astype(np.float32) / 255.0
+
+
+def _place_image_on_canvas_for_preview(
+    image: np.ndarray,
     *,
     canvas_height: int,
     canvas_width: int,
     clip_policy: str,
 ) -> tuple[np.ndarray, bool]:
     """Mirror pack-stage placement: no scaling, center on canvas, optional clipping."""
-    if mask.ndim != 2:
-        raise ValueError("mask must be 2D")
+    if image.ndim != 2:
+        raise ValueError("image must be 2D")
 
-    src_h, src_w = int(mask.shape[0]), int(mask.shape[1])
+    src_h, src_w = int(image.shape[0]), int(image.shape[1])
     clipped = src_h > canvas_height or src_w > canvas_width
     if clipped and str(clip_policy).strip().lower() == "fail":
         raise ValueError(
-            f"silhouette ROI {src_h}x{src_w} exceeds canvas {canvas_height}x{canvas_width}"
+            f"ROI image {src_h}x{src_w} exceeds canvas {canvas_height}x{canvas_width}"
         )
 
     src_y0 = max(0, (src_h - canvas_height) // 2)
@@ -318,19 +339,19 @@ def _place_mask_on_canvas_for_preview(
     src_y1 = min(src_h, src_y0 + canvas_height)
     src_x1 = min(src_w, src_x0 + canvas_width)
 
-    cropped = mask[src_y0:src_y1, src_x0:src_x1]
+    cropped = image[src_y0:src_y1, src_x0:src_x1]
 
-    out = np.zeros((canvas_height, canvas_width), dtype=np.float32)
+    out = np.ones((canvas_height, canvas_width), dtype=np.float32)
     dst_y0 = max(0, (canvas_height - cropped.shape[0]) // 2)
     dst_x0 = max(0, (canvas_width - cropped.shape[1]) // 2)
     dst_y1 = dst_y0 + cropped.shape[0]
     dst_x1 = dst_x0 + cropped.shape[1]
-    out[dst_y0:dst_y1, dst_x0:dst_x1] = cropped
+    out[dst_y0:dst_y1, dst_x0:dst_x1] = np.asarray(cropped, dtype=np.float32)
     return out, clipped
 
 
-def _mask_to_black_on_white(mask: np.ndarray) -> np.ndarray:
-    return (1.0 - np.clip(mask, 0.0, 1.0).astype(np.float32)) * 255.0
+def _preview_float_image_to_uint8(image: np.ndarray) -> np.ndarray:
+    return np.rint(np.clip(image, 0.0, 1.0) * 255.0).astype(np.uint8)
 
 
 def _ensure_grayscale_uint8(image: np.ndarray) -> np.ndarray:
@@ -868,9 +889,9 @@ class PipelineLauncherV4:
                 self.preview_extracted_roi,
                 widgets.HTML("<b>3) Silhouette Debug Strip (raw edge | post morph | selected component)</b>"),
                 self.preview_silhouette_debug,
-                widgets.HTML("<b>4) Silhouette ROI Output (silhouette_roi_image)</b>"),
+                widgets.HTML("<b>4) ROI Detail Isolated By Silhouette (inverted grayscale, white outside mask)</b>"),
                 self.preview_silhouette_roi,
-                widgets.HTML("<b>5) Packed Canvas (exact npz['silhouette_crop'] geometry)</b>"),
+                widgets.HTML("<b>5) Packed Canvas (exact npz['silhouette_crop'] geometry; dark detail on white)</b>"),
                 self.preview_packed_canvas,
                 widgets.HTML("<b>6) Full-Frame Silhouette (auxiliary view; not used by pack payload)</b>"),
                 self.preview_silhouette_full,
@@ -1457,16 +1478,20 @@ class PipelineLauncherV4:
                     if _render_is_empty(roi_silhouette):
                         raise ValueError("rendered silhouette is empty")
 
-                roi_mask = _foreground_mask_from_binary_image(roi_silhouette)
-                roi_canvas, canvas_clipped = _place_mask_on_canvas_for_preview(
-                    roi_mask,
+                background_mask = _background_mask_from_binary_silhouette(roi_silhouette)
+                roi_repr = _render_inverted_vehicle_detail_on_white_for_preview(
+                    extracted_roi_gray,
+                    background_mask,
+                )
+                roi_canvas, canvas_clipped = _place_image_on_canvas_for_preview(
+                    roi_repr,
                     canvas_height=pack_config.normalized_canvas_height_px(),
                     canvas_width=pack_config.normalized_canvas_width_px(),
                     clip_policy=pack_config.normalized_clip_policy(),
                 )
 
-                self.preview_silhouette_roi.value = _to_png_bytes(_mask_to_black_on_white(roi_mask))
-                self.preview_packed_canvas.value = _to_png_bytes(_mask_to_black_on_white(roi_canvas))
+                self.preview_silhouette_roi.value = _to_png_bytes(_preview_float_image_to_uint8(roi_repr))
+                self.preview_packed_canvas.value = _to_png_bytes(_preview_float_image_to_uint8(roi_canvas))
 
                 if roi_source_bounds is not None and roi_canvas_bounds is not None:
                     src_x1, src_y1, src_x2, src_y2 = roi_source_bounds
@@ -1520,7 +1545,8 @@ class PipelineLauncherV4:
             f"<b>Silhouette:</b> {silhouette_status}" + (f" ({silhouette_error})" if silhouette_error else ""),
             f"<b>ROI Canvas (from Pack):</b> {pack_config.normalized_canvas_width_px()}x{pack_config.normalized_canvas_height_px()}",
             (
-                "<b>Saved Path:</b> fixed ROI canvas -> silhouette_roi_image -> foreground mask -> centered canvas "
+                "<b>Saved Path:</b> fixed ROI canvas -> silhouette mask isolation -> invert grayscale inside mask "
+                "-> white outside mask -> centered canvas "
                 f"({pack_config.normalized_canvas_height_px()}x{pack_config.normalized_canvas_width_px()})"
                 " -> npz['silhouette_crop']"
             ),
