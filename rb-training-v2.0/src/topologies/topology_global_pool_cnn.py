@@ -10,6 +10,12 @@ from torch import nn
 TOPOLOGY_ID = "distance_regressor_global_pool_cnn"
 MODEL_CLASS_NAME = "DistanceRegressorGlobalPoolCNN"
 DEFAULT_VARIANT = "tiny_v0_1"
+TOPOLOGY_METADATA = {
+    "status": "deprecated",
+    "display_name": "Distance Regressor Global Pool CNN",
+    "note": "Compact global-pooling alternative baseline",
+    "replacement": "",
+}
 _SUPPORTED_VARIANTS = {"tiny_v0_1", "wide_v0_1"}
 
 

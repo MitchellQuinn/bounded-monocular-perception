@@ -15,6 +15,12 @@ from ..model_2d_cnn import (
 TOPOLOGY_ID = "distance_regressor_2d_cnn"
 MODEL_CLASS_NAME = "DistanceRegressor2DCNN"
 DEFAULT_VARIANT = "fast_v0_2"
+TOPOLOGY_METADATA = {
+    "status": "deprecated",
+    "display_name": "Distance Regressor 2D CNN",
+    "note": "Legacy full-frame baseline",
+    "replacement": "",
+}
 
 
 

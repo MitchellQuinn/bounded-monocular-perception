@@ -36,6 +36,12 @@ from torch import nn
 TOPOLOGY_ID = "distance_regressor_dual_stream"
 MODEL_CLASS_NAME = "DistanceRegressorDualStream"
 DEFAULT_VARIANT = "dual_stream_v0_1"
+TOPOLOGY_METADATA = {
+    "status": "deprecated",
+    "display_name": "Distance Regressor Dual Stream v0.1",
+    "note": "Archived dual-stream reference variant retained for historical traceability.",
+    "replacement": "distance_regressor_dual_stream",
+}
 _SUPPORTED_VARIANTS = {"dual_stream_v0_1"}
 
 _SUPPORTED_OUTPUT_MODES = {"position_3d", "scalar_distance"}

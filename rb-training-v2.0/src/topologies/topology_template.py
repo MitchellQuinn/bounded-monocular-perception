@@ -21,6 +21,12 @@ from torch import nn
 TOPOLOGY_ID = "distance_regressor_template"
 MODEL_CLASS_NAME = "DistanceRegressorTemplate"
 DEFAULT_VARIANT = "base_v0_1"
+TOPOLOGY_METADATA = {
+    "status": "deprecated",
+    "display_name": "Distance Regressor Template",
+    "note": "Template topology scaffold for new implementations.",
+    "replacement": "",
+}
 _SUPPORTED_VARIANTS = {"base_v0_1"}
 
 
