@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import json
 import math
 from pathlib import Path
@@ -27,6 +27,7 @@ from .data import (
     iter_batches,
     load_root_metadata,
     summarize_metadata,
+    validate_task_contract_schema,
     validate_root_schema,
 )
 from .evaluate import evaluate_split
@@ -40,6 +41,14 @@ from .paths import (
     to_repo_relative,
 )
 from .plots import save_history_plot, save_prediction_scatter, save_residual_plot
+from .task_runtime import (
+    batch_targets_to_tensor,
+    batch_to_model_inputs,
+    compute_task_loss,
+    extract_prediction_heads,
+    extract_target_heads,
+    primary_sample_error,
+)
 from .resume.state import (
     RESUME_STATE_FILENAME,
     build_resume_state_payload,
@@ -51,6 +60,7 @@ from .topologies import (
     architecture_text_from_spec,
     build_model_from_spec,
     resolve_topology_spec,
+    task_contract_signature,
     topology_spec_signature,
 )
 from .utils import (
@@ -72,6 +82,28 @@ def _schema_to_records(schema_df: pd.DataFrame) -> list[dict[str, Any]]:
                 lambda value: list(value) if isinstance(value, (tuple, list, np.ndarray)) else value
             )
     return serializable.to_dict(orient="records")
+
+
+@dataclass
+class TrainEpochSummary:
+    """Aggregated training metrics for one epoch."""
+
+    loss: float
+    accuracy_within_tolerance: float
+    accuracy_by_tolerance: dict[float, float]
+    loss_components: dict[str, float]
+
+
+def _loss_weights_from_config(config: TrainConfig) -> dict[str, float]:
+    weights = {
+        "distance": float(config.distance_loss_weight),
+        "orientation": float(config.orientation_loss_weight),
+        "position": float(config.position_loss_weight),
+    }
+    for name, value in weights.items():
+        if value < 0.0:
+            raise ValueError(f"{name}_loss_weight must be >= 0; got {value}")
+    return weights
 
 
 def _split_training_metadata(
@@ -218,7 +250,9 @@ def _build_split_membership(
 def _train_one_epoch(
     model: nn.Module,
     optimizer: Adam,
-    loss_fn: nn.Module,
+    task_contract: dict[str, Any],
+    huber_delta: float,
+    loss_weights: dict[str, float],
     split_df: pd.DataFrame,
     batch_size: int,
     target_hw: tuple[int, int],
@@ -233,7 +267,7 @@ def _train_one_epoch(
     epoch: int | None = None,
     total_epochs: int | None = None,
     progress_log_interval_batches: int = 250,
-) -> tuple[float, float, dict[float, float]]:
+) -> TrainEpochSummary:
     model.train()
     tolerance_values = _parse_tolerance_values(
         [accuracy_tolerance_m, *_parse_tolerance_values(additional_accuracy_tolerances_m)]
@@ -242,6 +276,7 @@ def _train_one_epoch(
         raise ValueError("No valid accuracy tolerances were configured.")
     primary_tolerance = float(min(tolerance_values, key=lambda value: abs(value - float(accuracy_tolerance_m))))
     total_loss = 0.0
+    total_loss_components: dict[str, float] = {}
     total_count = 0
     within_tolerance_counts: dict[float, int] = {float(tolerance): 0 for tolerance in tolerance_values}
     total_batches_est = max(1, int(math.ceil(len(split_df) / float(batch_size))))
@@ -263,31 +298,53 @@ def _train_one_epoch(
             shard_cache=shard_cache,
             shuffle_mode=shuffle_mode,
             active_shard_count=active_shard_count,
+            target_columns=tuple(task_contract.get("target_columns", [])),
+            include_bbox_features=(
+                str(task_contract.get("input_mode", "")).strip()
+                == "dual_stream_image_bbox_features"
+            ),
         ),
         start=1,
     ):
-        images = torch.from_numpy(batch.images).to(device=device, dtype=torch.float32)
-        targets = torch.from_numpy(batch.targets).to(device=device, dtype=torch.float32)
+        model_inputs = batch_to_model_inputs(batch, task_contract, device=device)
+        targets = batch_targets_to_tensor(batch, device=device)
 
         optimizer.zero_grad(set_to_none=True)
-        outputs = model(images).reshape(-1)
-        loss = loss_fn(outputs, targets)
-        loss.backward()
+        outputs = model(model_inputs)
+        pred_heads = extract_prediction_heads(outputs, task_contract)
+        target_heads = extract_target_heads(targets, task_contract)
+        loss_result = compute_task_loss(
+            pred_heads,
+            target_heads,
+            task_contract,
+            huber_delta=float(huber_delta),
+            loss_weights=loss_weights,
+        )
+        loss_result.total.backward()
         optimizer.step()
 
         batch_n = int(targets.shape[0])
-        total_loss += float(loss.item()) * batch_n
+        total_loss += float(loss_result.total.item()) * batch_n
+        for name, tensor_value in loss_result.components.items():
+            total_loss_components[name] = total_loss_components.get(name, 0.0) + (
+                float(tensor_value.item()) * batch_n
+            )
         total_count += batch_n
-        abs_error = torch.abs(outputs - targets)
+        batch_primary_error = primary_sample_error(pred_heads, target_heads, task_contract)
         for tolerance in tolerance_values:
             within_tolerance_counts[float(tolerance)] += int(
-                torch.count_nonzero(abs_error <= float(tolerance)).item()
+                torch.count_nonzero(batch_primary_error <= float(tolerance)).item()
             )
         running_loss = total_loss / float(total_count)
         running_accuracy_by_tolerance = {
             float(tolerance): (within_tolerance_counts[float(tolerance)] / float(total_count))
             for tolerance in tolerance_values
         }
+        running_component_text = " ".join(
+            f"{name}={float(total_loss_components[name]) / float(total_count):.6f}"
+            for name in sorted(total_loss_components)
+            if name != "total_loss"
+        )
 
         if progress_log_interval_batches > 0:
             should_log = (
@@ -303,6 +360,7 @@ def _train_one_epoch(
                     f"batch {batch_index}/{total_batches_est} ({pct:5.1f}%) "
                     f"seen={total_count} {_format_accuracy_metrics(running_accuracy_by_tolerance)} "
                     f"running_loss={running_loss:.6f} "
+                    f"{running_component_text} "
                     f"elapsed={elapsed:.1f}s",
                     flush=True,
                 )
@@ -313,7 +371,16 @@ def _train_one_epoch(
         float(tolerance): (within_tolerance_counts[float(tolerance)] / float(total_count))
         for tolerance in tolerance_values
     }
-    return total_loss / total_count, accuracy_by_tolerance[primary_tolerance], accuracy_by_tolerance
+    avg_components = {
+        name: float(total / float(total_count))
+        for name, total in sorted(total_loss_components.items())
+    }
+    return TrainEpochSummary(
+        loss=(total_loss / total_count),
+        accuracy_within_tolerance=accuracy_by_tolerance[primary_tolerance],
+        accuracy_by_tolerance=accuracy_by_tolerance,
+        loss_components=avg_components,
+    )
 
 
 def _resolve_entrypoint(repo_root: Path, entrypoint_path_raw: str) -> tuple[str, str | None]:
@@ -435,6 +502,7 @@ def _describe_input_representation(preprocessing_contract: dict[str, Any] | None
 
     storage = representation.get("StorageFormat")
     array_key = representation.get("ArrayKey")
+    array_keys = representation.get("ArrayKeys")
     kind = representation.get("Kind")
     color = representation.get("ColorSpace")
     geometry = representation.get("Geometry")
@@ -443,6 +511,9 @@ def _describe_input_representation(preprocessing_contract: dict[str, Any] | None
     parts: list[str] = []
     if storage and array_key:
         parts.append(f"{storage} key {array_key}")
+    elif storage and isinstance(array_keys, list) and array_keys:
+        joined_keys = ",".join(str(value) for value in array_keys)
+        parts.append(f"{storage} keys {joined_keys}")
     elif storage:
         parts.append(str(storage))
     if kind:
@@ -485,6 +556,28 @@ def _write_model_card(
 
     validation_metrics = metrics.get("validation", {})
     validation_accuracy_by_tolerance = validation_metrics.get("accuracy_by_tolerance")
+    target_columns = tuple(
+        str(column).strip() for column in topology_spec.task_contract.get("target_columns", [])
+    )
+    input_mode = str(topology_spec.task_contract.get("input_mode", "")).strip()
+    prediction_mode = str(topology_spec.task_contract.get("prediction_mode", "")).strip()
+    if input_mode == "dual_stream_image_bbox_features":
+        input_text = "grayscale crop tensor plus bbox feature vector"
+    else:
+        input_text = "grayscale full-frame tensor normalized to [0, 1]"
+    if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+        loss_text = (
+            "Weighted multitask Huber "
+            f"(delta={config.huber_delta}, distance={config.distance_loss_weight}, "
+            f"orientation={config.orientation_loss_weight})"
+        )
+    elif prediction_mode == "position_3d":
+        loss_text = (
+            f"Huber over position_3d targets (delta={config.huber_delta}, "
+            f"weight={config.position_loss_weight})"
+        )
+    else:
+        loss_text = f"Huber (delta={config.huber_delta})"
     validation_accuracy_lines: list[str] = []
     if isinstance(validation_accuracy_by_tolerance, dict) and validation_accuracy_by_tolerance:
         def _acc_sort_key(item: tuple[str, Any]) -> float:
@@ -512,8 +605,8 @@ def _write_model_card(
         f"# Model Card - {run_id}",
         "",
         "## Purpose",
-        "Bounded falsification test: can the configured topology regress `distance_m` ",
-        "from full-frame sparse bounding-box imagery without geometry-altering transforms.",
+        "Bounded falsification test over the topology's declared regression targets ",
+        "without geometry-altering transforms.",
         "",
         "## Data",
         f"- Training source root: `{dataset_summary['training']['source_root']}`",
@@ -527,11 +620,12 @@ def _write_model_card(
         f"- Topology variant: {topology_spec.topology_variant}",
         f"- Model class: {topology_spec.model_class_name}",
         f"- Topology params: {json.dumps(topology_spec.topology_params, sort_keys=True)}",
-        "- Target: `distance_m`",
-        "- Input: grayscale full-frame tensor normalized to [0, 1]",
+        f"- Prediction mode: `{prediction_mode}`",
+        f"- Targets: {', '.join(f'`{column}`' for column in target_columns)}",
+        f"- Input: {input_text}",
         "",
         "## Training",
-        f"- Loss: Huber (delta={config.huber_delta})",
+        f"- Loss: {loss_text}",
         "- Optimizer: Adam",
         f"- Learning rate: {config.learning_rate}",
         f"- Weight decay: {config.weight_decay}",
@@ -556,6 +650,11 @@ def _write_model_card(
         "- `best.pt` and `latest.pt` are in this run directory.",
         "- `history.csv`, `metrics.json`, plots, and split membership files are co-located.",
     ]
+    orientation_metrics = validation_metrics.get("orientation")
+    if isinstance(orientation_metrics, dict):
+        lines.insert(-3, f"- Validation mean angular error: {float(orientation_metrics.get('mean_angular_error_deg', float('nan'))):.6f} deg")
+        lines.insert(-3, f"- Validation median angular error: {float(orientation_metrics.get('median_angular_error_deg', float('nan'))):.6f} deg")
+        lines.insert(-3, f"- Validation p95 angular error: {float(orientation_metrics.get('p95_angular_error_deg', float('nan'))):.6f} deg")
     path = run_dir / "model_card.md"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -680,6 +779,17 @@ def _load_resume_context(
             "Resume source topology mismatch: "
             f"source={source_topology_spec.to_dict()} current={topology_spec.to_dict()}"
         )
+    source_task_contract_signature = (
+        str(resume_state.get("task_contract_signature", "")).strip()
+        or str(source_config.get("task_contract_signature", "")).strip()
+    )
+    if source_task_contract_signature:
+        current_task_contract_signature = task_contract_signature(topology_spec)
+        if source_task_contract_signature != current_task_contract_signature:
+            raise ValueError(
+                "Resume source task contract mismatch: "
+                f"source={source_task_contract_signature} current={current_task_contract_signature}"
+            )
 
     state_train_root = str(resume_state.get("training_data_root_resolved", "")).strip()
     state_val_root = str(resume_state.get("validation_data_root_resolved", "")).strip()
@@ -731,6 +841,17 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "additional_epochs can only be used when resume_from_run_dir is set."
         )
     topology_spec = _resolve_topology_from_train_config(config)
+    task_contract_signature_value = task_contract_signature(topology_spec)
+    loss_weights = _loss_weights_from_config(config)
+    active_loss_roles = {
+        str(spec.get("loss_role", head_name)).strip() or str(head_name)
+        for head_name, spec in dict(topology_spec.task_contract.get("heads", {})).items()
+        if isinstance(spec, dict)
+    }
+    if active_loss_roles and sum(float(loss_weights.get(role, 1.0)) for role in active_loss_roles) <= 0.0:
+        raise ValueError(
+            f"Resolved loss weights disable every active head {sorted(active_loss_roles)}."
+        )
 
     repo_root = find_repo_root()
     training_root = resolve_data_root(
@@ -759,6 +880,18 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
 
     training_schema = validate_root_schema(training_metadata, root_name="training")
     validation_schema = validate_root_schema(validation_metadata, root_name="validation")
+    validate_task_contract_schema(
+        training_metadata,
+        training_schema,
+        topology_spec.task_contract,
+        root_name="training",
+    )
+    validate_task_contract_schema(
+        validation_metadata,
+        validation_schema,
+        topology_spec.task_contract,
+        root_name="validation",
+    )
     combined_schema = pd.concat([training_schema, validation_schema], ignore_index=True)
     target_hw = determine_target_hw(combined_schema, padding_mode=config.padding_mode)
     resume_context = _load_resume_context(
@@ -825,8 +958,10 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "topology_variant": topology_spec.topology_variant,
             "topology_params": dict(topology_spec.topology_params),
             "topology_signature": topology_signature,
+            "task_contract_signature": task_contract_signature_value,
             "model_architecture_variant": topology_spec.topology_variant,
             "model_topology": topology_spec.to_dict(),
+            "task_contract": dict(topology_spec.task_contract),
         }
     )
     write_json(run_dir / "config.json", config_payload)
@@ -879,13 +1014,14 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "topology_variant": topology_spec.topology_variant,
             "topology_params": dict(topology_spec.topology_params),
             "topology_signature": topology_signature,
+            "task_contract_signature": task_contract_signature_value,
             "model_architecture_variant": topology_spec.topology_variant,
             "architecture_text": architecture_summary,
             "model_topology": topology_spec.to_dict(),
+            "task_contract": dict(topology_spec.task_contract),
         },
     )
 
-    loss_fn = nn.HuberLoss(delta=float(config.huber_delta))
     optimizer = Adam(
         model.parameters(),
         lr=float(config.learning_rate),
@@ -1054,10 +1190,12 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         epoch_started = perf_counter()
         print(f"[train][epoch {epoch}/{total_epochs_target}] starting", flush=True)
         epoch_lr_before = float(optimizer.param_groups[0]["lr"])
-        train_loss, train_accuracy, train_accuracy_by_tolerance = _train_one_epoch(
+        train_summary = _train_one_epoch(
             model=model,
             optimizer=optimizer,
-            loss_fn=loss_fn,
+            task_contract=dict(topology_spec.task_contract),
+            huber_delta=float(config.huber_delta),
+            loss_weights=loss_weights,
             split_df=train_split,
             batch_size=int(config.batch_size),
             target_hw=target_hw,
@@ -1081,7 +1219,9 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             target_hw=target_hw,
             padding_mode=config.padding_mode,
             device=device,
-            loss_fn=loss_fn,
+            task_contract=dict(topology_spec.task_contract),
+            huber_delta=float(config.huber_delta),
+            loss_weights=loss_weights,
             collect_predictions=False,
             accuracy_tolerance_m=accuracy_tolerance_m,
             additional_accuracy_tolerances_m=extra_accuracy_tolerances,
@@ -1099,8 +1239,8 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "epoch": epoch,
             "learning_rate": epoch_lr_before,
             "next_learning_rate": epoch_lr_after,
-            "train_loss": float(train_loss),
-            "train_accuracy": float(train_accuracy),
+            "train_loss": float(train_summary.loss),
+            "train_accuracy": float(train_summary.accuracy_within_tolerance),
             "val_loss": float(val_eval.loss),
             "val_accuracy": float(val_eval.accuracy_within_tolerance),
             "val_mae": float(val_eval.mae),
@@ -1109,11 +1249,29 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         for tolerance in accuracy_tolerance_values:
             suffix = _tolerance_suffix(float(tolerance))
             epoch_record[f"train_acc_at_{suffix}m"] = float(
-                train_accuracy_by_tolerance.get(float(tolerance), float("nan"))
+                train_summary.accuracy_by_tolerance.get(float(tolerance), float("nan"))
             )
             epoch_record[f"val_acc_at_{suffix}m"] = float(
                 val_eval.accuracy_by_tolerance.get(float(tolerance), float("nan"))
             )
+        if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+            for name, value in sorted(train_summary.loss_components.items()):
+                if name != "total_loss":
+                    epoch_record[f"train_{name}"] = float(value)
+            for name, value in sorted(val_eval.loss_components.items()):
+                if name != "total_loss":
+                    epoch_record[f"val_{name}"] = float(value)
+        if val_eval.task_metrics:
+            orientation_metrics = val_eval.task_metrics.get("orientation")
+            if isinstance(orientation_metrics, dict):
+                for key, value in orientation_metrics.items():
+                    epoch_record[f"val_{key}"] = float(value)
+            position_metrics = val_eval.task_metrics.get("position")
+            if isinstance(position_metrics, dict):
+                for key, value in position_metrics.items():
+                    if isinstance(value, dict):
+                        continue
+                    epoch_record[f"val_{key}"] = float(value)
         history_records.append(epoch_record)
 
         if val_eval.loss < best_val_loss:
@@ -1130,7 +1288,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             lr_text = f"lr={epoch_lr_before:.2e}->{epoch_lr_after:.2e}"
         print(
             f"[train][epoch {epoch}/{total_epochs_target}] complete "
-            f"train_loss={train_loss:.6f} {_format_accuracy_metrics(train_accuracy_by_tolerance, prefix='train_')} "
+            f"train_loss={train_summary.loss:.6f} {_format_accuracy_metrics(train_summary.accuracy_by_tolerance, prefix='train_')} "
             f"val_loss={float(val_eval.loss):.6f} {_format_accuracy_metrics(val_eval.accuracy_by_tolerance, prefix='val_')} "
             f"val_mae={val_eval.mae:.6f} val_rmse={val_eval.rmse:.6f} "
             f"{lr_text} "
@@ -1158,6 +1316,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
                 topology_variant=topology_spec.topology_variant,
                 topology_params=dict(topology_spec.topology_params),
                 topology_signature=topology_signature,
+                task_contract_signature=task_contract_signature_value,
                 model_architecture_variant=topology_spec.topology_variant,
                 training_data_root_resolved=str(training_root),
                 validation_data_root_resolved=str(validation_root),
@@ -1199,7 +1358,9 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         target_hw=target_hw,
         padding_mode=config.padding_mode,
         device=device,
-        loss_fn=loss_fn,
+        task_contract=dict(topology_spec.task_contract),
+        huber_delta=float(config.huber_delta),
+        loss_weights=loss_weights,
         collect_predictions=True,
         accuracy_tolerance_m=accuracy_tolerance_m,
         additional_accuracy_tolerances_m=extra_accuracy_tolerances,
@@ -1210,8 +1371,9 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     if final_val.predictions is None:
         raise RuntimeError("Expected validation prediction rows.")
     final_val.predictions.to_csv(run_dir / "sample_predictions.csv", index=False)
-    save_prediction_scatter(final_val.y_true, final_val.y_pred, run_dir / "prediction_scatter.png")
-    save_residual_plot(final_val.y_true, final_val.y_pred, run_dir / "residual_plot.png")
+    if final_val.y_true.size > 0 and final_val.y_pred.size > 0:
+        save_prediction_scatter(final_val.y_true, final_val.y_pred, run_dir / "prediction_scatter.png")
+        save_residual_plot(final_val.y_true, final_val.y_pred, run_dir / "residual_plot.png")
 
     metrics: dict[str, Any] = {
         "best_epoch": int(best_epoch),
@@ -1226,6 +1388,10 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "rmse": float(final_val.rmse),
         },
     }
+    if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+        metrics["validation"]["loss_components"] = dict(final_val.loss_components)
+    if final_val.task_metrics:
+        metrics["validation"].update(dict(final_val.task_metrics))
 
     if not internal_test_split.empty:
         test_eval = evaluate_split(
@@ -1236,7 +1402,9 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             target_hw=target_hw,
             padding_mode=config.padding_mode,
             device=device,
-            loss_fn=loss_fn,
+            task_contract=dict(topology_spec.task_contract),
+            huber_delta=float(config.huber_delta),
+            loss_weights=loss_weights,
             collect_predictions=False,
             accuracy_tolerance_m=accuracy_tolerance_m,
             additional_accuracy_tolerances_m=extra_accuracy_tolerances,
@@ -1252,6 +1420,10 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "mae": float(test_eval.mae),
             "rmse": float(test_eval.rmse),
         }
+        if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+            metrics["test_internal"]["loss_components"] = dict(test_eval.loss_components)
+        if test_eval.task_metrics:
+            metrics["test_internal"].update(dict(test_eval.task_metrics))
 
     if train_shard_cache is not None:
         train_cache_final = train_shard_cache.stats()
@@ -1289,6 +1461,27 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     validation_cache_stats = (
         validation_shard_cache.stats() if validation_shard_cache is not None else None
     )
+    target_columns = tuple(
+        str(column).strip() for column in topology_spec.task_contract.get("target_columns", [])
+    )
+    prediction_mode = str(topology_spec.task_contract.get("prediction_mode", "")).strip()
+    if prediction_mode == "position_3d":
+        target_name = "position_3d"
+    elif len(target_columns) == 1:
+        target_name = target_columns[0]
+    else:
+        target_name = ",".join(target_columns)
+    if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+        loss_function_text = (
+            f"WeightedMultiTaskHuber(delta={config.huber_delta},"
+            f"distance={loss_weights['distance']},orientation={loss_weights['orientation']})"
+        )
+    elif prediction_mode == "position_3d":
+        loss_function_text = (
+            f"WeightedHuber(delta={config.huber_delta},position={loss_weights['position']})"
+        )
+    else:
+        loss_function_text = f"HuberLoss(delta={config.huber_delta})"
 
     run_manifest = {
         "run_id": run_id,
@@ -1311,14 +1504,17 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "topology_variant": topology_spec.topology_variant,
         "topology_params": dict(topology_spec.topology_params),
         "topology_signature": topology_signature,
+        "task_contract_signature": task_contract_signature_value,
         "model_architecture_variant": topology_spec.topology_variant,
         "model_architecture_summary": architecture_summary,
         "model_topology": topology_spec.to_dict(),
+        "task_contract": dict(topology_spec.task_contract),
         "input_representation": _describe_input_representation(preprocessing_contract),
         "input_shape": [1, int(target_hw[0]), int(target_hw[1])],
-        "target_name": "distance_m",
+        "target_name": target_name,
+        "target_names": list(target_columns),
         "optimizer": "Adam",
-        "loss_function": f"HuberLoss(delta={config.huber_delta})",
+        "loss_function": loss_function_text,
         "resume": {
             "enabled": bool(resume_mode),
             "source_run_id": resume_source_run_id if resume_mode else None,
@@ -1344,10 +1540,14 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "topology_variant": topology_spec.topology_variant,
             "topology_params": dict(topology_spec.topology_params),
             "topology_signature": topology_signature,
+            "task_contract_signature": task_contract_signature_value,
             "model_architecture_variant": topology_spec.topology_variant,
             "progress_log_interval_batches": progress_log_interval_batches,
             "accuracy_tolerance_m": accuracy_tolerance_m,
             "extra_accuracy_tolerances_m": [float(value) for value in extra_accuracy_tolerances],
+            "distance_loss_weight": float(config.distance_loss_weight),
+            "orientation_loss_weight": float(config.orientation_loss_weight),
+            "position_loss_weight": float(config.position_loss_weight),
             "enable_lr_scheduler": enable_lr_scheduler,
             "lr_scheduler_factor": lr_scheduler_factor,
             "lr_scheduler_patience": lr_scheduler_patience,
@@ -1434,6 +1634,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--huber-delta", type=float, default=1.0)
+    parser.add_argument("--distance-loss-weight", type=float, default=1.0)
+    parser.add_argument("--orientation-loss-weight", type=float, default=1.0)
+    parser.add_argument("--position-loss-weight", type=float, default=1.0)
     parser.add_argument("--early-stopping-patience", type=int, default=4)
     parser.add_argument("--model-name", default="2d-cnn")
     parser.add_argument("--run-id", default=None)
@@ -1500,6 +1703,9 @@ def main() -> None:
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
         huber_delta=args.huber_delta,
+        distance_loss_weight=args.distance_loss_weight,
+        orientation_loss_weight=args.orientation_loss_weight,
+        position_loss_weight=args.position_loss_weight,
         early_stopping_patience=args.early_stopping_patience,
         model_name=args.model_name,
         run_id=args.run_id,

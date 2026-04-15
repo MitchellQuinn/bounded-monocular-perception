@@ -1,10 +1,4 @@
-"""Dual-stream monocular distance regressor topology, v0.2.
-
-This is a conservative reset of the v0.1 dual-stream experiment after that
-variant showed unstable validation behavior. The tensor contract stays the
-same, but the shape stream removes batch-dependent normalization and disables
-dropout by default so the architecture is easier to reason about.
-"""
+"""Dual-stream distance + yaw topology derived from the v0.2 architecture."""
 
 from __future__ import annotations
 
@@ -13,25 +7,22 @@ from typing import Any, Mapping
 import torch
 from torch import nn
 
-TOPOLOGY_ID = "distance_regressor_dual_stream"
-MODEL_CLASS_NAME = "DistanceRegressorDualStream"
-DEFAULT_VARIANT = "dual_stream_v0_2"
+from .topology_dual_stream_v0_2 import _make_dropout, _make_group_norm
+
+TOPOLOGY_ID = "distance_regressor_dual_stream_yaw"
+MODEL_CLASS_NAME = "DistanceRegressorDualStreamYaw"
+DEFAULT_VARIANT = "dual_stream_yaw_v0_1"
 TOPOLOGY_METADATA = {
-    "status": "active",
-    "display_name": "Distance Regressor Dual Stream v0.2",
-    "note": "Current dual-stream production topology",
+    "status": "experimental",
+    "display_name": "Distance Regressor Dual Stream + Yaw",
+    "note": "Joint distance plus yaw (sin/cos) multitask topology on dual-stream v0.2 features.",
     "replacement": "",
 }
-_SUPPORTED_VARIANTS = {"dual_stream_v0_2"}
-
-_SUPPORTED_OUTPUT_MODES = {"position_3d", "scalar_distance"}
-
+_SUPPORTED_VARIANTS = {"dual_stream_yaw_v0_1"}
 _SUPPORTED_PARAM_KEYS = (
     "input_channels",
     "bbox_feature_dim",
     "canvas_size",
-    "output_dim",
-    "output_mode",
     "dropout_p",
     "geom_hidden",
     "geom_feature_dim",
@@ -40,53 +31,14 @@ _SUPPORTED_PARAM_KEYS = (
 )
 
 
-def _resolved_output_mode(topology_params: Mapping[str, Any] | None) -> str:
-    if topology_params is None:
-        return "scalar_distance"
-    return str(topology_params.get("output_mode", "scalar_distance")).strip() or "scalar_distance"
-
-
-def _make_group_norm(num_channels: int, max_groups: int = 8) -> nn.GroupNorm:
-    channel_count = int(num_channels)
-    if channel_count <= 0:
-        raise ValueError(f"num_channels must be positive; got {channel_count}")
-    for group_count in range(min(int(max_groups), channel_count), 0, -1):
-        if channel_count % group_count == 0:
-            return nn.GroupNorm(group_count, channel_count)
-    raise ValueError(
-        f"Could not derive a valid GroupNorm group count for num_channels={channel_count}"
-    )
-
-
-def _make_dropout(dropout_p: float) -> nn.Module:
-    rate = float(dropout_p)
-    if rate <= 0.0:
-        return nn.Identity()
-    return nn.Dropout(p=rate)
-
-
-class DistanceRegressorDualStream(nn.Module):
-    """Dual-stream distance regressor.
-
-    Accepts either:
-      - a dict-style batch with keys:
-      - ``silhouette_crop``: (B, C_in, H, W) float tensor in [0, 1]
-      - ``bbox_features``:   (B, F_bbox)     float tensor
-      - or a raw silhouette tensor ``(B, C_in, H, W)``. In this mode, bbox
-        features are derived from non-zero silhouette extents.
-
-    Produces:
-      - (B,)            for ``output_mode="scalar_distance"`` (default)
-      - (B, output_dim) for ``output_mode="position_3d"``
-    """
+class DistanceRegressorDualStreamYaw(nn.Module):
+    """Dual-stream distance + yaw regressor."""
 
     def __init__(
         self,
         input_channels: int = 1,
         bbox_feature_dim: int = 10,
-        canvas_size: int = 224,
-        output_dim: int = 1,
-        output_mode: str = "scalar_distance",
+        canvas_size: int = 300,
         dropout_p: float = 0.0,
         geom_hidden: int = 64,
         geom_feature_dim: int = 32,
@@ -101,21 +53,6 @@ class DistanceRegressorDualStream(nn.Module):
                 f"Unsupported architecture_variant={architecture_variant}; "
                 f"expected one of {sorted(_SUPPORTED_VARIANTS)}"
             )
-        if output_mode not in _SUPPORTED_OUTPUT_MODES:
-            raise ValueError(
-                f"Unsupported output_mode={output_mode!r}; "
-                f"expected one of {sorted(_SUPPORTED_OUTPUT_MODES)}"
-            )
-        if output_mode == "scalar_distance" and output_dim != 1:
-            raise ValueError(
-                "output_mode='scalar_distance' requires output_dim=1; "
-                f"got output_dim={output_dim}"
-            )
-        if output_mode == "position_3d" and output_dim != 3:
-            raise ValueError(
-                "output_mode='position_3d' requires output_dim=3; "
-                f"got output_dim={output_dim}"
-            )
         if input_channels < 1:
             raise ValueError(f"input_channels must be >= 1, got {input_channels}")
         if bbox_feature_dim < 1:
@@ -129,8 +66,6 @@ class DistanceRegressorDualStream(nn.Module):
         self.input_channels = int(input_channels)
         self.bbox_feature_dim = int(bbox_feature_dim)
         self.canvas_size = int(canvas_size)
-        self.output_dim = int(output_dim)
-        self.output_mode = output_mode
         self.dropout_p = float(dropout_p)
         self.geom_hidden = int(geom_hidden)
         self.geom_feature_dim = int(geom_feature_dim)
@@ -167,15 +102,17 @@ class DistanceRegressorDualStream(nn.Module):
         )
 
         fused_dim = self.geom_feature_dim + self.shape_feature_dim
-        self.fusion_head = nn.Sequential(
+        trunk_dim = max(16, self.fusion_hidden // 2)
+        self.fusion_trunk = nn.Sequential(
             nn.Linear(fused_dim, self.fusion_hidden),
             nn.ReLU(inplace=True),
             _make_dropout(self.dropout_p),
-            nn.Linear(self.fusion_hidden, self.fusion_hidden // 2),
+            nn.Linear(self.fusion_hidden, trunk_dim),
             nn.ReLU(inplace=True),
             _make_dropout(self.dropout_p),
-            nn.Linear(self.fusion_hidden // 2, self.output_dim),
         )
+        self.distance_head = nn.Linear(trunk_dim, 1)
+        self.orientation_head = nn.Linear(trunk_dim, 2)
 
     def _derive_bbox_features_from_silhouette(
         self,
@@ -277,13 +214,16 @@ class DistanceRegressorDualStream(nn.Module):
         )
         return torch.cat([features, pad], dim=1)
 
-    def forward(self, batch: Mapping[str, torch.Tensor] | torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        batch: Mapping[str, torch.Tensor] | torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
         if isinstance(batch, Mapping):
             try:
                 silhouette_crop = batch["silhouette_crop"]
             except KeyError as missing:
                 raise KeyError(
-                    "DistanceRegressorDualStream batch missing required key "
+                    "DistanceRegressorDualStreamYaw batch missing required key "
                     f"{missing!s}. Expected key: 'silhouette_crop'."
                 ) from None
             raw_bbox_features = batch.get("bbox_features")
@@ -301,7 +241,7 @@ class DistanceRegressorDualStream(nn.Module):
             bbox_features = self._derive_bbox_features_from_silhouette(silhouette_crop)
         else:
             raise TypeError(
-                "DistanceRegressorDualStream expects either a dict-style batch "
+                "DistanceRegressorDualStreamYaw expects either a dict-style batch "
                 "with key 'silhouette_crop' (optionally 'bbox_features') or a "
                 f"tensor silhouette input; got {type(batch).__name__}"
             )
@@ -309,11 +249,13 @@ class DistanceRegressorDualStream(nn.Module):
         geom = self.geom_mlp(bbox_features)
         shape = self.shape_cnn(silhouette_crop)
         fused = torch.cat([geom, shape], dim=1)
-        out = self.fusion_head(fused)
-
-        if self.output_mode == "scalar_distance":
-            out = out.squeeze(-1)
-        return out
+        shared = self.fusion_trunk(fused)
+        distance = self.distance_head(shared).squeeze(-1)
+        yaw_sin_cos = self.orientation_head(shared)
+        return {
+            "distance_m": distance,
+            "yaw_sin_cos": yaw_sin_cos,
+        }
 
 
 def supported_variants() -> tuple[str, ...]:
@@ -327,36 +269,29 @@ def resolve_task_contract(
 ) -> dict[str, Any]:
     """Describe the training/evaluation contract for this topology family."""
     _ = topology_variant
-    output_mode = _resolved_output_mode(topology_params)
-    if output_mode == "position_3d":
-        return {
-            "task_family": "regression",
-            "prediction_mode": "position_3d",
-            "input_mode": "image_tensor",
-            "output_kind": "tensor",
-            "target_columns": ["final_pos_x_m", "final_pos_y_m", "final_pos_z_m"],
-            "debug_target_columns": ["distance_m"],
-            "heads": {
-                "position": {
-                    "target_columns": ["final_pos_x_m", "final_pos_y_m", "final_pos_z_m"],
-                    "metrics_role": "position",
-                    "loss_role": "position",
-                }
-            },
-        }
+    _ = topology_params
     return {
-        "task_family": "regression",
-        "prediction_mode": "scalar_distance",
-        "input_mode": "image_tensor",
-        "output_kind": "tensor",
-        "target_columns": ["distance_m"],
-        "debug_target_columns": [],
+        "task_family": "multitask_regression",
+        "prediction_mode": "distance_yaw_sincos",
+        "input_mode": "dual_stream_image_bbox_features",
+        "output_kind": "mapping",
+        "target_columns": ["distance_m", "yaw_sin", "yaw_cos"],
+        "debug_target_columns": ["yaw_deg"],
+        "supported_targets": ["distance_m", "yaw_deg", "yaw_sin", "yaw_cos"],
         "heads": {
             "distance": {
+                "output_key": "distance_m",
                 "target_columns": ["distance_m"],
                 "metrics_role": "distance",
                 "loss_role": "distance",
-            }
+            },
+            "orientation": {
+                "output_key": "yaw_sin_cos",
+                "target_columns": ["yaw_sin", "yaw_cos"],
+                "debug_target_columns": ["yaw_deg"],
+                "metrics_role": "orientation",
+                "loss_role": "orientation",
+            },
         },
     }
 
@@ -365,14 +300,12 @@ def build_model(
     topology_variant: str,
     topology_params: Mapping[str, Any] | None = None,
 ) -> nn.Module:
-    """Build one dual-stream model instance from topology variant + params."""
+    """Build one dual-stream multitask model instance from topology variant + params."""
     params = dict(topology_params or {})
 
     input_channels = int(params.pop("input_channels", 1))
     bbox_feature_dim = int(params.pop("bbox_feature_dim", 10))
-    canvas_size = int(params.pop("canvas_size", 224))
-    output_dim = int(params.pop("output_dim", 1))
-    output_mode = str(params.pop("output_mode", "scalar_distance"))
+    canvas_size = int(params.pop("canvas_size", 300))
     raw_dropout_p = params.pop("dropout_p", None)
     dropout_p = 0.0 if raw_dropout_p is None else float(raw_dropout_p)
     geom_hidden = int(params.pop("geom_hidden", 64))
@@ -387,12 +320,10 @@ def build_model(
             f"Supported keys: {list(_SUPPORTED_PARAM_KEYS)}"
         )
 
-    return DistanceRegressorDualStream(
+    return DistanceRegressorDualStreamYaw(
         input_channels=input_channels,
         bbox_feature_dim=bbox_feature_dim,
         canvas_size=canvas_size,
-        output_dim=output_dim,
-        output_mode=output_mode,
         dropout_p=dropout_p,
         geom_hidden=geom_hidden,
         geom_feature_dim=geom_feature_dim,

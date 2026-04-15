@@ -20,14 +20,25 @@ from .data import (
     determine_target_hw,
     iter_batches,
     load_root_metadata,
+    validate_task_contract_schema,
     validate_root_schema,
 )
 from .paths import DEFAULT_TRAINING_ROOT, DEFAULT_VALIDATION_ROOT, find_repo_root, resolve_data_root
 from .plots import save_prediction_scatter, save_residual_plot
+from .task_runtime import (
+    batch_targets_to_tensor,
+    batch_to_model_inputs,
+    compute_task_loss,
+    extract_prediction_heads,
+    extract_target_heads,
+    primary_sample_error,
+    summarize_task_metrics,
+)
 from .topologies import (
     ResolvedTopologySpec,
     build_model_from_spec,
     resolve_topology_spec_from_mapping,
+    task_contract_signature,
     topology_spec_signature,
 )
 from .utils import read_json, utc_now_iso, write_json
@@ -44,6 +55,8 @@ class SplitEvaluation:
     mae: float
     rmse: float
     loss: float | None
+    loss_components: dict[str, float]
+    task_metrics: dict[str, Any]
     y_true: np.ndarray
     y_pred: np.ndarray
     predictions: pd.DataFrame | None
@@ -83,6 +96,14 @@ def _accuracy_by_tolerance_json(accuracy_by_tolerance: dict[float, float]) -> di
     }
 
 
+def _loss_weights_from_payload(payload: dict[str, Any]) -> dict[str, float]:
+    return {
+        "distance": float(payload.get("distance_loss_weight", 1.0)),
+        "orientation": float(payload.get("orientation_loss_weight", 1.0)),
+        "position": float(payload.get("position_loss_weight", 1.0)),
+    }
+
+
 def evaluate_split(
     model: nn.Module,
     split_df: pd.DataFrame,
@@ -91,7 +112,9 @@ def evaluate_split(
     target_hw: tuple[int, int],
     padding_mode: str,
     device: torch.device,
-    loss_fn: nn.Module | None = None,
+    task_contract: dict[str, Any],
+    huber_delta: float,
+    loss_weights: dict[str, float] | None = None,
     collect_predictions: bool = False,
     accuracy_tolerance_m: float = 0.10,
     additional_accuracy_tolerances_m: Any = None,
@@ -116,10 +139,11 @@ def evaluate_split(
     model.eval()
     total_loss = 0.0
     total_count = 0
+    loss_component_totals: dict[str, float] = {}
     within_tolerance_counts: dict[float, int] = {float(tolerance): 0 for tolerance in tolerance_values}
-    pred_chunks: list[np.ndarray] = []
-    true_chunks: list[np.ndarray] = []
-    prediction_rows: list[dict[str, Any]] = []
+    pred_head_chunks: dict[str, list[np.ndarray]] = {}
+    true_head_chunks: dict[str, list[np.ndarray]] = {}
+    collected_rows: list[dict[str, Any]] = []
     total_batches_est = max(1, int(math.ceil(len(split_df) / float(batch_size))))
     log_every = max(0, int(progress_log_interval_batches or 0))
     log_prefix = progress_log_prefix or f"[{split_name}]"
@@ -134,44 +158,51 @@ def evaluate_split(
                 padding_mode=padding_mode,
                 shuffle_shards=False,
                 shard_cache=shard_cache,
+                target_columns=tuple(task_contract.get("target_columns", [])),
+                include_bbox_features=(
+                    str(task_contract.get("input_mode", "")).strip()
+                    == "dual_stream_image_bbox_features"
+                ),
             ),
             start=1,
         ):
-            images = torch.from_numpy(batch.images).to(device=device, dtype=torch.float32)
-            targets = torch.from_numpy(batch.targets).to(device=device, dtype=torch.float32)
+            model_inputs = batch_to_model_inputs(batch, task_contract, device=device)
+            targets = batch_targets_to_tensor(batch, device=device)
+            outputs = model(model_inputs)
+            pred_heads = extract_prediction_heads(outputs, task_contract)
+            target_heads = extract_target_heads(targets, task_contract)
 
-            outputs = model(images).reshape(-1)
-            if loss_fn is not None:
-                loss_value = loss_fn(outputs, targets)
-                total_loss += float(loss_value.item()) * int(targets.shape[0])
-            total_count += int(targets.shape[0])
-            abs_error = torch.abs(outputs - targets)
+            loss_result = compute_task_loss(
+                pred_heads,
+                target_heads,
+                task_contract,
+                huber_delta=float(huber_delta),
+                loss_weights=loss_weights,
+            )
+            batch_n = int(targets.shape[0])
+            total_loss += float(loss_result.total.item()) * batch_n
+            for name, tensor_value in loss_result.components.items():
+                loss_component_totals[name] = loss_component_totals.get(name, 0.0) + (
+                    float(tensor_value.item()) * batch_n
+                )
+            total_count += batch_n
+
+            primary_error = primary_sample_error(pred_heads, target_heads, task_contract)
             for tolerance in tolerance_values:
                 within_tolerance_counts[float(tolerance)] += int(
-                    torch.count_nonzero(abs_error <= float(tolerance)).item()
+                    torch.count_nonzero(primary_error <= float(tolerance)).item()
                 )
 
-            y_pred = outputs.detach().cpu().numpy().astype(np.float32)
-            y_true = targets.detach().cpu().numpy().astype(np.float32)
-            pred_chunks.append(y_pred)
-            true_chunks.append(y_true)
-
+            for head_name, tensor_value in pred_heads.items():
+                pred_head_chunks.setdefault(head_name, []).append(
+                    tensor_value.detach().cpu().numpy().astype(np.float32)
+                )
+            for head_name, tensor_value in target_heads.items():
+                true_head_chunks.setdefault(head_name, []).append(
+                    tensor_value.detach().cpu().numpy().astype(np.float32)
+                )
             if collect_predictions:
-                for row, pred_val, true_val in zip(batch.rows, y_pred, y_true):
-                    prediction_rows.append(
-                        {
-                            "dataset_id": row.get("dataset_id"),
-                            "run_id": row.get("run_id"),
-                            "sample_id": row.get("sample_id"),
-                            "frame_index": row.get("frame_index"),
-                            "npz_filename": row.get("npz_filename"),
-                            "npz_row_index": row.get("npz_row_index"),
-                            "truth_distance_m": float(true_val),
-                            "prediction_distance_m": float(pred_val),
-                            "residual_m": float(pred_val - true_val),
-                            "source_root": row.get("source_root"),
-                        }
-                    )
+                collected_rows.extend(batch.rows)
 
             if log_every > 0:
                 should_log = (
@@ -189,9 +220,7 @@ def evaluate_split(
                         )
                         for tolerance in tolerance_values
                     )
-                    loss_text = ""
-                    if loss_fn is not None and total_count > 0:
-                        loss_text = f" running_loss={total_loss / float(total_count):.6f}"
+                    loss_text = f" running_loss={total_loss / float(total_count):.6f}"
                     print(
                         f"{log_prefix} batch {batch_index}/{total_batches_est} "
                         f"({pct:5.1f}%) seen={total_count}"
@@ -200,33 +229,49 @@ def evaluate_split(
                         flush=True,
                     )
 
-    y_true_all = np.concatenate(true_chunks) if true_chunks else np.array([], dtype=np.float32)
-    y_pred_all = np.concatenate(pred_chunks) if pred_chunks else np.array([], dtype=np.float32)
-    if y_true_all.size == 0:
+    if total_count == 0:
         raise ValueError(f"{split_name}: evaluation produced zero samples.")
 
-    residual = y_pred_all - y_true_all
+    pred_heads_np = {
+        head_name: np.concatenate(chunks, axis=0)
+        for head_name, chunks in pred_head_chunks.items()
+    }
+    true_heads_np = {
+        head_name: np.concatenate(chunks, axis=0)
+        for head_name, chunks in true_head_chunks.items()
+    }
+    metrics_result = summarize_task_metrics(
+        pred_heads_np,
+        true_heads_np,
+        task_contract,
+        tolerance_values=tolerance_values,
+        primary_tolerance=primary_tolerance,
+        rows=collected_rows if collect_predictions else None,
+        collect_predictions=collect_predictions,
+    )
     accuracy_by_tolerance = {
         float(tolerance): (within_tolerance_counts[float(tolerance)] / float(total_count))
         for tolerance in tolerance_values
     }
-    accuracy_within_tolerance = float(accuracy_by_tolerance[primary_tolerance])
-    mae = float(np.mean(np.abs(residual)))
-    rmse = float(np.sqrt(np.mean(np.square(residual))))
-    avg_loss = (total_loss / total_count) if (loss_fn is not None and total_count > 0) else None
-    pred_df = pd.DataFrame(prediction_rows) if collect_predictions else None
+    avg_loss = total_loss / total_count
+    avg_loss_components = {
+        name: float(total / float(total_count))
+        for name, total in sorted(loss_component_totals.items())
+    }
 
     return SplitEvaluation(
         split_name=split_name,
-        sample_count=int(y_true_all.size),
-        accuracy_within_tolerance=float(accuracy_within_tolerance),
+        sample_count=int(metrics_result.sample_count),
+        accuracy_within_tolerance=float(accuracy_by_tolerance[primary_tolerance]),
         accuracy_by_tolerance=accuracy_by_tolerance,
-        mae=mae,
-        rmse=rmse,
+        mae=float(metrics_result.mae),
+        rmse=float(metrics_result.rmse),
         loss=avg_loss,
-        y_true=y_true_all,
-        y_pred=y_pred_all,
-        predictions=pred_df,
+        loss_components=avg_loss_components,
+        task_metrics=dict(metrics_result.task_metrics),
+        y_true=metrics_result.primary_truth,
+        y_pred=metrics_result.primary_prediction,
+        predictions=metrics_result.predictions,
     )
 
 
@@ -243,6 +288,14 @@ def _load_model_from_run(
             raise ValueError(
                 "Run config topology_signature does not match resolved topology fields: "
                 f"expected={expected_signature} actual={actual_signature}"
+            )
+    expected_task_signature = str(run_config.get("task_contract_signature", "")).strip()
+    if expected_task_signature:
+        actual_task_signature = task_contract_signature(topology_spec)
+        if actual_task_signature != expected_task_signature:
+            raise ValueError(
+                "Run config task_contract_signature does not match resolved task contract: "
+                f"expected={expected_task_signature} actual={actual_task_signature}"
             )
 
     model = build_model_from_spec(topology_spec)
@@ -384,7 +437,14 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, topology_spec = _load_model_from_run(run_dir, run_config=run_config, device=device)
-    loss_fn = nn.HuberLoss(delta=float(run_config.get("huber_delta", 1.0)))
+    validate_task_contract_schema(
+        val_metadata,
+        val_schema,
+        topology_spec.task_contract,
+        root_name="validation",
+    )
+    huber_delta = float(run_config.get("huber_delta", 1.0))
+    loss_weights = _loss_weights_from_payload(run_config)
     progress_log_interval_batches = max(0, int(run_config.get("progress_log_interval_batches", 0)))
     accuracy_tolerance_m = float(run_config.get("accuracy_tolerance_m", 0.10))
     gib = float(1024**3)
@@ -425,7 +485,9 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         target_hw=target_hw,
         padding_mode=padding_mode,
         device=device,
-        loss_fn=loss_fn,
+        task_contract=dict(topology_spec.task_contract),
+        huber_delta=huber_delta,
+        loss_weights=loss_weights,
         collect_predictions=True,
         accuracy_tolerance_m=accuracy_tolerance_m,
         additional_accuracy_tolerances_m=run_config.get("extra_accuracy_tolerances_m"),
@@ -442,9 +504,11 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         "topology_variant": topology_spec.topology_variant,
         "topology_params": dict(topology_spec.topology_params),
         "topology_signature": topology_spec_signature(topology_spec),
+        "task_contract_signature": task_contract_signature(topology_spec),
         "model_class_name": topology_spec.model_class_name,
         "model_architecture_variant": topology_spec.topology_variant,
         "model_topology": topology_spec.to_dict(),
+        "task_contract": dict(topology_spec.task_contract),
         "padding_mode": padding_mode,
         "target_hw": {"height": int(target_hw[0]), "width": int(target_hw[1])},
         "accuracy_tolerance_m": accuracy_tolerance_m,
@@ -464,6 +528,14 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
             "rmse": val_eval.rmse,
         },
     }
+    is_multitask = (
+        str(topology_spec.task_contract.get("task_family", "")).strip()
+        == "multitask_regression"
+    )
+    if is_multitask and val_eval.loss_components:
+        summary["validation"]["loss_components"] = dict(val_eval.loss_components)
+    if val_eval.task_metrics:
+        summary["validation"].update(dict(val_eval.task_metrics))
 
     split_membership_csv_path = run_dir / "split_membership.csv"
     split_membership_json_path = run_dir / "split_membership.json"
@@ -488,7 +560,12 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
             repo_root=repo_root,
         )
         training_schema = validate_root_schema(training_metadata, root_name="training")
-        _ = training_schema  # schema check side-effect
+        validate_task_contract_schema(
+            training_metadata,
+            training_schema,
+            topology_spec.task_contract,
+            root_name="training",
+        )
         internal_test_df = _load_internal_test_split(split_membership_path, training_metadata)
         if not internal_test_df.empty:
             train_shard_cache: ShardArrayCache | None = None
@@ -507,7 +584,9 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
                 target_hw=target_hw,
                 padding_mode=padding_mode,
                 device=device,
-                loss_fn=loss_fn,
+                task_contract=dict(topology_spec.task_contract),
+                huber_delta=huber_delta,
+                loss_weights=loss_weights,
                 collect_predictions=False,
                 accuracy_tolerance_m=accuracy_tolerance_m,
                 additional_accuracy_tolerances_m=run_config.get("extra_accuracy_tolerances_m"),
@@ -523,6 +602,10 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
                 "mae": test_eval.mae,
                 "rmse": test_eval.rmse,
             }
+            if is_multitask and test_eval.loss_components:
+                summary["test_internal"]["loss_components"] = dict(test_eval.loss_components)
+            if test_eval.task_metrics:
+                summary["test_internal"].update(dict(test_eval.task_metrics))
             if train_shard_cache is not None:
                 summary["cache_runtime_stats"][
                     "test_internal_shard_cache"
@@ -532,17 +615,23 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
     if val_eval.predictions is None:
         raise RuntimeError("Expected prediction rows when collect_predictions=True.")
     val_eval.predictions.to_csv(run_dir / "sample_predictions.csv", index=False)
-    save_prediction_scatter(val_eval.y_true, val_eval.y_pred, run_dir / "prediction_scatter.png")
-    save_residual_plot(val_eval.y_true, val_eval.y_pred, run_dir / "residual_plot.png")
+    scatter_path = run_dir / "prediction_scatter.png"
+    residual_path = run_dir / "residual_plot.png"
+    if val_eval.y_true.size > 0 and val_eval.y_pred.size > 0:
+        save_prediction_scatter(val_eval.y_true, val_eval.y_pred, scatter_path)
+        save_residual_plot(val_eval.y_true, val_eval.y_pred, residual_path)
     write_json(run_dir / "evaluation_summary.json", summary)
 
-    return {
+    result = {
         "summary": summary,
         "sample_predictions_path": str(run_dir / "sample_predictions.csv"),
         "evaluation_summary_path": str(run_dir / "evaluation_summary.json"),
-        "prediction_scatter_path": str(run_dir / "prediction_scatter.png"),
-        "residual_plot_path": str(run_dir / "residual_plot.png"),
     }
+    if scatter_path.exists():
+        result["prediction_scatter_path"] = str(scatter_path)
+    if residual_path.exists():
+        result["residual_plot_path"] = str(residual_path)
+    return result
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

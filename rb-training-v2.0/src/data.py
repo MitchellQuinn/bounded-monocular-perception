@@ -8,7 +8,7 @@ import struct
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Iterator
+from typing import Any, BinaryIO, Iterator, Mapping
 
 import numpy as np
 import pandas as pd
@@ -32,6 +32,41 @@ SUPPORTED_NPZ_LAYOUTS: tuple[tuple[str, str], ...] = (
     (LEGACY_IMAGE_ARRAY_KEY, LEGACY_TARGET_ARRAY_KEY),
     (DUAL_STREAM_IMAGE_ARRAY_KEY, DUAL_STREAM_TARGET_ARRAY_KEY),
 )
+BBOX_FEATURE_COLUMNS = (
+    "bbox_feat_cx_px",
+    "bbox_feat_cy_px",
+    "bbox_feat_w_px",
+    "bbox_feat_h_px",
+    "bbox_feat_cx_norm",
+    "bbox_feat_cy_norm",
+    "bbox_feat_w_norm",
+    "bbox_feat_h_norm",
+    "bbox_feat_aspect_ratio",
+    "bbox_feat_area_norm",
+)
+BBOX_FEATURE_SCHEMA = (
+    "cx_px",
+    "cy_px",
+    "w_px",
+    "h_px",
+    "cx_norm",
+    "cy_norm",
+    "w_norm",
+    "h_norm",
+    "aspect_ratio",
+    "area_norm",
+)
+POSITION_3D_TARGET_COLUMNS = (
+    "final_pos_x_m",
+    "final_pos_y_m",
+    "final_pos_z_m",
+)
+TARGET_COLUMN_TO_NPZ_KEY = {
+    "distance_m": "y_distance_m",
+    "yaw_deg": "y_yaw_deg",
+    "yaw_sin": "y_yaw_sin",
+    "yaw_cos": "y_yaw_cos",
+}
 
 ALLOWED_PADDING_MODES = {"disabled", "pad_to_max_bottom_right"}
 ALLOWED_TRAIN_SHUFFLE_MODES = {"sequential", "shard", "active_shard_reservoir"}
@@ -57,6 +92,7 @@ class Batch:
     images: np.ndarray
     targets: np.ndarray
     rows: list[dict[str, Any]]
+    bbox_features: np.ndarray | None = None
 
 
 def discover_corpus_infos(data_root: Path, source_root: str) -> list[CorpusInfo]:
@@ -123,6 +159,31 @@ def _list_npz_keys(npz_path: Path) -> tuple[list[str], set[str]]:
         ]
     keys = sorted(Path(name).stem for name in member_names)
     return keys, set(keys)
+
+
+def _coerce_optional_numeric_group(
+    df: pd.DataFrame,
+    columns: tuple[str, ...],
+    *,
+    samples_csv_path: Path,
+    label: str,
+) -> None:
+    present = [column for column in columns if column in df.columns]
+    if not present:
+        return
+    missing = [column for column in columns if column not in df.columns]
+    if missing:
+        raise ValueError(
+            f"{label} columns must be all-or-none in {samples_csv_path}; missing {missing}."
+        )
+    for column in columns:
+        numeric = pd.to_numeric(df[column], errors="coerce")
+        if numeric.isna().any():
+            bad = int(numeric.isna().sum())
+            raise ValueError(
+                f"{column} must be numeric in {samples_csv_path}; found {bad} non-numeric rows."
+            )
+        df[column] = numeric.astype(np.float32)
 
 
 def load_root_metadata(
@@ -206,6 +267,24 @@ def load_root_metadata(
         df = df.loc[include_mask].copy()
         df["npz_filename"] = npz_filename_text.loc[include_mask].astype(str)
         df["npz_row_index"] = npz_row_numeric.loc[include_mask].astype(np.int64)
+        _coerce_optional_numeric_group(
+            df,
+            POSITION_3D_TARGET_COLUMNS,
+            samples_csv_path=info.samples_csv_path,
+            label="position_3d target",
+        )
+        _coerce_optional_numeric_group(
+            df,
+            ("yaw_deg", "yaw_sin", "yaw_cos"),
+            samples_csv_path=info.samples_csv_path,
+            label="yaw target",
+        )
+        _coerce_optional_numeric_group(
+            df,
+            BBOX_FEATURE_COLUMNS,
+            samples_csv_path=info.samples_csv_path,
+            label="bbox feature",
+        )
 
         df["source_root"] = info.source_root
         df["source_root_path"] = str(info.source_root_path)
@@ -445,6 +524,152 @@ def validate_root_schema(metadata_df: pd.DataFrame, root_name: str) -> pd.DataFr
             )
 
     return schema_df
+
+
+def _max_abs_diff(lhs: np.ndarray, rhs: np.ndarray) -> float:
+    if lhs.size == 0 and rhs.size == 0:
+        return 0.0
+    return float(np.max(np.abs(lhs - rhs)))
+
+
+def validate_task_contract_schema(
+    metadata_df: pd.DataFrame,
+    schema_df: pd.DataFrame,
+    task_contract: Mapping[str, Any],
+    *,
+    root_name: str,
+) -> None:
+    """Validate additional manifest/NPZ requirements for a resolved task contract."""
+    if metadata_df.empty:
+        raise ValueError(f"{root_name}: metadata is empty.")
+    if schema_df.empty:
+        raise ValueError(f"{root_name}: schema is empty.")
+    if not isinstance(task_contract, Mapping):
+        raise ValueError(f"{root_name}: task_contract must be a mapping; got {type(task_contract)}")
+
+    input_mode = str(task_contract.get("input_mode", "")).strip()
+    prediction_mode = str(task_contract.get("prediction_mode", "")).strip()
+    target_columns = tuple(str(column).strip() for column in task_contract.get("target_columns", []))
+    debug_target_columns = tuple(
+        str(column).strip() for column in task_contract.get("debug_target_columns", [])
+    )
+    if not target_columns:
+        raise ValueError(f"{root_name}: task_contract is missing target_columns.")
+
+    required_columns = set(target_columns) | set(debug_target_columns)
+    if input_mode == "dual_stream_image_bbox_features":
+        required_columns.update(BBOX_FEATURE_COLUMNS)
+        image_keys = set(schema_df["image_array_key"].astype(str))
+        if image_keys != {DUAL_STREAM_IMAGE_ARRAY_KEY}:
+            raise ValueError(
+                f"{root_name}: {prediction_mode} requires NPZ image key "
+                f"{DUAL_STREAM_IMAGE_ARRAY_KEY!r}; found {sorted(image_keys)}."
+            )
+        if not schema_df["x_dtype"].astype(str).eq("float32").all():
+            bad = schema_df.loc[~schema_df["x_dtype"].astype(str).eq("float32"), ["npz_filename", "x_dtype"]]
+            raise ValueError(
+                f"{root_name}: {prediction_mode} requires float32 silhouette crops.\n"
+                + bad.to_string(index=False)
+            )
+        if not schema_df["channels"].astype(int).eq(1).all():
+            bad = schema_df.loc[~schema_df["channels"].astype(int).eq(1), ["npz_filename", "channels"]]
+            raise ValueError(
+                f"{root_name}: {prediction_mode} requires single-channel grayscale crops.\n"
+                + bad.to_string(index=False)
+            )
+
+    missing_columns = sorted(required_columns - set(metadata_df.columns))
+    if missing_columns:
+        raise ValueError(
+            f"{root_name}: task contract {prediction_mode!r} requires manifest columns {missing_columns}."
+        )
+
+    for record in schema_df.to_dict(orient="records"):
+        npz_path = Path(record["npz_path"])
+        shard_rows = metadata_df[metadata_df["npz_path"] == str(npz_path)].sort_values("npz_row_index")
+        n_rows = int(record["n_rows_from_x"])
+        shard_keys = set(record["keys"])
+        required_npz_keys: set[str] = set()
+
+        if prediction_mode == "position_3d":
+            required_npz_keys.add("y_position_3d")
+        else:
+            for column in (*target_columns, *debug_target_columns):
+                npz_key = TARGET_COLUMN_TO_NPZ_KEY.get(column)
+                if npz_key is not None:
+                    required_npz_keys.add(npz_key)
+
+        if input_mode == "dual_stream_image_bbox_features":
+            required_npz_keys.update({"bbox_features", "bbox_features_schema"})
+
+        missing_npz_keys = sorted(required_npz_keys - shard_keys)
+        if missing_npz_keys:
+            raise ValueError(
+                f"{root_name}: shard {npz_path.name} is missing required NPZ keys {missing_npz_keys} "
+                f"for task contract {prediction_mode!r}."
+            )
+
+        with np.load(npz_path, allow_pickle=False) as payload:
+            if prediction_mode == "position_3d":
+                position = np.asarray(payload["y_position_3d"], dtype=np.float32)
+                if position.shape != (n_rows, len(POSITION_3D_TARGET_COLUMNS)):
+                    raise ValueError(
+                        f"{root_name}: y_position_3d shape mismatch in {npz_path.name}; "
+                        f"expected {(n_rows, len(POSITION_3D_TARGET_COLUMNS))}, got {position.shape}."
+                    )
+                csv_position = shard_rows[list(POSITION_3D_TARGET_COLUMNS)].to_numpy(dtype=np.float32)
+                diff = _max_abs_diff(csv_position, position)
+                if diff > 1e-5:
+                    raise ValueError(
+                        f"{root_name}: final position columns do not match y_position_3d in "
+                        f"{npz_path.name}; max abs diff={diff}."
+                    )
+            else:
+                for column in (*target_columns, *debug_target_columns):
+                    npz_key = TARGET_COLUMN_TO_NPZ_KEY.get(column)
+                    if npz_key is None:
+                        continue
+                    values = np.asarray(payload[npz_key], dtype=np.float32)
+                    if values.shape != (n_rows,):
+                        raise ValueError(
+                            f"{root_name}: {npz_key} shape mismatch in {npz_path.name}; "
+                            f"expected {(n_rows,)}, got {values.shape}."
+                        )
+                    csv_values = shard_rows[column].to_numpy(dtype=np.float32)
+                    diff = _max_abs_diff(csv_values, values)
+                    if diff > 1e-5:
+                        raise ValueError(
+                            f"{root_name}: {column} does not match shard {npz_key} in "
+                            f"{npz_path.name}; max abs diff={diff}."
+                        )
+
+            if input_mode == "dual_stream_image_bbox_features":
+                bbox_features = np.asarray(payload["bbox_features"], dtype=np.float32)
+                if bbox_features.shape != (n_rows, len(BBOX_FEATURE_COLUMNS)):
+                    raise ValueError(
+                        f"{root_name}: bbox_features shape mismatch in {npz_path.name}; "
+                        f"expected {(n_rows, len(BBOX_FEATURE_COLUMNS))}, got {bbox_features.shape}."
+                    )
+                if str(bbox_features.dtype) != "float32":
+                    raise ValueError(
+                        f"{root_name}: bbox_features dtype must be float32 in {npz_path.name}; "
+                        f"got {bbox_features.dtype}."
+                    )
+                csv_bbox = shard_rows[list(BBOX_FEATURE_COLUMNS)].to_numpy(dtype=np.float32)
+                bbox_diff = _max_abs_diff(csv_bbox, bbox_features)
+                if bbox_diff > 1e-5:
+                    raise ValueError(
+                        f"{root_name}: bbox feature columns do not match bbox_features in "
+                        f"{npz_path.name}; max abs diff={bbox_diff}."
+                    )
+
+                raw_schema = np.asarray(payload["bbox_features_schema"]).astype(str).tolist()
+                schema_tuple = tuple(raw_schema)
+                if schema_tuple != BBOX_FEATURE_SCHEMA:
+                    raise ValueError(
+                        f"{root_name}: bbox_features_schema mismatch in {npz_path.name}; "
+                        f"expected {list(BBOX_FEATURE_SCHEMA)}, got {raw_schema}."
+                    )
 
 
 def determine_target_hw(schema_df: pd.DataFrame, padding_mode: str = "disabled") -> tuple[int, int]:
@@ -775,6 +1000,8 @@ def iter_batches(
     shard_cache: ShardArrayCache | None = None,
     shuffle_mode: str | None = None,
     active_shard_count: int = 3,
+    target_columns: tuple[str, ...] = ("distance_m",),
+    include_bbox_features: bool = False,
 ) -> Iterator[Batch]:
     """Stream mini-batches from shard-backed metadata.
 
@@ -804,9 +1031,14 @@ def iter_batches(
     rng = np.random.default_rng(seed)
 
     image_buffer: list[np.ndarray] = []
-    target_buffer: list[float] = []
+    target_buffer: list[np.ndarray | float] = []
     row_buffer: list[dict[str, Any]] = []
+    bbox_feature_buffer: list[np.ndarray] = []
     image_array_key_by_shard: dict[str, str] = {}
+
+    resolved_target_columns = tuple(str(column).strip() for column in target_columns if str(column).strip())
+    if not resolved_target_columns:
+        raise ValueError("target_columns must contain at least one column.")
 
     def _resolve_image_array_key_for_shard(shard_path: str) -> str:
         cached = image_array_key_by_shard.get(shard_path)
@@ -817,16 +1049,50 @@ def iter_batches(
         image_array_key_by_shard[shard_path] = image_array_key
         return image_array_key
 
+    def _extract_target_value(row_record: dict[str, Any]) -> np.ndarray | float:
+        values: list[float] = []
+        for column in resolved_target_columns:
+            if column not in row_record:
+                raise KeyError(
+                    f"Batch target column {column!r} is missing from the manifest row."
+                )
+            raw_value = row_record[column]
+            if pd.isna(raw_value):
+                raise ValueError(f"Batch target column {column!r} contains NA values.")
+            values.append(float(raw_value))
+        if len(values) == 1:
+            return float(values[0])
+        return np.asarray(values, dtype=np.float32)
+
+    def _extract_bbox_feature_value(row_record: dict[str, Any]) -> np.ndarray:
+        values: list[float] = []
+        for column in BBOX_FEATURE_COLUMNS:
+            if column not in row_record:
+                raise KeyError(
+                    f"Batch bbox feature column {column!r} is missing from the manifest row."
+                )
+            raw_value = row_record[column]
+            if pd.isna(raw_value):
+                raise ValueError(f"Batch bbox feature column {column!r} contains NA values.")
+            values.append(float(raw_value))
+        return np.asarray(values, dtype=np.float32)
+
     def _emit_if_ready() -> Iterator[Batch]:
         if len(image_buffer) >= batch_size:
             yield Batch(
                 images=np.stack(image_buffer).astype(np.float32),
                 targets=np.asarray(target_buffer, dtype=np.float32),
                 rows=list(row_buffer),
+                bbox_features=(
+                    np.stack(bbox_feature_buffer).astype(np.float32)
+                    if include_bbox_features
+                    else None
+                ),
             )
             image_buffer.clear()
             target_buffer.clear()
             row_buffer.clear()
+            bbox_feature_buffer.clear()
 
     def _append_sample(image: np.ndarray, row_record: dict[str, Any]) -> Iterator[Batch]:
         model_image = prepare_image_for_model(
@@ -835,8 +1101,10 @@ def iter_batches(
             padding_mode=padding_mode,
         )
         image_buffer.append(model_image)
-        target_buffer.append(float(row_record["distance_m"]))
+        target_buffer.append(_extract_target_value(row_record))
         row_buffer.append(row_record)
+        if include_bbox_features:
+            bbox_feature_buffer.append(_extract_bbox_feature_value(row_record))
         yield from _emit_if_ready()
 
     if shuffle_mode == "active_shard_reservoir":
@@ -904,6 +1172,11 @@ def iter_batches(
                 images=np.stack(image_buffer).astype(np.float32),
                 targets=np.asarray(target_buffer, dtype=np.float32),
                 rows=list(row_buffer),
+                bbox_features=(
+                    np.stack(bbox_feature_buffer).astype(np.float32)
+                    if include_bbox_features
+                    else None
+                ),
             )
         return
 
@@ -965,6 +1238,11 @@ def iter_batches(
             images=np.stack(image_buffer).astype(np.float32),
             targets=np.asarray(target_buffer, dtype=np.float32),
             rows=list(row_buffer),
+            bbox_features=(
+                np.stack(bbox_feature_buffer).astype(np.float32)
+                if include_bbox_features
+                else None
+            ),
         )
 
 

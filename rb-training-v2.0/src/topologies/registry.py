@@ -9,7 +9,12 @@ from typing import Any, Callable, Mapping
 
 from torch import nn
 
-from . import topology_2d_cnn, topology_dual_stream_v0_2, topology_global_pool_cnn
+from . import (
+    topology_2d_cnn,
+    topology_dual_stream_v0_2,
+    topology_dual_stream_yaw,
+    topology_global_pool_cnn,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,8 @@ class TopologyDefinition:
     supported_variants: tuple[str, ...]
     build_model_fn: Callable[[str, Mapping[str, Any] | None], nn.Module]
     architecture_text_fn: Callable[[nn.Module], str]
+    topology_metadata: dict[str, Any]
+    resolve_task_contract_fn: Callable[[str, Mapping[str, Any] | None], Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -32,15 +39,24 @@ class ResolvedTopologySpec:
     topology_variant: str
     topology_params: dict[str, Any]
     model_class_name: str
+    topology_metadata: dict[str, Any]
+    task_contract: dict[str, Any]
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize topology spec as a plain mapping."""
+    def identity_dict(self) -> dict[str, Any]:
+        """Serialize only legacy identity fields."""
         return {
             "topology_id": str(self.topology_id),
             "topology_variant": str(self.topology_variant),
             "topology_params": dict(self.topology_params),
             "model_class_name": str(self.model_class_name),
         }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize topology spec as a plain mapping."""
+        payload = self.identity_dict()
+        payload["topology_metadata"] = dict(self.topology_metadata)
+        payload["task_contract"] = dict(self.task_contract)
+        return payload
 
 
 DEFAULT_TOPOLOGY_ID = topology_2d_cnn.TOPOLOGY_ID
@@ -54,6 +70,8 @@ _REGISTRY: dict[str, TopologyDefinition] = {
         supported_variants=topology_2d_cnn.supported_variants(),
         build_model_fn=topology_2d_cnn.build_model,
         architecture_text_fn=topology_2d_cnn.architecture_text,
+        topology_metadata=dict(topology_2d_cnn.TOPOLOGY_METADATA),
+        resolve_task_contract_fn=topology_2d_cnn.resolve_task_contract,
     ),
     topology_global_pool_cnn.TOPOLOGY_ID: TopologyDefinition(
         topology_id=topology_global_pool_cnn.TOPOLOGY_ID,
@@ -62,6 +80,8 @@ _REGISTRY: dict[str, TopologyDefinition] = {
         supported_variants=topology_global_pool_cnn.supported_variants(),
         build_model_fn=topology_global_pool_cnn.build_model,
         architecture_text_fn=topology_global_pool_cnn.architecture_text,
+        topology_metadata=dict(topology_global_pool_cnn.TOPOLOGY_METADATA),
+        resolve_task_contract_fn=topology_global_pool_cnn.resolve_task_contract,
     ),
     topology_dual_stream_v0_2.TOPOLOGY_ID: TopologyDefinition(
         topology_id=topology_dual_stream_v0_2.TOPOLOGY_ID,
@@ -70,6 +90,18 @@ _REGISTRY: dict[str, TopologyDefinition] = {
         supported_variants=topology_dual_stream_v0_2.supported_variants(),
         build_model_fn=topology_dual_stream_v0_2.build_model,
         architecture_text_fn=topology_dual_stream_v0_2.architecture_text,
+        topology_metadata=dict(topology_dual_stream_v0_2.TOPOLOGY_METADATA),
+        resolve_task_contract_fn=topology_dual_stream_v0_2.resolve_task_contract,
+    ),
+    topology_dual_stream_yaw.TOPOLOGY_ID: TopologyDefinition(
+        topology_id=topology_dual_stream_yaw.TOPOLOGY_ID,
+        model_class_name=topology_dual_stream_yaw.MODEL_CLASS_NAME,
+        default_variant=topology_dual_stream_yaw.DEFAULT_VARIANT,
+        supported_variants=topology_dual_stream_yaw.supported_variants(),
+        build_model_fn=topology_dual_stream_yaw.build_model,
+        architecture_text_fn=topology_dual_stream_yaw.architecture_text,
+        topology_metadata=dict(topology_dual_stream_yaw.TOPOLOGY_METADATA),
+        resolve_task_contract_fn=topology_dual_stream_yaw.resolve_task_contract,
     ),
 }
 
@@ -113,6 +145,28 @@ def canonicalize_topology_params(raw: Mapping[str, Any] | None) -> dict[str, Any
     parsed = json.loads(canonical_json)
     if not isinstance(parsed, dict):
         raise ValueError("topology_params canonicalization failed to produce an object.")
+    return parsed
+
+
+def canonicalize_task_contract(raw: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Canonicalize task/output contracts into JSON-stable dictionaries."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"task_contract must be a mapping/object; got {type(raw)}")
+    try:
+        canonical_json = json.dumps(
+            raw,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except TypeError as exc:
+        raise ValueError(
+            "task_contract must be JSON-serializable for reproducible artifact tracking."
+        ) from exc
+    parsed = json.loads(canonical_json)
+    if not isinstance(parsed, dict):
+        raise ValueError("task_contract canonicalization failed to produce an object.")
     return parsed
 
 
@@ -172,11 +226,16 @@ def resolve_topology_spec(
         )
 
     params = canonicalize_topology_params(topology_params)
+    task_contract = canonicalize_task_contract(
+        definition.resolve_task_contract_fn(selected_variant, params)
+    )
     return ResolvedTopologySpec(
         topology_id=resolved_topology_id,
         topology_variant=selected_variant,
         topology_params=params,
         model_class_name=definition.model_class_name,
+        topology_metadata=dict(definition.topology_metadata),
+        task_contract=task_contract,
     )
 
 
@@ -238,7 +297,7 @@ def architecture_text_from_spec(model: nn.Module, spec: ResolvedTopologySpec) ->
 def topology_spec_signature(spec: ResolvedTopologySpec | Mapping[str, Any]) -> str:
     """Return stable hash signature for topology-compatibility checks."""
     if isinstance(spec, ResolvedTopologySpec):
-        payload = spec.to_dict()
+        payload = spec.identity_dict()
     elif isinstance(spec, Mapping):
         raw_params = spec.get("topology_params")
         params_mapping = raw_params if isinstance(raw_params, Mapping) else None
@@ -250,6 +309,22 @@ def topology_spec_signature(spec: ResolvedTopologySpec | Mapping[str, Any]) -> s
         }
     else:
         raise ValueError(f"Unsupported spec type for signature: {type(spec)}")
+
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def task_contract_signature(contract: ResolvedTopologySpec | Mapping[str, Any]) -> str:
+    """Return stable hash signature for task/output-contract compatibility checks."""
+    if isinstance(contract, ResolvedTopologySpec):
+        payload = canonicalize_task_contract(contract.task_contract)
+    elif isinstance(contract, Mapping):
+        task_contract = contract.get("task_contract")
+        payload = canonicalize_task_contract(
+            task_contract if isinstance(task_contract, Mapping) else contract
+        )
+    else:
+        raise ValueError(f"Unsupported contract type for signature: {type(contract)}")
 
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return sha256(canonical.encode("utf-8")).hexdigest()

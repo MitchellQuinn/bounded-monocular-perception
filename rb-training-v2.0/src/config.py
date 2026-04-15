@@ -20,6 +20,9 @@ class TrainConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-5
     huber_delta: float = 1.0
+    distance_loss_weight: float = 1.0
+    orientation_loss_weight: float = 1.0
+    position_loss_weight: float = 1.0
     early_stopping_patience: int = 4
     model_name: str = "2d-cnn"
     run_id: str | None = None

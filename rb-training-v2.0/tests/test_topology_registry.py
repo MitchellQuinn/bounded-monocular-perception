@@ -24,6 +24,7 @@ class TopologyRegistryTests(unittest.TestCase):
         self.assertGreaterEqual(len(topology_ids), 2)
         self.assertIn("distance_regressor_2d_cnn", topology_ids)
         self.assertIn("distance_regressor_dual_stream", topology_ids)
+        self.assertIn("distance_regressor_dual_stream_yaw", topology_ids)
         self.assertIn("distance_regressor_global_pool_cnn", topology_ids)
 
     def test_legacy_mapping_resolves_to_default_topology(self) -> None:

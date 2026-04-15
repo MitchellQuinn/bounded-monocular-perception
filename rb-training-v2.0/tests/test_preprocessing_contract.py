@@ -127,6 +127,29 @@ class TrainingPreprocessingContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "conflicting PreprocessingContract"):
             _resolve_preprocessing_contract(records)
 
+    def test_describe_input_representation_handles_dual_stream_array_keys(self) -> None:
+        contract = {
+            "ContractVersion": "rb-preprocess-v4-dual-stream-orientation-v1",
+            "CurrentRepresentation": {
+                "StorageFormat": "npz",
+                "Kind": "dual_stream_npz",
+                "ArrayKeys": [
+                    "silhouette_crop",
+                    "bbox_features",
+                    "y_distance_m",
+                    "y_yaw_deg",
+                    "y_yaw_sin",
+                    "y_yaw_cos",
+                ],
+                "ArrayDType": "float32",
+            },
+        }
+
+        description = _describe_input_representation(contract)
+
+        self.assertIn("npz keys silhouette_crop,bbox_features", description)
+        self.assertIn("dual_stream_npz", description)
+
 
 if __name__ == "__main__":
     unittest.main()

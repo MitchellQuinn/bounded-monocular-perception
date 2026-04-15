@@ -23,6 +23,29 @@ TOPOLOGY_METADATA = {
 }
 
 
+def resolve_task_contract(
+    topology_variant: str,
+    topology_params: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Describe the training/evaluation contract for this topology family."""
+    _ = topology_variant
+    _ = topology_params
+    return {
+        "task_family": "regression",
+        "prediction_mode": "scalar_distance",
+        "input_mode": "image_tensor",
+        "output_kind": "tensor",
+        "target_columns": ["distance_m"],
+        "debug_target_columns": [],
+        "heads": {
+            "distance": {
+                "target_columns": ["distance_m"],
+                "metrics_role": "distance",
+                "loss_role": "distance",
+            }
+        },
+    }
+
 
 def supported_variants() -> tuple[str, ...]:
     """Return supported variants for this topology."""
