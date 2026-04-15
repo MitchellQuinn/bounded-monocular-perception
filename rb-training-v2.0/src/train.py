@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 import shutil
 from time import perf_counter
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -42,12 +42,16 @@ from .paths import (
 )
 from .plots import save_history_plot, save_prediction_scatter, save_residual_plot
 from .task_runtime import (
+    append_head_chunks,
     batch_targets_to_tensor,
     batch_to_model_inputs,
     compute_task_loss,
     extract_prediction_heads,
     extract_target_heads,
+    flatten_task_metrics_scalars,
+    format_orientation_metrics_log_line,
     primary_sample_error,
+    summarize_task_metrics_from_chunks,
 )
 from .resume.state import (
     RESUME_STATE_FILENAME,
@@ -61,8 +65,10 @@ from .topologies import (
     build_model_from_spec,
     resolve_topology_spec,
     task_contract_signature,
+    topology_contract_signature,
     topology_spec_signature,
 )
+from .topologies.contracts import reporting_train_losses
 from .utils import (
     environment_summary,
     git_metadata,
@@ -212,6 +218,36 @@ def _resolve_topology_from_train_config(config: TrainConfig) -> ResolvedTopology
     )
 
 
+def _declared_component_loss_names(task_contract: Mapping[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name in reporting_train_losses(task_contract)
+        if str(name).strip() and str(name).strip() != "total_loss"
+    )
+
+
+def _selected_loss_components(
+    loss_components: Mapping[str, float],
+    task_contract: Mapping[str, Any],
+) -> dict[str, float]:
+    selected: dict[str, float] = {}
+    for name in _declared_component_loss_names(task_contract):
+        if name in loss_components:
+            selected[str(name)] = float(loss_components[name])
+    return selected
+
+
+def _format_yaw_metric_log_line(
+    task_metrics: Mapping[str, Any],
+    task_contract: Mapping[str, Any] | None = None,
+) -> str:
+    return format_orientation_metrics_log_line(
+        task_metrics,
+        contract=task_contract,
+        indent="        ",
+    )
+
+
 def _build_split_membership(
     train_split: pd.DataFrame,
     validation_split: pd.DataFrame,
@@ -279,6 +315,8 @@ def _train_one_epoch(
     total_loss_components: dict[str, float] = {}
     total_count = 0
     within_tolerance_counts: dict[float, int] = {float(tolerance): 0 for tolerance in tolerance_values}
+    pred_head_chunks: dict[str, list[np.ndarray]] = {}
+    true_head_chunks: dict[str, list[np.ndarray]] = {}
     total_batches_est = max(1, int(math.ceil(len(split_df) / float(batch_size))))
     started = perf_counter()
     epoch_label = (
@@ -331,6 +369,8 @@ def _train_one_epoch(
             )
         total_count += batch_n
         batch_primary_error = primary_sample_error(pred_heads, target_heads, task_contract)
+        append_head_chunks(pred_head_chunks, pred_heads)
+        append_head_chunks(true_head_chunks, target_heads)
         for tolerance in tolerance_values:
             within_tolerance_counts[float(tolerance)] += int(
                 torch.count_nonzero(batch_primary_error <= float(tolerance)).item()
@@ -355,15 +395,28 @@ def _train_one_epoch(
             if should_log:
                 elapsed = perf_counter() - started
                 pct = 100.0 * (batch_index / float(total_batches_est))
-                print(
+                summary_line = (
                     f"[train][epoch {epoch_label}] "
                     f"batch {batch_index}/{total_batches_est} ({pct:5.1f}%) "
                     f"seen={total_count} {_format_accuracy_metrics(running_accuracy_by_tolerance)} "
                     f"running_loss={running_loss:.6f} "
                     f"{running_component_text} "
-                    f"elapsed={elapsed:.1f}s",
-                    flush=True,
+                    f"elapsed={elapsed:.1f}s"
                 )
+                running_task_metrics = summarize_task_metrics_from_chunks(
+                    pred_head_chunks,
+                    true_head_chunks,
+                    task_contract,
+                    tolerance_values=tolerance_values,
+                    primary_tolerance=primary_tolerance,
+                ).task_metrics
+                yaw_log_line = _format_yaw_metric_log_line(
+                    running_task_metrics,
+                    task_contract,
+                )
+                if yaw_log_line:
+                    summary_line = f"{summary_line}\n{yaw_log_line}"
+                print(summary_line, flush=True)
 
     if total_count == 0:
         raise ValueError("Training epoch produced zero samples.")
@@ -561,17 +614,23 @@ def _write_model_card(
     )
     input_mode = str(topology_spec.task_contract.get("input_mode", "")).strip()
     prediction_mode = str(topology_spec.task_contract.get("prediction_mode", "")).strip()
+    loss_roles = {
+        str(spec.get("loss_role", head_name)).strip() or str(head_name)
+        for head_name, spec in dict(topology_spec.task_contract.get("heads", {})).items()
+        if isinstance(spec, dict)
+    }
+    declared_component_losses = set(_declared_component_loss_names(topology_spec.task_contract))
     if input_mode == "dual_stream_image_bbox_features":
         input_text = "grayscale crop tensor plus bbox feature vector"
     else:
         input_text = "grayscale full-frame tensor normalized to [0, 1]"
-    if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+    if {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
         loss_text = (
             "Weighted multitask Huber "
             f"(delta={config.huber_delta}, distance={config.distance_loss_weight}, "
             f"orientation={config.orientation_loss_weight})"
         )
-    elif prediction_mode == "position_3d":
+    elif loss_roles == {"position"}:
         loss_text = (
             f"Huber over position_3d targets (delta={config.huber_delta}, "
             f"weight={config.position_loss_weight})"
@@ -652,9 +711,31 @@ def _write_model_card(
     ]
     orientation_metrics = validation_metrics.get("orientation")
     if isinstance(orientation_metrics, dict):
-        lines.insert(-3, f"- Validation mean angular error: {float(orientation_metrics.get('mean_angular_error_deg', float('nan'))):.6f} deg")
-        lines.insert(-3, f"- Validation median angular error: {float(orientation_metrics.get('median_angular_error_deg', float('nan'))):.6f} deg")
-        lines.insert(-3, f"- Validation p95 angular error: {float(orientation_metrics.get('p95_angular_error_deg', float('nan'))):.6f} deg")
+        mean_key = (
+            "yaw_mean_error_deg"
+            if "yaw_mean_error_deg" in orientation_metrics
+            else "mean_angular_error_deg"
+        )
+        median_key = (
+            "yaw_median_error_deg"
+            if "yaw_median_error_deg" in orientation_metrics
+            else "median_angular_error_deg"
+        )
+        p95_key = (
+            "yaw_p95_error_deg"
+            if "yaw_p95_error_deg" in orientation_metrics
+            else "p95_angular_error_deg"
+        )
+        lines.insert(-3, f"- Validation mean angular error: {float(orientation_metrics.get(mean_key, float('nan'))):.6f} deg")
+        lines.insert(-3, f"- Validation median angular error: {float(orientation_metrics.get(median_key, float('nan'))):.6f} deg")
+        lines.insert(-3, f"- Validation p95 angular error: {float(orientation_metrics.get(p95_key, float('nan'))):.6f} deg")
+        for threshold in (5, 10, 15):
+            key = f"yaw_acc@{threshold}deg"
+            if key in orientation_metrics:
+                lines.insert(
+                    -3,
+                    f"- Validation yaw accuracy (<= {threshold} deg): {float(orientation_metrics[key]):.6f}",
+                )
     path = run_dir / "model_card.md"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -790,6 +871,17 @@ def _load_resume_context(
                 "Resume source task contract mismatch: "
                 f"source={source_task_contract_signature} current={current_task_contract_signature}"
             )
+    source_topology_contract_signature = str(
+        source_config.get("topology_contract_signature", "")
+    ).strip()
+    if source_topology_contract_signature:
+        current_topology_contract_signature = topology_contract_signature(topology_spec)
+        if source_topology_contract_signature != current_topology_contract_signature:
+            raise ValueError(
+                "Resume source topology contract mismatch: "
+                f"source={source_topology_contract_signature} "
+                f"current={current_topology_contract_signature}"
+            )
 
     state_train_root = str(resume_state.get("training_data_root_resolved", "")).strip()
     state_val_root = str(resume_state.get("validation_data_root_resolved", "")).strip()
@@ -841,6 +933,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "additional_epochs can only be used when resume_from_run_dir is set."
         )
     topology_spec = _resolve_topology_from_train_config(config)
+    topology_contract_signature_value = topology_contract_signature(topology_spec)
     task_contract_signature_value = task_contract_signature(topology_spec)
     loss_weights = _loss_weights_from_config(config)
     active_loss_roles = {
@@ -958,9 +1051,11 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "topology_variant": topology_spec.topology_variant,
             "topology_params": dict(topology_spec.topology_params),
             "topology_signature": topology_signature,
+            "topology_contract_signature": topology_contract_signature_value,
             "task_contract_signature": task_contract_signature_value,
             "model_architecture_variant": topology_spec.topology_variant,
             "model_topology": topology_spec.to_dict(),
+            "topology_contract": dict(topology_spec.topology_contract),
             "task_contract": dict(topology_spec.task_contract),
         }
     )
@@ -1014,10 +1109,12 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "topology_variant": topology_spec.topology_variant,
             "topology_params": dict(topology_spec.topology_params),
             "topology_signature": topology_signature,
+            "topology_contract_signature": topology_contract_signature_value,
             "task_contract_signature": task_contract_signature_value,
             "model_architecture_variant": topology_spec.topology_variant,
             "architecture_text": architecture_summary,
             "model_topology": topology_spec.to_dict(),
+            "topology_contract": dict(topology_spec.topology_contract),
             "task_contract": dict(topology_spec.task_contract),
         },
     )
@@ -1254,24 +1351,22 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             epoch_record[f"val_acc_at_{suffix}m"] = float(
                 val_eval.accuracy_by_tolerance.get(float(tolerance), float("nan"))
             )
-        if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
-            for name, value in sorted(train_summary.loss_components.items()):
-                if name != "total_loss":
-                    epoch_record[f"train_{name}"] = float(value)
-            for name, value in sorted(val_eval.loss_components.items()):
-                if name != "total_loss":
-                    epoch_record[f"val_{name}"] = float(value)
-        if val_eval.task_metrics:
-            orientation_metrics = val_eval.task_metrics.get("orientation")
-            if isinstance(orientation_metrics, dict):
-                for key, value in orientation_metrics.items():
-                    epoch_record[f"val_{key}"] = float(value)
-            position_metrics = val_eval.task_metrics.get("position")
-            if isinstance(position_metrics, dict):
-                for key, value in position_metrics.items():
-                    if isinstance(value, dict):
-                        continue
-                    epoch_record[f"val_{key}"] = float(value)
+        for name, value in sorted(
+            _selected_loss_components(
+                train_summary.loss_components,
+                topology_spec.task_contract,
+            ).items()
+        ):
+            epoch_record[f"train_{name}"] = float(value)
+        for name, value in sorted(
+            _selected_loss_components(
+                val_eval.loss_components,
+                topology_spec.task_contract,
+            ).items()
+        ):
+            epoch_record[f"val_{name}"] = float(value)
+        for key, value in sorted(flatten_task_metrics_scalars(val_eval.task_metrics).items()):
+            epoch_record[f"val_{key}"] = float(value)
         history_records.append(epoch_record)
 
         if val_eval.loss < best_val_loss:
@@ -1286,15 +1381,38 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         lr_text = f"lr={epoch_lr_before:.2e}"
         if not math.isclose(epoch_lr_before, epoch_lr_after):
             lr_text = f"lr={epoch_lr_before:.2e}->{epoch_lr_after:.2e}"
-        print(
+        component_log_parts = []
+        for name, value in sorted(
+            _selected_loss_components(
+                train_summary.loss_components,
+                topology_spec.task_contract,
+            ).items()
+        ):
+            component_log_parts.append(f"train_{name}={float(value):.6f}")
+        for name, value in sorted(
+            _selected_loss_components(
+                val_eval.loss_components,
+                topology_spec.task_contract,
+            ).items()
+        ):
+            component_log_parts.append(f"val_{name}={float(value):.6f}")
+        component_log_text = " ".join(component_log_parts)
+        summary_line = (
             f"[train][epoch {epoch}/{total_epochs_target}] complete "
             f"train_loss={train_summary.loss:.6f} {_format_accuracy_metrics(train_summary.accuracy_by_tolerance, prefix='train_')} "
             f"val_loss={float(val_eval.loss):.6f} {_format_accuracy_metrics(val_eval.accuracy_by_tolerance, prefix='val_')} "
             f"val_mae={val_eval.mae:.6f} val_rmse={val_eval.rmse:.6f} "
+            f"{component_log_text} "
             f"{lr_text} "
-            f"elapsed={epoch_elapsed:.1f}s",
-            flush=True,
+            f"elapsed={epoch_elapsed:.1f}s"
         )
+        yaw_log_line = _format_yaw_metric_log_line(
+            val_eval.task_metrics,
+            topology_spec.task_contract,
+        )
+        if yaw_log_line:
+            summary_line = f"{summary_line}\n{yaw_log_line}"
+        print(summary_line, flush=True)
         history_df_epoch = pd.DataFrame(history_records)
         history_df_epoch.to_csv(run_dir / "history.csv", index=False)
         torch.save(model.state_dict(), run_dir / "latest.pt")
@@ -1316,6 +1434,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
                 topology_variant=topology_spec.topology_variant,
                 topology_params=dict(topology_spec.topology_params),
                 topology_signature=topology_signature,
+                topology_contract_signature=topology_contract_signature_value,
                 task_contract_signature=task_contract_signature_value,
                 model_architecture_variant=topology_spec.topology_variant,
                 training_data_root_resolved=str(training_root),
@@ -1388,8 +1507,12 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "rmse": float(final_val.rmse),
         },
     }
-    if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
-        metrics["validation"]["loss_components"] = dict(final_val.loss_components)
+    final_val_loss_components = _selected_loss_components(
+        final_val.loss_components,
+        topology_spec.task_contract,
+    )
+    if final_val_loss_components:
+        metrics["validation"]["loss_components"] = final_val_loss_components
     if final_val.task_metrics:
         metrics["validation"].update(dict(final_val.task_metrics))
 
@@ -1420,8 +1543,12 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "mae": float(test_eval.mae),
             "rmse": float(test_eval.rmse),
         }
-        if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
-            metrics["test_internal"]["loss_components"] = dict(test_eval.loss_components)
+        test_loss_components = _selected_loss_components(
+            test_eval.loss_components,
+            topology_spec.task_contract,
+        )
+        if test_loss_components:
+            metrics["test_internal"]["loss_components"] = test_loss_components
         if test_eval.task_metrics:
             metrics["test_internal"].update(dict(test_eval.task_metrics))
 
@@ -1465,18 +1592,24 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         str(column).strip() for column in topology_spec.task_contract.get("target_columns", [])
     )
     prediction_mode = str(topology_spec.task_contract.get("prediction_mode", "")).strip()
+    declared_component_losses = set(_declared_component_loss_names(topology_spec.task_contract))
+    loss_roles = {
+        str(spec.get("loss_role", head_name)).strip() or str(head_name)
+        for head_name, spec in dict(topology_spec.task_contract.get("heads", {})).items()
+        if isinstance(spec, dict)
+    }
     if prediction_mode == "position_3d":
         target_name = "position_3d"
     elif len(target_columns) == 1:
         target_name = target_columns[0]
     else:
         target_name = ",".join(target_columns)
-    if str(topology_spec.task_contract.get("task_family", "")).strip() == "multitask_regression":
+    if {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
         loss_function_text = (
             f"WeightedMultiTaskHuber(delta={config.huber_delta},"
             f"distance={loss_weights['distance']},orientation={loss_weights['orientation']})"
         )
-    elif prediction_mode == "position_3d":
+    elif loss_roles == {"position"}:
         loss_function_text = (
             f"WeightedHuber(delta={config.huber_delta},position={loss_weights['position']})"
         )
@@ -1504,10 +1637,12 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "topology_variant": topology_spec.topology_variant,
         "topology_params": dict(topology_spec.topology_params),
         "topology_signature": topology_signature,
+        "topology_contract_signature": topology_contract_signature_value,
         "task_contract_signature": task_contract_signature_value,
         "model_architecture_variant": topology_spec.topology_variant,
         "model_architecture_summary": architecture_summary,
         "model_topology": topology_spec.to_dict(),
+        "topology_contract": dict(topology_spec.topology_contract),
         "task_contract": dict(topology_spec.task_contract),
         "input_representation": _describe_input_representation(preprocessing_contract),
         "input_shape": [1, int(target_hw[0]), int(target_hw[1])],
@@ -1540,6 +1675,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "topology_variant": topology_spec.topology_variant,
             "topology_params": dict(topology_spec.topology_params),
             "topology_signature": topology_signature,
+            "topology_contract_signature": topology_contract_signature_value,
             "task_contract_signature": task_contract_signature_value,
             "model_architecture_variant": topology_spec.topology_variant,
             "progress_log_interval_batches": progress_log_interval_batches,

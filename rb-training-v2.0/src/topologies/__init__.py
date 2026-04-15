@@ -14,6 +14,7 @@ from .registry import (
     resolve_topology_spec,
     resolve_topology_spec_from_mapping,
     task_contract_signature,
+    topology_contract_signature,
     topology_spec_signature,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     "resolve_topology_spec",
     "resolve_topology_spec_from_mapping",
     "task_contract_signature",
+    "topology_contract_signature",
     "topology_spec_signature",
 ]

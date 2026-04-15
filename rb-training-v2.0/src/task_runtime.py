@@ -12,6 +12,11 @@ import torch
 import torch.nn.functional as F
 
 from .data import Batch
+from .topologies.contracts import (
+    reporting_family,
+    reporting_orientation_accuracy_thresholds_deg,
+    reporting_validation_metrics,
+)
 
 
 @dataclass
@@ -282,6 +287,130 @@ def _base_prediction_row(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _degree_threshold_label(value: float) -> str:
+    numeric = float(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return str(numeric).replace(".", "p")
+
+
+def append_head_chunks(
+    head_chunks: dict[str, list[np.ndarray]],
+    heads: Mapping[str, torch.Tensor | np.ndarray],
+) -> None:
+    """Append detached head arrays into a chunk store for later metric summarization."""
+    for head_name, tensor_value in heads.items():
+        if torch.is_tensor(tensor_value):
+            array = tensor_value.detach().cpu().numpy()
+        else:
+            array = np.asarray(tensor_value)
+        head_chunks.setdefault(str(head_name), []).append(
+            np.asarray(array, dtype=np.float32)
+        )
+
+
+def _concat_head_chunks(
+    head_chunks: Mapping[str, list[np.ndarray]],
+) -> dict[str, np.ndarray]:
+    if not head_chunks:
+        raise ValueError("head_chunks cannot be empty.")
+
+    concatenated: dict[str, np.ndarray] = {}
+    for head_name, chunks in head_chunks.items():
+        if not chunks:
+            raise ValueError(f"Head chunk list is empty for {head_name!r}.")
+        if len(chunks) == 1:
+            concatenated[str(head_name)] = np.asarray(chunks[0], dtype=np.float32)
+        else:
+            concatenated[str(head_name)] = np.concatenate(chunks, axis=0).astype(
+                np.float32, copy=False
+            )
+    return concatenated
+
+
+def flatten_task_metrics_scalars(task_metrics: Mapping[str, Any]) -> dict[str, float]:
+    """Flatten one level of scalar task metrics for history/logging rows."""
+    flat: dict[str, float] = {}
+    for group_value in task_metrics.values():
+        if not isinstance(group_value, Mapping):
+            continue
+        for key, value in group_value.items():
+            if isinstance(value, Mapping):
+                continue
+            if isinstance(value, (int, float, np.integer, np.floating)):
+                flat[str(key)] = float(value)
+    return flat
+
+
+def format_orientation_metrics_log_line(
+    task_metrics: Mapping[str, Any],
+    contract: Mapping[str, Any] | None = None,
+    *,
+    indent: str = "        ",
+) -> str:
+    """Format declared orientation metrics for human-readable progress logging."""
+    orientation_metrics = task_metrics.get("orientation")
+    if not isinstance(orientation_metrics, Mapping):
+        return ""
+
+    ordered_keys = [
+        key
+        for key in reporting_validation_metrics(contract or {})
+        if key in orientation_metrics
+    ]
+    if not ordered_keys:
+        ordered_keys = [
+            key
+            for key in (
+                "yaw_mean_error_deg",
+                "yaw_median_error_deg",
+                "yaw_p95_error_deg",
+                "mean_angular_error_deg",
+                "median_angular_error_deg",
+                "p95_angular_error_deg",
+            )
+            if key in orientation_metrics
+        ]
+        ordered_keys.extend(
+            sorted(
+                key
+                for key in orientation_metrics
+                if key.startswith("yaw_acc@") and key not in ordered_keys
+            )
+        )
+
+    parts: list[str] = []
+    for key in ordered_keys:
+        value = orientation_metrics.get(key)
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            parts.append(f"{key}={float(value):.6f}")
+    if not parts:
+        return ""
+    return f"{indent}{' '.join(parts)}"
+
+
+def summarize_task_metrics_from_chunks(
+    prediction_head_chunks: Mapping[str, list[np.ndarray]],
+    target_head_chunks: Mapping[str, list[np.ndarray]],
+    task_contract: Mapping[str, Any],
+    *,
+    tolerance_values: tuple[float, ...],
+    primary_tolerance: float,
+    rows: list[dict[str, Any]] | None = None,
+    collect_predictions: bool = False,
+) -> MetricResult:
+    """Summarize metrics from accumulated per-head numpy chunks."""
+    return summarize_task_metrics(
+        prediction_heads=_concat_head_chunks(prediction_head_chunks),
+        target_heads=_concat_head_chunks(target_head_chunks),
+        task_contract=task_contract,
+        tolerance_values=tolerance_values,
+        primary_tolerance=primary_tolerance,
+        rows=rows,
+        collect_predictions=collect_predictions,
+    )
+
+
 def summarize_task_metrics(
     prediction_heads: Mapping[str, np.ndarray],
     target_heads: Mapping[str, np.ndarray],
@@ -300,6 +429,7 @@ def summarize_task_metrics(
 
     ordered_heads = _ordered_heads(task_contract)
     prediction_mode = str(task_contract.get("prediction_mode", "")).strip()
+    declared_reporting_family = reporting_family(task_contract)
     head_specs = {head_name: head_spec for head_name, head_spec in ordered_heads}
 
     distance_head = next(
@@ -385,11 +515,23 @@ def summarize_task_metrics(
             true_yaw_deg = np.asarray([float(row["yaw_deg"]) for row in rows], dtype=np.float32)
         pred_yaw_deg = _decode_yaw_deg(pred_orientation[:, 0], pred_orientation[:, 1])
         angular_error = _angular_error_deg(pred_yaw_deg, true_yaw_deg)
-        task_metrics["orientation"] = {
-            "mean_angular_error_deg": float(np.mean(angular_error)),
-            "median_angular_error_deg": float(np.median(angular_error)),
-            "p95_angular_error_deg": float(np.percentile(angular_error, 95)),
-        }
+        if declared_reporting_family == "distance_orientation_multitask":
+            orientation_metrics: dict[str, float] = {
+                "yaw_mean_error_deg": float(np.mean(angular_error)),
+                "yaw_median_error_deg": float(np.median(angular_error)),
+                "yaw_p95_error_deg": float(np.percentile(angular_error, 95)),
+            }
+            for threshold in reporting_orientation_accuracy_thresholds_deg(task_contract):
+                orientation_metrics[
+                    f"yaw_acc@{_degree_threshold_label(threshold)}deg"
+                ] = float(np.mean(angular_error <= float(threshold)))
+        else:
+            orientation_metrics = {
+                "mean_angular_error_deg": float(np.mean(angular_error)),
+                "median_angular_error_deg": float(np.median(angular_error)),
+                "p95_angular_error_deg": float(np.percentile(angular_error, 95)),
+            }
+        task_metrics["orientation"] = orientation_metrics
     else:
         true_yaw_deg = None
         pred_yaw_deg = None

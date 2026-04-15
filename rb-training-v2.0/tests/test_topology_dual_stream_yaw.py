@@ -30,6 +30,11 @@ class DualStreamYawTests(unittest.TestCase):
 
         self.assertEqual(spec.task_contract["prediction_mode"], "distance_yaw_sincos")
         self.assertEqual(spec.task_contract["input_mode"], "dual_stream_image_bbox_features")
+        self.assertEqual(spec.topology_contract["reporting"]["family"], "distance_orientation_multitask")
+        self.assertEqual(
+            spec.topology_contract["targets"]["yaw"]["debug_columns"],
+            ["yaw_deg"],
+        )
         self.assertEqual(set(outputs.keys()), {"distance_m", "yaw_sin_cos"})
         self.assertEqual(tuple(outputs["distance_m"].shape), (4,))
         self.assertEqual(tuple(outputs["yaw_sin_cos"].shape), (4, 2))

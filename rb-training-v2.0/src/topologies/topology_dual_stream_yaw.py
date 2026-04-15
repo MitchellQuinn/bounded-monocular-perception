@@ -7,6 +7,7 @@ from typing import Any, Mapping
 import torch
 from torch import nn
 
+from .contracts import TOPOLOGY_CONTRACT_VERSION, task_contract_from_topology_contract
 from .topology_dual_stream_v0_2 import _make_dropout, _make_group_norm
 
 TOPOLOGY_ID = "distance_regressor_dual_stream_yaw"
@@ -29,6 +30,69 @@ _SUPPORTED_PARAM_KEYS = (
     "shape_feature_dim",
     "fusion_hidden",
 )
+
+TOPOLOGY_CONTRACT = {
+    "contract_version": TOPOLOGY_CONTRACT_VERSION,
+    "task_family": "multitask_regression",
+    "targets": {
+        "distance": {
+            "kind": "regression",
+            "columns": ["distance_m"],
+            "target_npz_key": "y_distance_m",
+        },
+        "yaw": {
+            "kind": "circular_regression",
+            "columns": ["yaw_sin", "yaw_cos"],
+            "debug_columns": ["yaw_deg"],
+            "target_npz_keys": ["y_yaw_sin", "y_yaw_cos"],
+            "debug_target_npz_key": "y_yaw_deg",
+        },
+    },
+    "outputs": {
+        "distance": {
+            "kind": "regression",
+            "columns": ["distance_m"],
+            "output_key": "distance_m",
+        },
+        "yaw": {
+            "kind": "circular_regression",
+            "columns": ["yaw_sin", "yaw_cos"],
+            "output_key": "yaw_sin_cos",
+        },
+    },
+    "runtime": {
+        "prediction_mode": "distance_yaw_sincos",
+        "input_mode": "dual_stream_image_bbox_features",
+        "output_kind": "mapping",
+        "heads": {
+            "distance": {
+                "output": "distance",
+                "target": "distance",
+                "metrics_role": "distance",
+                "loss_role": "distance",
+            },
+            "orientation": {
+                "output": "yaw",
+                "target": "yaw",
+                "metrics_role": "orientation",
+                "loss_role": "orientation",
+            },
+        },
+    },
+    "reporting": {
+        "family": "distance_orientation_multitask",
+        "train_losses": ["total_loss", "distance_loss", "orientation_loss"],
+        "validation_metrics": [
+            "yaw_mean_error_deg",
+            "yaw_median_error_deg",
+            "yaw_p95_error_deg",
+            "yaw_acc@5deg",
+            "yaw_acc@10deg",
+            "yaw_acc@15deg",
+        ],
+        "orientation_accuracy_thresholds_deg": [5.0, 10.0, 15.0],
+    },
+}
 
 
 class DistanceRegressorDualStreamYaw(nn.Module):
@@ -263,37 +327,24 @@ def supported_variants() -> tuple[str, ...]:
     return tuple(sorted(_SUPPORTED_VARIANTS))
 
 
+def resolve_topology_contract(
+    topology_variant: str,
+    topology_params: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the declared output/reporting contract for this topology."""
+    _ = topology_variant
+    _ = topology_params
+    return dict(TOPOLOGY_CONTRACT)
+
+
 def resolve_task_contract(
     topology_variant: str,
     topology_params: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Describe the training/evaluation contract for this topology family."""
-    _ = topology_variant
-    _ = topology_params
-    return {
-        "task_family": "multitask_regression",
-        "prediction_mode": "distance_yaw_sincos",
-        "input_mode": "dual_stream_image_bbox_features",
-        "output_kind": "mapping",
-        "target_columns": ["distance_m", "yaw_sin", "yaw_cos"],
-        "debug_target_columns": ["yaw_deg"],
-        "supported_targets": ["distance_m", "yaw_deg", "yaw_sin", "yaw_cos"],
-        "heads": {
-            "distance": {
-                "output_key": "distance_m",
-                "target_columns": ["distance_m"],
-                "metrics_role": "distance",
-                "loss_role": "distance",
-            },
-            "orientation": {
-                "output_key": "yaw_sin_cos",
-                "target_columns": ["yaw_sin", "yaw_cos"],
-                "debug_target_columns": ["yaw_deg"],
-                "metrics_role": "orientation",
-                "loss_role": "orientation",
-            },
-        },
-    }
+    return task_contract_from_topology_contract(
+        resolve_topology_contract(topology_variant, topology_params)
+    )
 
 
 def build_model(

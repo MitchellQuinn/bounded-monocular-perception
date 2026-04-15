@@ -15,6 +15,12 @@ from . import (
     topology_dual_stream_yaw,
     topology_global_pool_cnn,
 )
+from .contracts import (
+    canonicalize_task_contract as canonicalize_runtime_task_contract,
+    canonicalize_topology_contract,
+    legacy_task_contract_to_topology_contract,
+    task_contract_from_topology_contract,
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +34,10 @@ class TopologyDefinition:
     build_model_fn: Callable[[str, Mapping[str, Any] | None], nn.Module]
     architecture_text_fn: Callable[[nn.Module], str]
     topology_metadata: dict[str, Any]
+    resolve_topology_contract_fn: Callable[
+        [str, Mapping[str, Any] | None],
+        Mapping[str, Any] | None,
+    ]
     resolve_task_contract_fn: Callable[[str, Mapping[str, Any] | None], Mapping[str, Any]]
 
 
@@ -40,6 +50,7 @@ class ResolvedTopologySpec:
     topology_params: dict[str, Any]
     model_class_name: str
     topology_metadata: dict[str, Any]
+    topology_contract: dict[str, Any]
     task_contract: dict[str, Any]
 
     def identity_dict(self) -> dict[str, Any]:
@@ -55,6 +66,7 @@ class ResolvedTopologySpec:
         """Serialize topology spec as a plain mapping."""
         payload = self.identity_dict()
         payload["topology_metadata"] = dict(self.topology_metadata)
+        payload["topology_contract"] = dict(self.topology_contract)
         payload["task_contract"] = dict(self.task_contract)
         return payload
 
@@ -62,47 +74,48 @@ class ResolvedTopologySpec:
 DEFAULT_TOPOLOGY_ID = topology_2d_cnn.TOPOLOGY_ID
 
 
+def _resolve_module_topology_contract(
+    module: Any,
+    topology_variant: str,
+    topology_params: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    resolver = getattr(module, "resolve_topology_contract", None)
+    if callable(resolver):
+        return resolver(topology_variant, topology_params)
+    contract = getattr(module, "TOPOLOGY_CONTRACT", None)
+    if isinstance(contract, Mapping):
+        return dict(contract)
+    return None
+
+
+def _build_definition(module: Any) -> TopologyDefinition:
+    return TopologyDefinition(
+        topology_id=module.TOPOLOGY_ID,
+        model_class_name=module.MODEL_CLASS_NAME,
+        default_variant=module.DEFAULT_VARIANT,
+        supported_variants=module.supported_variants(),
+        build_model_fn=module.build_model,
+        architecture_text_fn=module.architecture_text,
+        topology_metadata=dict(module.TOPOLOGY_METADATA),
+        resolve_topology_contract_fn=(
+            lambda topology_variant, topology_params, *, _module=module: _resolve_module_topology_contract(
+                _module,
+                topology_variant,
+                topology_params,
+            )
+        ),
+        resolve_task_contract_fn=module.resolve_task_contract,
+    )
+
+
 _REGISTRY: dict[str, TopologyDefinition] = {
-    topology_2d_cnn.TOPOLOGY_ID: TopologyDefinition(
-        topology_id=topology_2d_cnn.TOPOLOGY_ID,
-        model_class_name=topology_2d_cnn.MODEL_CLASS_NAME,
-        default_variant=topology_2d_cnn.DEFAULT_VARIANT,
-        supported_variants=topology_2d_cnn.supported_variants(),
-        build_model_fn=topology_2d_cnn.build_model,
-        architecture_text_fn=topology_2d_cnn.architecture_text,
-        topology_metadata=dict(topology_2d_cnn.TOPOLOGY_METADATA),
-        resolve_task_contract_fn=topology_2d_cnn.resolve_task_contract,
-    ),
-    topology_global_pool_cnn.TOPOLOGY_ID: TopologyDefinition(
-        topology_id=topology_global_pool_cnn.TOPOLOGY_ID,
-        model_class_name=topology_global_pool_cnn.MODEL_CLASS_NAME,
-        default_variant=topology_global_pool_cnn.DEFAULT_VARIANT,
-        supported_variants=topology_global_pool_cnn.supported_variants(),
-        build_model_fn=topology_global_pool_cnn.build_model,
-        architecture_text_fn=topology_global_pool_cnn.architecture_text,
-        topology_metadata=dict(topology_global_pool_cnn.TOPOLOGY_METADATA),
-        resolve_task_contract_fn=topology_global_pool_cnn.resolve_task_contract,
-    ),
-    topology_dual_stream_v0_2.TOPOLOGY_ID: TopologyDefinition(
-        topology_id=topology_dual_stream_v0_2.TOPOLOGY_ID,
-        model_class_name=topology_dual_stream_v0_2.MODEL_CLASS_NAME,
-        default_variant=topology_dual_stream_v0_2.DEFAULT_VARIANT,
-        supported_variants=topology_dual_stream_v0_2.supported_variants(),
-        build_model_fn=topology_dual_stream_v0_2.build_model,
-        architecture_text_fn=topology_dual_stream_v0_2.architecture_text,
-        topology_metadata=dict(topology_dual_stream_v0_2.TOPOLOGY_METADATA),
-        resolve_task_contract_fn=topology_dual_stream_v0_2.resolve_task_contract,
-    ),
-    topology_dual_stream_yaw.TOPOLOGY_ID: TopologyDefinition(
-        topology_id=topology_dual_stream_yaw.TOPOLOGY_ID,
-        model_class_name=topology_dual_stream_yaw.MODEL_CLASS_NAME,
-        default_variant=topology_dual_stream_yaw.DEFAULT_VARIANT,
-        supported_variants=topology_dual_stream_yaw.supported_variants(),
-        build_model_fn=topology_dual_stream_yaw.build_model,
-        architecture_text_fn=topology_dual_stream_yaw.architecture_text,
-        topology_metadata=dict(topology_dual_stream_yaw.TOPOLOGY_METADATA),
-        resolve_task_contract_fn=topology_dual_stream_yaw.resolve_task_contract,
-    ),
+    module.TOPOLOGY_ID: _build_definition(module)
+    for module in (
+        topology_2d_cnn,
+        topology_global_pool_cnn,
+        topology_dual_stream_v0_2,
+        topology_dual_stream_yaw,
+    )
 }
 
 
@@ -149,31 +162,31 @@ def canonicalize_topology_params(raw: Mapping[str, Any] | None) -> dict[str, Any
 
 
 def canonicalize_task_contract(raw: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Canonicalize task/output contracts into JSON-stable dictionaries."""
-    if raw is None:
-        return {}
-    if not isinstance(raw, Mapping):
-        raise ValueError(f"task_contract must be a mapping/object; got {type(raw)}")
-    try:
-        canonical_json = json.dumps(
-            raw,
-            sort_keys=True,
-            separators=(",", ":"),
+    """Canonicalize runtime task contracts into JSON-stable dictionaries."""
+    return canonicalize_runtime_task_contract(raw)
+
+
+
+def _normalize_topology_status(raw: Any) -> str:
+    status = str(raw).strip().lower() or "active"
+    if status not in {"active", "experimental", "deprecated"}:
+        return "active"
+    return status
+
+
+def list_topology_ids(*, include_deprecated: bool = True) -> tuple[str, ...]:
+    """Return registered topology identifiers, optionally excluding deprecated entries."""
+    topology_ids = sorted(_REGISTRY.keys())
+    if include_deprecated:
+        return tuple(topology_ids)
+    return tuple(
+        topology_id
+        for topology_id in topology_ids
+        if _normalize_topology_status(
+            _REGISTRY[topology_id].topology_metadata.get("status", "active")
         )
-    except TypeError as exc:
-        raise ValueError(
-            "task_contract must be JSON-serializable for reproducible artifact tracking."
-        ) from exc
-    parsed = json.loads(canonical_json)
-    if not isinstance(parsed, dict):
-        raise ValueError("task_contract canonicalization failed to produce an object.")
-    return parsed
-
-
-
-def list_topology_ids() -> tuple[str, ...]:
-    """Return all registered topology identifiers."""
-    return tuple(sorted(_REGISTRY.keys()))
+        != "deprecated"
+    )
 
 
 
@@ -226,15 +239,24 @@ def resolve_topology_spec(
         )
 
     params = canonicalize_topology_params(topology_params)
-    task_contract = canonicalize_task_contract(
-        definition.resolve_task_contract_fn(selected_variant, params)
-    )
+    raw_topology_contract = definition.resolve_topology_contract_fn(selected_variant, params)
+    if raw_topology_contract is None:
+        legacy_task_contract = canonicalize_task_contract(
+            definition.resolve_task_contract_fn(selected_variant, params)
+        )
+        topology_contract = canonicalize_topology_contract(
+            legacy_task_contract_to_topology_contract(legacy_task_contract)
+        )
+    else:
+        topology_contract = canonicalize_topology_contract(raw_topology_contract)
+    task_contract = task_contract_from_topology_contract(topology_contract)
     return ResolvedTopologySpec(
         topology_id=resolved_topology_id,
         topology_variant=selected_variant,
         topology_params=params,
         model_class_name=definition.model_class_name,
         topology_metadata=dict(definition.topology_metadata),
+        topology_contract=topology_contract,
         task_contract=task_contract,
     )
 
@@ -322,6 +344,22 @@ def task_contract_signature(contract: ResolvedTopologySpec | Mapping[str, Any]) 
         task_contract = contract.get("task_contract")
         payload = canonicalize_task_contract(
             task_contract if isinstance(task_contract, Mapping) else contract
+        )
+    else:
+        raise ValueError(f"Unsupported contract type for signature: {type(contract)}")
+
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def topology_contract_signature(contract: ResolvedTopologySpec | Mapping[str, Any]) -> str:
+    """Return stable hash signature for topology-declared output/reporting contracts."""
+    if isinstance(contract, ResolvedTopologySpec):
+        payload = canonicalize_topology_contract(contract.topology_contract)
+    elif isinstance(contract, Mapping):
+        topology_contract = contract.get("topology_contract")
+        payload = canonicalize_topology_contract(
+            topology_contract if isinstance(topology_contract, Mapping) else contract
         )
     else:
         raise ValueError(f"Unsupported contract type for signature: {type(contract)}")

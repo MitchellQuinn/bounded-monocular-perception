@@ -532,6 +532,60 @@ def _max_abs_diff(lhs: np.ndarray, rhs: np.ndarray) -> float:
     return float(np.max(np.abs(lhs - rhs)))
 
 
+def _ordered_task_heads(
+    task_contract: Mapping[str, Any],
+) -> list[tuple[str, Mapping[str, Any]]]:
+    raw_heads = task_contract.get("heads")
+    if not isinstance(raw_heads, Mapping) or not raw_heads:
+        raise ValueError("task_contract must define a non-empty heads mapping.")
+    ordered: list[tuple[str, Mapping[str, Any]]] = []
+    for head_name, head_spec in raw_heads.items():
+        if not isinstance(head_spec, Mapping):
+            raise ValueError(
+                f"task_contract head {head_name!r} must be a mapping; got {type(head_spec)}"
+            )
+        ordered.append((str(head_name), head_spec))
+    return ordered
+
+
+def _npz_bindings_for_columns(
+    *,
+    columns: tuple[str, ...],
+    single_key: Any,
+    multi_keys: Any,
+    fallback_position_key: bool,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if not columns:
+        return ()
+
+    single_key_text = str(single_key).strip() if single_key is not None else ""
+    if single_key_text:
+        return ((single_key_text, tuple(columns)),)
+
+    if isinstance(multi_keys, (list, tuple)):
+        key_texts = [str(value).strip() for value in multi_keys if str(value).strip()]
+        if key_texts:
+            if len(key_texts) != len(columns):
+                raise ValueError(
+                    "task_contract target_npz_keys/debug_target_npz_keys length mismatch; "
+                    f"expected {len(columns)} keys, got {len(key_texts)}."
+                )
+            return tuple((key_text, (column,)) for key_text, column in zip(key_texts, columns))
+
+    if fallback_position_key and tuple(columns) == POSITION_3D_TARGET_COLUMNS:
+        return (("y_position_3d", tuple(columns)),)
+
+    bindings: list[tuple[str, tuple[str, ...]]] = []
+    for column in columns:
+        npz_key = TARGET_COLUMN_TO_NPZ_KEY.get(column)
+        if npz_key is None:
+            raise ValueError(
+                f"Could not infer NPZ key for target/debug column {column!r} from task_contract."
+            )
+        bindings.append((str(npz_key), (str(column),)))
+    return tuple(bindings)
+
+
 def validate_task_contract_schema(
     metadata_df: pd.DataFrame,
     schema_df: pd.DataFrame,
@@ -555,7 +609,6 @@ def validate_task_contract_schema(
     )
     if not target_columns:
         raise ValueError(f"{root_name}: task_contract is missing target_columns.")
-
     required_columns = set(target_columns) | set(debug_target_columns)
     if input_mode == "dual_stream_image_bbox_features":
         required_columns.update(BBOX_FEATURE_COLUMNS)
@@ -591,13 +644,39 @@ def validate_task_contract_schema(
         shard_keys = set(record["keys"])
         required_npz_keys: set[str] = set()
 
-        if prediction_mode == "position_3d":
-            required_npz_keys.add("y_position_3d")
-        else:
-            for column in (*target_columns, *debug_target_columns):
-                npz_key = TARGET_COLUMN_TO_NPZ_KEY.get(column)
-                if npz_key is not None:
-                    required_npz_keys.add(npz_key)
+        head_target_bindings: list[tuple[str, tuple[str, ...]]] = []
+        head_debug_bindings: list[tuple[str, tuple[str, ...]]] = []
+        for _, head_spec in _ordered_task_heads(task_contract):
+            head_columns = tuple(
+                str(column).strip()
+                for column in head_spec.get("target_columns", [])
+                if str(column).strip()
+            )
+            debug_columns_for_head = tuple(
+                str(column).strip()
+                for column in head_spec.get("debug_target_columns", [])
+                if str(column).strip()
+            )
+            target_bindings = _npz_bindings_for_columns(
+                columns=head_columns,
+                single_key=head_spec.get("target_npz_key"),
+                multi_keys=head_spec.get("target_npz_keys"),
+                fallback_position_key=(
+                    str(head_spec.get("target_kind", "")).strip() == "vector_regression"
+                    or prediction_mode == "position_3d"
+                ),
+            )
+            debug_bindings = _npz_bindings_for_columns(
+                columns=debug_columns_for_head,
+                single_key=head_spec.get("debug_target_npz_key"),
+                multi_keys=head_spec.get("debug_target_npz_keys"),
+                fallback_position_key=False,
+            )
+            head_target_bindings.extend(target_bindings)
+            head_debug_bindings.extend(debug_bindings)
+
+        for npz_key, _ in (*head_target_bindings, *head_debug_bindings):
+            required_npz_keys.add(npz_key)
 
         if input_mode == "dual_stream_image_bbox_features":
             required_npz_keys.update({"bbox_features", "bbox_features_schema"})
@@ -610,38 +689,30 @@ def validate_task_contract_schema(
             )
 
         with np.load(npz_path, allow_pickle=False) as payload:
-            if prediction_mode == "position_3d":
-                position = np.asarray(payload["y_position_3d"], dtype=np.float32)
-                if position.shape != (n_rows, len(POSITION_3D_TARGET_COLUMNS)):
+            for npz_key, bound_columns in (*head_target_bindings, *head_debug_bindings):
+                values = np.asarray(payload[npz_key], dtype=np.float32)
+                if len(bound_columns) == 1:
+                    expected_shape = (n_rows,)
+                    csv_values = shard_rows[bound_columns[0]].to_numpy(dtype=np.float32)
+                else:
+                    expected_shape = (n_rows, len(bound_columns))
+                    csv_values = shard_rows[list(bound_columns)].to_numpy(dtype=np.float32)
+                if values.shape != expected_shape:
                     raise ValueError(
-                        f"{root_name}: y_position_3d shape mismatch in {npz_path.name}; "
-                        f"expected {(n_rows, len(POSITION_3D_TARGET_COLUMNS))}, got {position.shape}."
+                        f"{root_name}: {npz_key} shape mismatch in {npz_path.name}; "
+                        f"expected {expected_shape}, got {values.shape}."
                     )
-                csv_position = shard_rows[list(POSITION_3D_TARGET_COLUMNS)].to_numpy(dtype=np.float32)
-                diff = _max_abs_diff(csv_position, position)
+                diff = _max_abs_diff(csv_values, values)
                 if diff > 1e-5:
+                    column_label = (
+                        bound_columns[0]
+                        if len(bound_columns) == 1
+                        else list(bound_columns)
+                    )
                     raise ValueError(
-                        f"{root_name}: final position columns do not match y_position_3d in "
+                        f"{root_name}: {column_label} does not match shard {npz_key} in "
                         f"{npz_path.name}; max abs diff={diff}."
                     )
-            else:
-                for column in (*target_columns, *debug_target_columns):
-                    npz_key = TARGET_COLUMN_TO_NPZ_KEY.get(column)
-                    if npz_key is None:
-                        continue
-                    values = np.asarray(payload[npz_key], dtype=np.float32)
-                    if values.shape != (n_rows,):
-                        raise ValueError(
-                            f"{root_name}: {npz_key} shape mismatch in {npz_path.name}; "
-                            f"expected {(n_rows,)}, got {values.shape}."
-                        )
-                    csv_values = shard_rows[column].to_numpy(dtype=np.float32)
-                    diff = _max_abs_diff(csv_values, values)
-                    if diff > 1e-5:
-                        raise ValueError(
-                            f"{root_name}: {column} does not match shard {npz_key} in "
-                            f"{npz_path.name}; max abs diff={diff}."
-                        )
 
             if input_mode == "dual_stream_image_bbox_features":
                 bbox_features = np.asarray(payload["bbox_features"], dtype=np.float32)

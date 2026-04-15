@@ -66,6 +66,7 @@ def build_resume_state_payload(
     topology_variant: str,
     topology_params: dict[str, Any],
     topology_signature: str,
+    topology_contract_signature: str | None,
     task_contract_signature: str | None,
     model_architecture_variant: str | None,
     training_data_root_resolved: str,
@@ -81,6 +82,11 @@ def build_resume_state_payload(
         "topology_variant": str(topology_variant),
         "topology_params": dict(topology_params),
         "topology_signature": str(topology_signature),
+        "topology_contract_signature": (
+            str(topology_contract_signature)
+            if topology_contract_signature is not None
+            else ""
+        ),
         "task_contract_signature": (
             str(task_contract_signature) if task_contract_signature is not None else ""
         ),

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import math
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -26,22 +26,26 @@ from .data import (
 from .paths import DEFAULT_TRAINING_ROOT, DEFAULT_VALIDATION_ROOT, find_repo_root, resolve_data_root
 from .plots import save_prediction_scatter, save_residual_plot
 from .task_runtime import (
+    append_head_chunks,
     batch_targets_to_tensor,
     batch_to_model_inputs,
     compute_task_loss,
     extract_prediction_heads,
     extract_target_heads,
+    format_orientation_metrics_log_line,
     primary_sample_error,
-    summarize_task_metrics,
+    summarize_task_metrics_from_chunks,
 )
 from .topologies import (
     ResolvedTopologySpec,
     build_model_from_spec,
     resolve_topology_spec_from_mapping,
     task_contract_signature,
+    topology_contract_signature,
     topology_spec_signature,
 )
 from .utils import read_json, utc_now_iso, write_json
+from .topologies.contracts import reporting_train_losses
 
 
 @dataclass
@@ -102,6 +106,25 @@ def _loss_weights_from_payload(payload: dict[str, Any]) -> dict[str, float]:
         "orientation": float(payload.get("orientation_loss_weight", 1.0)),
         "position": float(payload.get("position_loss_weight", 1.0)),
     }
+
+
+def _declared_component_loss_names(task_contract: Mapping[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name in reporting_train_losses(task_contract)
+        if str(name).strip() and str(name).strip() != "total_loss"
+    )
+
+
+def _selected_loss_components(
+    loss_components: Mapping[str, float],
+    task_contract: Mapping[str, Any],
+) -> dict[str, float]:
+    selected: dict[str, float] = {}
+    for name in _declared_component_loss_names(task_contract):
+        if name in loss_components:
+            selected[str(name)] = float(loss_components[name])
+    return selected
 
 
 def evaluate_split(
@@ -193,14 +216,8 @@ def evaluate_split(
                     torch.count_nonzero(primary_error <= float(tolerance)).item()
                 )
 
-            for head_name, tensor_value in pred_heads.items():
-                pred_head_chunks.setdefault(head_name, []).append(
-                    tensor_value.detach().cpu().numpy().astype(np.float32)
-                )
-            for head_name, tensor_value in target_heads.items():
-                true_head_chunks.setdefault(head_name, []).append(
-                    tensor_value.detach().cpu().numpy().astype(np.float32)
-                )
+            append_head_chunks(pred_head_chunks, pred_heads)
+            append_head_chunks(true_head_chunks, target_heads)
             if collect_predictions:
                 collected_rows.extend(batch.rows)
 
@@ -221,28 +238,34 @@ def evaluate_split(
                         for tolerance in tolerance_values
                     )
                     loss_text = f" running_loss={total_loss / float(total_count):.6f}"
-                    print(
+                    summary_line = (
                         f"{log_prefix} batch {batch_index}/{total_batches_est} "
                         f"({pct:5.1f}%) seen={total_count}"
                         f" {accuracy_text}"
-                        f"{loss_text} elapsed={elapsed:.1f}s",
-                        flush=True,
+                        f"{loss_text} elapsed={elapsed:.1f}s"
                     )
+                    running_task_metrics = summarize_task_metrics_from_chunks(
+                        pred_head_chunks,
+                        true_head_chunks,
+                        task_contract,
+                        tolerance_values=tolerance_values,
+                        primary_tolerance=primary_tolerance,
+                    ).task_metrics
+                    orientation_log_line = format_orientation_metrics_log_line(
+                        running_task_metrics,
+                        contract=task_contract,
+                        indent="        ",
+                    )
+                    if orientation_log_line:
+                        summary_line = f"{summary_line}\n{orientation_log_line}"
+                    print(summary_line, flush=True)
 
     if total_count == 0:
         raise ValueError(f"{split_name}: evaluation produced zero samples.")
 
-    pred_heads_np = {
-        head_name: np.concatenate(chunks, axis=0)
-        for head_name, chunks in pred_head_chunks.items()
-    }
-    true_heads_np = {
-        head_name: np.concatenate(chunks, axis=0)
-        for head_name, chunks in true_head_chunks.items()
-    }
-    metrics_result = summarize_task_metrics(
-        pred_heads_np,
-        true_heads_np,
+    metrics_result = summarize_task_metrics_from_chunks(
+        pred_head_chunks,
+        true_head_chunks,
         task_contract,
         tolerance_values=tolerance_values,
         primary_tolerance=primary_tolerance,
@@ -296,6 +319,18 @@ def _load_model_from_run(
             raise ValueError(
                 "Run config task_contract_signature does not match resolved task contract: "
                 f"expected={expected_task_signature} actual={actual_task_signature}"
+            )
+    expected_topology_contract_signature = str(
+        run_config.get("topology_contract_signature", "")
+    ).strip()
+    if expected_topology_contract_signature:
+        actual_topology_contract_signature = topology_contract_signature(topology_spec)
+        if actual_topology_contract_signature != expected_topology_contract_signature:
+            raise ValueError(
+                "Run config topology_contract_signature does not match resolved topology "
+                "contract: "
+                f"expected={expected_topology_contract_signature} "
+                f"actual={actual_topology_contract_signature}"
             )
 
     model = build_model_from_spec(topology_spec)
@@ -504,10 +539,12 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         "topology_variant": topology_spec.topology_variant,
         "topology_params": dict(topology_spec.topology_params),
         "topology_signature": topology_spec_signature(topology_spec),
+        "topology_contract_signature": topology_contract_signature(topology_spec),
         "task_contract_signature": task_contract_signature(topology_spec),
         "model_class_name": topology_spec.model_class_name,
         "model_architecture_variant": topology_spec.topology_variant,
         "model_topology": topology_spec.to_dict(),
+        "topology_contract": dict(topology_spec.topology_contract),
         "task_contract": dict(topology_spec.task_contract),
         "padding_mode": padding_mode,
         "target_hw": {"height": int(target_hw[0]), "width": int(target_hw[1])},
@@ -528,12 +565,12 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
             "rmse": val_eval.rmse,
         },
     }
-    is_multitask = (
-        str(topology_spec.task_contract.get("task_family", "")).strip()
-        == "multitask_regression"
+    val_loss_components = _selected_loss_components(
+        val_eval.loss_components,
+        topology_spec.task_contract,
     )
-    if is_multitask and val_eval.loss_components:
-        summary["validation"]["loss_components"] = dict(val_eval.loss_components)
+    if val_loss_components:
+        summary["validation"]["loss_components"] = val_loss_components
     if val_eval.task_metrics:
         summary["validation"].update(dict(val_eval.task_metrics))
 
@@ -602,8 +639,12 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
                 "mae": test_eval.mae,
                 "rmse": test_eval.rmse,
             }
-            if is_multitask and test_eval.loss_components:
-                summary["test_internal"]["loss_components"] = dict(test_eval.loss_components)
+            test_loss_components = _selected_loss_components(
+                test_eval.loss_components,
+                topology_spec.task_contract,
+            )
+            if test_loss_components:
+                summary["test_internal"]["loss_components"] = test_loss_components
             if test_eval.task_metrics:
                 summary["test_internal"].update(dict(test_eval.task_metrics))
             if train_shard_cache is not None:
