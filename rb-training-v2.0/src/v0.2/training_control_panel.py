@@ -11,6 +11,8 @@ import shlex
 import subprocess
 from typing import Any, Sequence
 
+from src.epoch_summary import format_run_epoch_summary_panel
+
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _MODEL_DIRECTORY_RE = re.compile(r"^[0-9]{6}-[0-9]{4}_[A-Za-z0-9][A-Za-z0-9_-]*$")
 _RUN_ID_RE = re.compile(r"^run_([0-9]+)$")
@@ -477,3 +479,11 @@ def read_log_tail(log_path: str | Path, max_lines_or_chars: int = 200) -> str:
     if not lines:
         return f"[log empty] {path}"
     return "".join(lines)
+
+
+def read_epoch_summary(run_dir: str | Path | None) -> str:
+    """Read a compact latest/best epoch summary from structured run artifacts."""
+    try:
+        return format_run_epoch_summary_panel(run_dir)
+    except Exception as exc:
+        return f"[epoch summary unavailable] {exc}"

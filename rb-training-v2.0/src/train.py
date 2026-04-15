@@ -30,6 +30,7 @@ from .data import (
     validate_task_contract_schema,
     validate_root_schema,
 )
+from .epoch_summary import is_better_epoch_metric
 from .evaluate import evaluate_split
 from .paths import (
     DEFAULT_TRAINING_ROOT,
@@ -1369,7 +1370,11 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             epoch_record[f"val_{key}"] = float(value)
         history_records.append(epoch_record)
 
-        if val_eval.loss < best_val_loss:
+        if is_better_epoch_metric(
+            val_eval.loss,
+            best_val_loss,
+            task_contract=topology_spec.task_contract,
+        ):
             best_val_loss = float(val_eval.loss)
             best_epoch = epoch
             no_improvement_epochs = 0
