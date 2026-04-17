@@ -38,12 +38,17 @@ pip-wheel-metadata/
 # ------------------------------
 # Repository-specific generated data and model outputs
 # ------------------------------
-rb-training/training-data/
-rb-training/validation-data/
-rb-training/models/
-synthetic-data-processing/training-data-shuffled/
-synthetic-data-processing/boundbox-images/
-synthetic-data-processing/input-images/
+03_rb-training-v2.0/training-data/
+03_rb-training-v2.0/validation-data/
+03_rb-training-v2.0/models/
+.archive/rb-training-v1.0/models/
+02_synthetic-data-processing-v3.0/training-data-shuffled/
+02_synthetic-data-processing-v3.0/boundbox-images/
+02_synthetic-data-processing-v3.0/input-images/*
+!02_synthetic-data-processing-v3.0/input-images/.gitkeep
+04_inference-v0.1/input/
+04_inference-v0.1/models/
+
 
 # ------------------------------
 # Generic datasets, generated outputs, and training artifacts
@@ -82,27 +87,26 @@ checkpoints/
 # ------------------------------
 # Unity project generated and user-specific files
 # ------------------------------
-rb_synthetic-data_3/[Ll]ibrary/
-rb_synthetic-data_3/[Tt]emp/
-rb_synthetic-data_3/[Oo]bj/
-rb_synthetic-data_3/[Ll]ogs/
-rb_synthetic-data_3/[Uu]ser[Ss]ettings/
-rb_synthetic-data_3/[Mm]emoryCaptures/
-rb_synthetic-data_3/[Rr]ecordings/
-rb_synthetic-data_3/[Bb]uild/
-rb_synthetic-data_3/[Bb]uilds/
-rb_synthetic-data_3/SyntheticDataset/
-rb_synthetic-data_3/Assets/_Recovery/
-rb_synthetic-data_3/Assets/_Recovery.meta
-rb_synthetic-data_3/*.csproj
-rb_synthetic-data_3/*.sln
-rb_synthetic-data_3/*.slnx
-rb_synthetic-data_3/.vs/
-rb_synthetic-data_3/.idea/
-rb_synthetic-data_3/.vscode/
-
-# Keep Unity source assets trackable even with broad repo image ignores
-!rb_synthetic-data_3/Assets/**/*.png
+01_rb_synthetic-data_3/[Ll]ibrary/
+01_rb_synthetic-data_3/[Tt]emp/
+01_rb_synthetic-data_3/[Oo]bj/
+01_rb_synthetic-data_3/[Ll]ogs/
+01_rb_synthetic-data_3/[Uu]ser[Ss]ettings/
+01_rb_synthetic-data_3/[Mm]emoryCaptures/
+01_rb_synthetic-data_3/[Rr]ecordings/
+01_rb_synthetic-data_3/[Bb]uild/
+01_rb_synthetic-data_3/[Bb]uilds/
+01_rb_synthetic-data_3/SyntheticDataset/
+01_rb_synthetic-data_3/Assets/_Recovery/
+01_rb_synthetic-data_3/Assets/_Recovery.meta
+01_rb_synthetic-data_3/Assets/models/1997-defender-90/
+01_rb_synthetic-data_3/Assets/models/1997-defender-90.meta
+01_rb_synthetic-data_3/*.csproj
+01_rb_synthetic-data_3/*.sln
+01_rb_synthetic-data_3/*.slnx
+01_rb_synthetic-data_3/.vs/
+01_rb_synthetic-data_3/.idea/
+01_rb_synthetic-data_3/.vscode/
 
 # ------------------------------
 # Ambiguous experiment metadata (ignore by default)
