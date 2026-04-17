@@ -1,4 +1,3 @@
-
 # ROI FCN Functional Specification v0.1
 
 ## 1. Purpose
@@ -16,11 +15,8 @@ It is a **crop-centre localiser**, not a general object detector.
 Given a full-frame image containing the Defender, the component must:
 
 1. process the full-frame image
-    
 2. infer the most likely crop centre for the Defender
-    
 3. return that centre in the coordinate system of the original full-frame image
-    
 
 The returned centre must be suitable for extracting a fixed `300 x 300` ROI that can then be passed into the existing downstream preprocessing and regression pipeline.
 
@@ -30,20 +26,13 @@ The returned centre must be suitable for extracting a fixed `300 x 300` ROI that
 
 This component is not responsible for:
 
-- choosing ROI size
-    
-- predicting a bounding box width or height
-    
-- estimating distance
-    
-- estimating orientation
-    
-- extracting silhouettes
-    
-- performing downstream regression
-    
-- deciding overall system behaviour beyond ROI placement
-    
+* choosing ROI size
+* predicting a bounding box width or height
+* estimating distance
+* estimating orientation
+* extracting silhouettes
+* performing downstream regression
+* deciding overall system behaviour beyond ROI placement
 
 Its responsibility ends at producing the crop centre.
 
@@ -59,8 +48,7 @@ The source image may be of arbitrary size.
 
 For first-pass operation, the important semantic assumption is:
 
-- the image contains one Defender of interest that should be localised for ROI placement
-    
+* the image contains one Defender of interest that should be localised for ROI placement
 
 ### Internal network input
 
@@ -68,16 +56,11 @@ The image must be converted into a fixed neural-network input representation so 
 
 That fixed representation should be:
 
-- grayscale
-    
-- aspect-ratio preserved
-    
-- resized into a standard locator canvas
-    
-- padded as necessary to fit the standard canvas exactly
-    
-- normalized for network input
-    
+* grayscale
+* aspect-ratio preserved
+* resized into a standard locator canvas
+* padded as necessary to fit the standard canvas exactly
+* normalized for network input
 
 ---
 
@@ -88,15 +71,10 @@ The preprocessing stage must do the minimum needed to make the locator network s
 ### Required preprocessing steps
 
 1. convert the source image to grayscale
-    
 2. resize the image while preserving aspect ratio
-    
 3. place the resized image into a fixed locator canvas
-    
 4. pad any unused canvas area
-    
 5. normalize pixel values into a standard numeric range
-    
 
 ### Important constraint
 
@@ -104,10 +82,8 @@ The preprocessing must retain the metadata needed to map a predicted centre poin
 
 That means the system must know, for each image:
 
-- the resize scale used
-    
-- the padding offsets introduced
-    
+* the resize scale used
+* the padding offsets introduced
 
 ---
 
@@ -121,14 +97,10 @@ Semantically, that tensor represents:
 
 The network input must therefore be:
 
-- single-channel
-    
-- fixed-size
-    
-- normalized
-    
-- spatially aligned with the stored resize/padding metadata
-    
+* single-channel
+* fixed-size
+* normalized
+* spatially aligned with the stored resize/padding metadata
 
 ---
 
@@ -140,10 +112,8 @@ Rather than outputting a bounding box, it must output a spatial estimate of wher
 
 The recommended first-pass formulation is:
 
-- the model outputs a **centre-likelihood heatmap**
-    
-- brighter values indicate stronger belief that the crop centre should be placed there
-    
+* the model outputs a **centre-likelihood heatmap**
+* brighter values indicate stronger belief that the crop centre should be placed there
 
 This keeps the task spatial and avoids unnecessary box regression.
 
@@ -157,48 +127,32 @@ FCN = **Fully Convolutional Network**
 
 In this context, that means:
 
-- the model operates convolutionally over the image
-    
-- the output remains spatial
-    
-- the network produces a map rather than a single class label
-    
+* the model operates convolutionally over the image
+* the output remains spatial
+* the network produces a map rather than a single class label
 
 ### Topology characteristics required for v0.1
 
 The first-pass topology should be:
 
-- small
-    
-- cheap
-    
-- single-stream
-    
-- single-channel input
-    
-- single-output-head
-    
-- heatmap-producing
-    
+* small
+* cheap
+* single-stream
+* single-channel input
+* single-output-head
+* heatmap-producing
 
 It should use a small stack of convolution layers with downsampling, followed by a final head that produces a single output heatmap.
 
 It should not, in v0.1, include:
 
-- anchor machinery
-    
-- bounding box heads
-    
-- class heads
-    
-- multi-scale detector machinery
-    
-- orientation heads
-    
-- segmentation branches
-    
-- additional task coupling
-    
+* anchor machinery
+* bounding box heads
+* class heads
+* multi-scale detector machinery
+* orientation heads
+* segmentation branches
+* additional task coupling
 
 The topology must stay focused on ROI centre localisation only.
 
@@ -226,17 +180,13 @@ Because the model outputs a spatial map, the point target must be transformed in
 
 The recommended first-pass target representation is:
 
-- a **Gaussian heatmap** centred on the correct crop centre location in the model’s output space
-    
+* a **Gaussian heatmap** centred on the correct crop centre location in the model’s output space
 
 Semantically, this means:
 
-- the highest value is at the correct centre
-    
-- nearby positions are somewhat correct
-    
-- farther positions are progressively less correct
-    
+* the highest value is at the correct centre
+* nearby positions are somewhat correct
+* farther positions are progressively less correct
 
 This should be used instead of a single hard positive pixel, because it makes optimisation smoother and less brittle.
 
@@ -254,10 +204,8 @@ The raw network output is a single heatmap representing crop-centre likelihood a
 
 The system must decode that heatmap into:
 
-- `center_x`
-    
-- `center_y`
-    
+* `center_x`
+* `center_y`
 
 in **original full-frame image coordinates**
 
@@ -272,13 +220,9 @@ It is the point around which the fixed `300 x 300` ROI will be extracted.
 Post-processing must:
 
 1. find the peak location in the output heatmap
-    
 2. map that peak from heatmap space back into the fixed input canvas space
-    
 3. undo the resize and padding transforms
-    
 4. return the resulting point in original full-frame coordinates
-    
 
 This mapping must be deterministic and consistent with the preprocessing metadata.
 
