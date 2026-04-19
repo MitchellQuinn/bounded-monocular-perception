@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 import shutil
+import threading
 import time
 from typing import Callable
 
@@ -42,6 +46,25 @@ _ERROR_COLUMN = "bootstrap_center_target_stage_error"
 _ALGORITHM_NAME = "edge_roi_v1"
 _PROGRESS_LOG_INTERVAL_ROWS = 500
 _CHECKPOINT_WRITE_INTERVAL_ROWS = 2000
+_MAX_IN_FLIGHT_MULTIPLIER = 4
+_DETECTOR_LOCAL = threading.local()
+
+
+@dataclass(frozen=True)
+class _BootstrapRowResult:
+    row_idx: int
+    status: str
+    error_message: str
+    confidence: float | None = None
+    bbox_x1: float | None = None
+    bbox_y1: float | None = None
+    bbox_x2: float | None = None
+    bbox_y2: float | None = None
+    bbox_w_px: float | None = None
+    bbox_h_px: float | None = None
+    center_x_px: float | None = None
+    center_y_px: float | None = None
+    debug_image_filename: str = ""
 
 
 def run_bootstrap_center_target_stage(
@@ -75,7 +98,8 @@ def run_bootstrap_center_target_stage(
     )
     write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
 
-    detector = build_edge_roi_detector(config)
+    requested_workers = config.normalized_num_workers()
+    effective_workers = _effective_worker_count(config)
 
     log_path = split_paths.output_manifests_dir / "bootstrap_center_target_stage_log.txt"
     logger = StageLogger(
@@ -96,6 +120,11 @@ def run_bootstrap_center_target_stage(
     selected_rows = int(capture_mask.sum())
     logger.log(f"Total input rows: {total_rows}")
     logger.log(f"Capture-success rows queued for edge ROI bootstrap: {selected_rows}")
+    logger.log(f"Requested CPU workers: {requested_workers}; effective workers: {effective_workers}")
+    if effective_workers != requested_workers:
+        logger.log("continue_on_error=False forces bootstrap_center_target to run single-threaded for fail-fast behavior.")
+    if effective_workers > 1:
+        logger.log("OpenCV worker threads are capped at 1 per task to avoid CPU oversubscription.")
     logger.log(
         f"Progress will be logged every {_PROGRESS_LOG_INTERVAL_ROWS} rows; "
         f"samples.csv checkpoints every {_CHECKPOINT_WRITE_INTERVAL_ROWS} rows."
@@ -134,80 +163,82 @@ def run_bootstrap_center_target_stage(
         logger.log(f"Checkpointed samples.csv at {processed_rows}/{total_rows} rows.")
         logger.write()
 
+    work_items: list[tuple[int, dict[str, object]]] = []
     for row_idx, row in samples_df.iterrows():
         if not bool(capture_mask.at[row_idx]):
             _mark_row_skipped(samples_df, row_idx)
             processed_rows += 1
             progress_skipped += 1
-            _log_progress(force=(processed_rows == total_rows))
-            _checkpoint_samples(force=(processed_rows == total_rows))
             continue
-
-        try:
-            image_path = resolve_input_image_path(split_paths, row.get("image_filename"))
-            image = read_image_unchanged(image_path)
-            image_bgr = to_bgr_uint8(image)
-            detections = detector.detect(image_bgr)
-            if not detections:
-                raise ValueError("edge_roi_v1 returned no detection")
-            if len(detections) != 1:
-                raise ValueError(f"edge_roi_v1 returned {len(detections)} detections; expected exactly 1")
-
-            detection = detections[0]
-            bbox_w = max(0.0, float(detection.x2) - float(detection.x1))
-            bbox_h = max(0.0, float(detection.y2) - float(detection.y1))
-            center_x = (
-                float(detection.center_x_px)
-                if detection.center_x_px is not None
-                else float(detection.x1 + detection.x2) / 2.0
+        work_items.append(
+            (
+                int(row_idx),
+                {
+                    "image_filename": row.get("image_filename"),
+                    "sample_id": row.get("sample_id", ""),
+                },
             )
-            center_y = (
-                float(detection.center_y_px)
-                if detection.center_y_px is not None
-                else float(detection.y1 + detection.y2) / 2.0
-            )
+        )
 
-            samples_df.at[row_idx, _STATUS_COLUMN] = "success"
-            samples_df.at[row_idx, _ERROR_COLUMN] = ""
-            samples_df.at[row_idx, "bootstrap_target_algorithm"] = _ALGORITHM_NAME
-            samples_df.at[row_idx, "bootstrap_confidence"] = float(detection.confidence)
-            samples_df.at[row_idx, "bootstrap_bbox_x1"] = float(detection.x1)
-            samples_df.at[row_idx, "bootstrap_bbox_y1"] = float(detection.y1)
-            samples_df.at[row_idx, "bootstrap_bbox_x2"] = float(detection.x2)
-            samples_df.at[row_idx, "bootstrap_bbox_y2"] = float(detection.y2)
-            samples_df.at[row_idx, "bootstrap_bbox_w_px"] = float(bbox_w)
-            samples_df.at[row_idx, "bootstrap_bbox_h_px"] = float(bbox_h)
-            samples_df.at[row_idx, "bootstrap_center_x_px"] = float(center_x)
-            samples_df.at[row_idx, "bootstrap_center_y_px"] = float(center_y)
-            samples_df.at[row_idx, "bootstrap_debug_image_filename"] = ""
-
-            if config.persist_debug_images:
-                debug_rel = _write_debug_image(
-                    split_paths=split_paths,
-                    row=row,
-                    image_bgr=image_bgr,
-                    x1=float(detection.x1),
-                    y1=float(detection.y1),
-                    x2=float(detection.x2),
-                    y2=float(detection.y2),
-                    center_x=float(center_x),
-                    center_y=float(center_y),
-                    dry_run=config.dry_run,
-                )
-                samples_df.at[row_idx, "bootstrap_debug_image_filename"] = debug_rel
-            progress_success += 1
-        except Exception as exc:
-            _mark_row_failed(samples_df, row_idx, str(exc))
-            progress_failed += 1
-            if not config.continue_on_error:
-                aborted = True
-                logger.log(f"Stopping after row {row_idx} failure: {exc}")
-
-        processed_rows += 1
+    if processed_rows > 0:
         _log_progress(force=(processed_rows == total_rows))
-        _checkpoint_samples(force=(processed_rows == total_rows or aborted))
-        if aborted:
-            break
+        _checkpoint_samples(force=(processed_rows == total_rows))
+
+    max_in_flight = max(1, effective_workers * _MAX_IN_FLIGHT_MULTIPLIER)
+    if work_items and not aborted:
+        with _opencv_single_thread_mode(enabled=(effective_workers > 1)):
+            with ThreadPoolExecutor(max_workers=effective_workers, thread_name_prefix="roi-fcn-bootstrap") as executor:
+                work_iter = iter(work_items)
+                in_flight: dict[object, int] = {}
+
+                def submit_available() -> None:
+                    while len(in_flight) < max_in_flight:
+                        try:
+                            next_row_idx, row_payload = next(work_iter)
+                        except StopIteration:
+                            break
+                        future = executor.submit(
+                            _process_bootstrap_row,
+                            split_paths=split_paths,
+                            row_idx=next_row_idx,
+                            row=row_payload,
+                            config=config,
+                        )
+                        in_flight[future] = next_row_idx
+
+                submit_available()
+                while in_flight:
+                    done, _ = wait(tuple(in_flight.keys()), return_when=FIRST_COMPLETED)
+                    for future in done:
+                        row_idx = in_flight.pop(future)
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            result = _BootstrapRowResult(
+                                row_idx=row_idx,
+                                status="failed",
+                                error_message=str(exc),
+                            )
+
+                        if result.status == "success":
+                            _mark_row_success(samples_df, result)
+                            progress_success += 1
+                        else:
+                            _mark_row_failed(samples_df, result.row_idx, result.error_message)
+                            progress_failed += 1
+                            if not config.continue_on_error:
+                                aborted = True
+                                logger.log(f"Stopping after row {result.row_idx} failure: {result.error_message}")
+
+                        processed_rows += 1
+                        _log_progress(force=(processed_rows == total_rows))
+                        _checkpoint_samples(force=(processed_rows == total_rows or aborted))
+
+                    if aborted:
+                        for future in in_flight:
+                            future.cancel()
+                        break
+                    submit_available()
 
     write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
 
@@ -237,6 +268,7 @@ def run_bootstrap_center_target_stage(
             "EdgePaddingPx": config.normalized_edge_pad(),
             "EdgeMinForegroundPx": config.normalized_min_edge_pixels(),
             "EdgeCloseKernelSize": config.normalized_edge_close_kernel_size(),
+            "NumWorkers": int(effective_workers),
         },
         current_representation={
             "Kind": "bootstrap_center_target_metadata",
@@ -263,6 +295,13 @@ def run_bootstrap_center_target_stage(
     return summary
 
 
+def _effective_worker_count(config: BootstrapCenterTargetConfig) -> int:
+    requested = config.normalized_num_workers()
+    if not config.continue_on_error:
+        return 1
+    return requested
+
+
 def _prepare_split_output_root(split_paths: SplitPaths, *, overwrite: bool, dry_run: bool) -> None:
     if not split_paths.output_root.exists():
         return
@@ -276,6 +315,22 @@ def _prepare_split_output_root(split_paths: SplitPaths, *, overwrite: bool, dry_
         )
     if not dry_run:
         shutil.rmtree(split_paths.output_root)
+
+
+def _mark_row_success(samples_df, result: _BootstrapRowResult) -> None:
+    samples_df.at[result.row_idx, _STATUS_COLUMN] = "success"
+    samples_df.at[result.row_idx, _ERROR_COLUMN] = ""
+    samples_df.at[result.row_idx, "bootstrap_target_algorithm"] = _ALGORITHM_NAME
+    samples_df.at[result.row_idx, "bootstrap_confidence"] = float(result.confidence)
+    samples_df.at[result.row_idx, "bootstrap_bbox_x1"] = float(result.bbox_x1)
+    samples_df.at[result.row_idx, "bootstrap_bbox_y1"] = float(result.bbox_y1)
+    samples_df.at[result.row_idx, "bootstrap_bbox_x2"] = float(result.bbox_x2)
+    samples_df.at[result.row_idx, "bootstrap_bbox_y2"] = float(result.bbox_y2)
+    samples_df.at[result.row_idx, "bootstrap_bbox_w_px"] = float(result.bbox_w_px)
+    samples_df.at[result.row_idx, "bootstrap_bbox_h_px"] = float(result.bbox_h_px)
+    samples_df.at[result.row_idx, "bootstrap_center_x_px"] = float(result.center_x_px)
+    samples_df.at[result.row_idx, "bootstrap_center_y_px"] = float(result.center_y_px)
+    samples_df.at[result.row_idx, "bootstrap_debug_image_filename"] = result.debug_image_filename
 
 
 def _mark_row_skipped(samples_df, row_idx: int) -> None:
@@ -310,6 +365,80 @@ def _mark_row_failed(samples_df, row_idx: int, error_message: str) -> None:
     samples_df.at[row_idx, "bootstrap_debug_image_filename"] = ""
 
 
+def _process_bootstrap_row(
+    *,
+    split_paths: SplitPaths,
+    row_idx: int,
+    row: dict[str, object],
+    config: BootstrapCenterTargetConfig,
+) -> _BootstrapRowResult:
+    try:
+        detector = getattr(_DETECTOR_LOCAL, "detector", None)
+        if detector is None:
+            detector = build_edge_roi_detector(config)
+            _DETECTOR_LOCAL.detector = detector
+
+        image_path = resolve_input_image_path(split_paths, row.get("image_filename"))
+        image = read_image_unchanged(image_path)
+        image_bgr = to_bgr_uint8(image)
+        detections = detector.detect(image_bgr)
+        if not detections:
+            raise ValueError("edge_roi_v1 returned no detection")
+        if len(detections) != 1:
+            raise ValueError(f"edge_roi_v1 returned {len(detections)} detections; expected exactly 1")
+
+        detection = detections[0]
+        bbox_w = max(0.0, float(detection.x2) - float(detection.x1))
+        bbox_h = max(0.0, float(detection.y2) - float(detection.y1))
+        center_x = (
+            float(detection.center_x_px)
+            if detection.center_x_px is not None
+            else float(detection.x1 + detection.x2) / 2.0
+        )
+        center_y = (
+            float(detection.center_y_px)
+            if detection.center_y_px is not None
+            else float(detection.y1 + detection.y2) / 2.0
+        )
+
+        debug_rel = ""
+        if config.persist_debug_images:
+            debug_rel = _write_debug_image(
+                split_paths=split_paths,
+                row=row,
+                image_bgr=image_bgr,
+                x1=float(detection.x1),
+                y1=float(detection.y1),
+                x2=float(detection.x2),
+                y2=float(detection.y2),
+                center_x=float(center_x),
+                center_y=float(center_y),
+                dry_run=config.dry_run,
+            )
+
+        return _BootstrapRowResult(
+            row_idx=row_idx,
+            status="success",
+            error_message="",
+            confidence=float(detection.confidence),
+            bbox_x1=float(detection.x1),
+            bbox_y1=float(detection.y1),
+            bbox_x2=float(detection.x2),
+            bbox_y2=float(detection.y2),
+            bbox_w_px=float(bbox_w),
+            bbox_h_px=float(bbox_h),
+            center_x_px=float(center_x),
+            center_y_px=float(center_y),
+            debug_image_filename=debug_rel,
+        )
+    except Exception as exc:
+        return _BootstrapRowResult(
+            row_idx=row_idx,
+            status="failed",
+            error_message=str(exc),
+        )
+
+
 def _format_eta_seconds(seconds: float) -> str:
     if not np.isfinite(seconds) or seconds < 0.0:
         return "unknown"
@@ -321,6 +450,33 @@ def _format_eta_seconds(seconds: float) -> str:
     if minutes > 0:
         return f"{minutes}m {secs:02d}s"
     return f"{secs}s"
+
+
+@contextmanager
+def _opencv_single_thread_mode(*, enabled: bool):
+    if not enabled:
+        yield
+        return
+
+    previous_threads: int | None = None
+    try:
+        previous_threads = int(cv2.getNumThreads())
+    except Exception:
+        previous_threads = None
+
+    try:
+        cv2.setNumThreads(1)
+    except Exception:
+        previous_threads = None
+
+    try:
+        yield
+    finally:
+        if previous_threads is not None:
+            try:
+                cv2.setNumThreads(previous_threads)
+            except Exception:
+                pass
 
 
 def _write_debug_image(

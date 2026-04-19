@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -35,6 +37,7 @@ _ERROR_COLUMN = "pack_roi_fcn_stage_error"
 _BOOTSTRAP_STATUS_COLUMN = "bootstrap_center_target_stage_status"
 _PROGRESS_LOG_INTERVAL_ROWS = 500
 _CHECKPOINT_WRITE_INTERVAL_ROWS = 2000
+_MAX_IN_FLIGHT_MULTIPLIER = 4
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,15 @@ class _BufferedPackRow:
     locator_pad_bottom_px: int
     locator_center_x_px: float
     locator_center_y_px: float
+
+
+@dataclass(frozen=True)
+class _PackRowResult:
+    sequence_idx: int
+    row_idx: int
+    status: str
+    error_message: str
+    packed: _BufferedPackRow | None = None
 
 
 def run_pack_roi_fcn_stage(
@@ -102,6 +114,8 @@ def run_pack_roi_fcn_stage(
     canvas_width = config.normalized_canvas_width()
     canvas_height = config.normalized_canvas_height()
     shard_size = config.normalized_shard_size()
+    requested_workers = config.normalized_num_workers()
+    effective_workers = _effective_worker_count(config)
 
     log_path = split_paths.output_manifests_dir / "pack_roi_fcn_stage_log.txt"
     logger = StageLogger(
@@ -121,6 +135,12 @@ def run_pack_roi_fcn_stage(
     eligible_rows = int((bootstrap_status_series == "success").sum())
     logger.log(f"Total input rows: {len(samples_df)}")
     logger.log(f"Rows eligible for packing from bootstrap success: {eligible_rows}")
+    logger.log(f"Requested CPU workers: {requested_workers}; effective workers: {effective_workers}")
+    if effective_workers != requested_workers:
+        logger.log("continue_on_error=False forces pack_roi_fcn to run single-threaded for fail-fast behavior.")
+    if effective_workers > 1:
+        logger.log("OpenCV worker threads are capped at 1 per task to avoid CPU oversubscription.")
+    logger.log(f"NPZ compression is {'enabled' if config.compress else 'disabled'}.")
     if shard_size > 0:
         logger.log(
             f"The first NPZ shard will appear after {shard_size} successful packed rows have been buffered."
@@ -245,43 +265,108 @@ def run_pack_roi_fcn_stage(
         buffer.clear()
         return True
 
+    work_items: list[tuple[int, int, dict[str, object]]] = []
     for row_idx, row in samples_df.iterrows():
         bootstrap_status = str(row.get(_BOOTSTRAP_STATUS_COLUMN, "")).strip().lower()
         if bootstrap_status != "success":
             _mark_row_skipped(samples_df, row_idx)
             processed_rows += 1
             progress_skipped += 1
-            _log_progress(force=(processed_rows == len(samples_df)))
-            _checkpoint_samples(force=(processed_rows == len(samples_df)))
             continue
-
-        try:
-            image_path = resolve_input_image_path(split_paths, row.get("image_filename"))
-            gray = read_grayscale_uint8(image_path)
-            packed = _pack_one_row(
-                row_idx=row_idx,
-                row=row,
-                gray_image=gray,
-                canvas_width=canvas_width,
-                canvas_height=canvas_height,
+        work_items.append(
+            (
+                len(work_items),
+                int(row_idx),
+                {
+                    "sample_id": row.get("sample_id", ""),
+                    "image_filename": row.get("image_filename", ""),
+                    "bootstrap_center_x_px": row.get("bootstrap_center_x_px"),
+                    "bootstrap_center_y_px": row.get("bootstrap_center_y_px"),
+                    "bootstrap_bbox_x1": row.get("bootstrap_bbox_x1"),
+                    "bootstrap_bbox_y1": row.get("bootstrap_bbox_y1"),
+                    "bootstrap_bbox_x2": row.get("bootstrap_bbox_x2"),
+                    "bootstrap_bbox_y2": row.get("bootstrap_bbox_y2"),
+                    "bootstrap_confidence": row.get("bootstrap_confidence"),
+                },
             )
-            buffer.append(packed)
-            progress_success += 1
-            if shard_size > 0 and len(buffer) >= shard_size:
-                if not flush_buffer() and not config.continue_on_error:
-                    aborted = True
-        except Exception as exc:
-            _mark_row_failed(samples_df, row_idx, str(exc))
-            progress_failed += 1
-            if not config.continue_on_error:
-                aborted = True
-                logger.log(f"Stopping after row {row_idx} failure: {exc}")
+        )
 
-        processed_rows += 1
+    if processed_rows > 0:
         _log_progress(force=(processed_rows == len(samples_df)))
-        _checkpoint_samples(force=(processed_rows == len(samples_df) or aborted))
-        if aborted:
-            break
+        _checkpoint_samples(force=(processed_rows == len(samples_df)))
+
+    max_in_flight = max(1, effective_workers * _MAX_IN_FLIGHT_MULTIPLIER)
+    next_commit_sequence = 0
+    pending_results: dict[int, _PackRowResult] = {}
+
+    if work_items and not aborted:
+        with _opencv_single_thread_mode(enabled=(effective_workers > 1)):
+            with ThreadPoolExecutor(max_workers=effective_workers, thread_name_prefix="roi-fcn-pack") as executor:
+                work_iter = iter(work_items)
+                in_flight: dict[object, int] = {}
+
+                def submit_available() -> None:
+                    while len(in_flight) < max_in_flight:
+                        try:
+                            sequence_idx, next_row_idx, row_payload = next(work_iter)
+                        except StopIteration:
+                            break
+                        future = executor.submit(
+                            _process_pack_row,
+                            split_paths=split_paths,
+                            sequence_idx=sequence_idx,
+                            row_idx=next_row_idx,
+                            row=row_payload,
+                            canvas_width=canvas_width,
+                            canvas_height=canvas_height,
+                        )
+                        in_flight[future] = next_row_idx
+
+                submit_available()
+                while in_flight:
+                    done, _ = wait(tuple(in_flight.keys()), return_when=FIRST_COMPLETED)
+                    for future in done:
+                        row_idx = in_flight.pop(future)
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            result = _PackRowResult(
+                                sequence_idx=-1,
+                                row_idx=row_idx,
+                                status="failed",
+                                error_message=str(exc),
+                            )
+                        pending_results[result.sequence_idx] = result
+
+                    while next_commit_sequence in pending_results:
+                        result = pending_results.pop(next_commit_sequence)
+                        next_commit_sequence += 1
+
+                        if result.status == "success":
+                            assert result.packed is not None
+                            buffer.append(result.packed)
+                            progress_success += 1
+                            if shard_size > 0 and len(buffer) >= shard_size:
+                                if not flush_buffer() and not config.continue_on_error:
+                                    aborted = True
+                        else:
+                            _mark_row_failed(samples_df, result.row_idx, result.error_message)
+                            progress_failed += 1
+                            if not config.continue_on_error:
+                                aborted = True
+                                logger.log(f"Stopping after row {result.row_idx} failure: {result.error_message}")
+
+                        processed_rows += 1
+                        _log_progress(force=(processed_rows == len(samples_df)))
+                        _checkpoint_samples(force=(processed_rows == len(samples_df) or aborted))
+                        if aborted:
+                            break
+
+                    if aborted:
+                        for future in in_flight:
+                            future.cancel()
+                        break
+                    submit_available()
 
     if not aborted and buffer:
         if not flush_buffer() and not config.continue_on_error:
@@ -318,6 +403,8 @@ def run_pack_roi_fcn_stage(
             "NormalizationMode": "zero_to_one_float32",
             "PadValue": 0,
             "TargetStorageMode": "point_only_with_geometry_metadata",
+            "NumWorkers": int(effective_workers),
+            "Compression": bool(config.compress),
         },
         current_representation={
             "Kind": "roi_fcn_locator_npz",
@@ -371,6 +458,13 @@ def run_pack_roi_fcn_stage(
     return summary
 
 
+def _effective_worker_count(config: PackRoiFcnConfig) -> int:
+    requested = config.normalized_num_workers()
+    if not config.continue_on_error:
+        return 1
+    return requested
+
+
 def _format_eta_seconds(seconds: float) -> str:
     if not np.isfinite(seconds) or seconds < 0.0:
         return "unknown"
@@ -394,6 +488,42 @@ def _prepare_arrays_dir(arrays_dir: Path, *, overwrite: bool, dry_run: bool) -> 
     if overwrite and not dry_run:
         for npz_path in existing_npz:
             npz_path.unlink()
+
+
+def _process_pack_row(
+    *,
+    split_paths: SplitPaths,
+    sequence_idx: int,
+    row_idx: int,
+    row: dict[str, object],
+    canvas_width: int,
+    canvas_height: int,
+) -> _PackRowResult:
+    try:
+        image_path = resolve_input_image_path(split_paths, row.get("image_filename"))
+        gray = read_grayscale_uint8(image_path)
+        packed = _pack_one_row(
+            row_idx=row_idx,
+            row=row,
+            gray_image=gray,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+        )
+        return _PackRowResult(
+            sequence_idx=sequence_idx,
+            row_idx=row_idx,
+            status="success",
+            error_message="",
+            packed=packed,
+        )
+    except Exception as exc:
+        return _PackRowResult(
+            sequence_idx=sequence_idx,
+            row_idx=row_idx,
+            status="failed",
+            error_message=str(exc),
+            packed=None,
+        )
 
 
 def _pack_one_row(
@@ -541,3 +671,30 @@ def _shard_filename(dataset_reference: str, split_name: str, shard_idx: int, *, 
     if use_shards:
         return f"{dataset_reference}__{split_name}__shard_{shard_idx:04d}.npz"
     return f"{dataset_reference}__{split_name}.npz"
+
+
+@contextmanager
+def _opencv_single_thread_mode(*, enabled: bool):
+    if not enabled:
+        yield
+        return
+
+    previous_threads: int | None = None
+    try:
+        previous_threads = int(cv2.getNumThreads())
+    except Exception:
+        previous_threads = None
+
+    try:
+        cv2.setNumThreads(1)
+    except Exception:
+        previous_threads = None
+
+    try:
+        yield
+    finally:
+        if previous_threads is not None:
+            try:
+                cv2.setNumThreads(previous_threads)
+            except Exception:
+                pass

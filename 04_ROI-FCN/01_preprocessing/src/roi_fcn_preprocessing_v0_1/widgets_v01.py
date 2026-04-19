@@ -14,7 +14,7 @@ from .discovery import discover_dataset_references
 from .paths import dataset_output_root, find_preprocessing_root
 from .pipeline import run_preprocessing_for_dataset
 
-WIDGETS_UI_BUILD_V01 = "2026-04-19-roi-fcn-preprocessing-v0.1-overwrite-control"
+WIDGETS_UI_BUILD_V01 = "2026-04-19-roi-fcn-preprocessing-v0.1-speed-pass"
 
 
 class RoiFcnPreprocessingLauncherV01:
@@ -22,6 +22,9 @@ class RoiFcnPreprocessingLauncherV01:
 
     def __init__(self, preprocessing_root: Path) -> None:
         self.preprocessing_root = find_preprocessing_root(preprocessing_root)
+
+        default_bootstrap_config = BootstrapCenterTargetConfig()
+        default_pack_config = PackRoiFcnConfig()
 
         self.dataset_dropdown = widgets.Dropdown(description="Dataset")
         self.refresh_button = widgets.Button(description="Refresh Datasets", button_style="")
@@ -42,6 +45,16 @@ class RoiFcnPreprocessingLauncherV01:
         self.canvas_width = widgets.IntText(description="canvas_width", value=480)
         self.canvas_height = widgets.IntText(description="canvas_height", value=300)
         self.shard_size = widgets.IntText(description="shard_size", value=8192)
+        self.cpu_workers = widgets.BoundedIntText(
+            description="cpu_workers",
+            value=int(default_bootstrap_config.num_workers),
+            min=1,
+        )
+        self.compress_shards_checkbox = widgets.Checkbox(
+            description="compress npz shards",
+            value=bool(default_pack_config.compress),
+            indent=False,
+        )
         self.overwrite_output_checkbox = widgets.Checkbox(
             description="overwrite existing output",
             value=False,
@@ -75,6 +88,8 @@ class RoiFcnPreprocessingLauncherV01:
                 widgets.HBox([self.fg_threshold, self.edge_pad, self.min_edge_pixels]),
                 widgets.HTML("<b>Packing Controls</b>"),
                 widgets.HBox([self.canvas_width, self.canvas_height, self.shard_size]),
+                widgets.HTML("<b>Execution Controls</b>"),
+                widgets.HBox([self.cpu_workers, self.compress_shards_checkbox]),
                 self.overwrite_output_checkbox,
                 widgets.HBox([self.run_button, self.clear_log_button]),
                 self.final_verdict_html,
@@ -133,6 +148,7 @@ class RoiFcnPreprocessingLauncherV01:
         self.final_verdict_html.value = ""
 
         overwrite_enabled = bool(self.overwrite_output_checkbox.value)
+        worker_count = int(self.cpu_workers.value)
 
         bootstrap_config = BootstrapCenterTargetConfig(
             detector_backend=str(self.detector_backend_dropdown.value),
@@ -143,12 +159,15 @@ class RoiFcnPreprocessingLauncherV01:
             edge_pad=int(self.edge_pad.value),
             min_edge_pixels=int(self.min_edge_pixels.value),
             overwrite=overwrite_enabled,
+            num_workers=worker_count,
         )
         pack_config = PackRoiFcnConfig(
             canvas_width=int(self.canvas_width.value),
             canvas_height=int(self.canvas_height.value),
             shard_size=int(self.shard_size.value),
+            compress=bool(self.compress_shards_checkbox.value),
             overwrite=overwrite_enabled,
+            num_workers=worker_count,
         )
 
         try:

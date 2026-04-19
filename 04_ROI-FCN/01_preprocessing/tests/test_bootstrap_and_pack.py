@@ -87,7 +87,7 @@ class BootstrapAndPackTests(unittest.TestCase):
                 validate_rows=[{"width": 80, "height": 60, "box_xyxy": (18, 12, 62, 48)}],
             )
             split_paths = resolve_split_paths(root, "bootstrap-fixture", "train")
-            summary = run_bootstrap_center_target_stage(split_paths, BootstrapCenterTargetConfig())
+            summary = run_bootstrap_center_target_stage(split_paths, BootstrapCenterTargetConfig(num_workers=2))
 
             self.assertEqual(summary.successful_rows, 1)
             self.assertEqual(summary.skipped_rows, 1)
@@ -95,7 +95,7 @@ class BootstrapAndPackTests(unittest.TestCase):
             success_row = samples_df.iloc[0]
 
             image_path = resolve_input_image_path(split_paths, success_row["image_filename"])
-            expected_detection = build_edge_roi_detector(BootstrapCenterTargetConfig()).detect(
+            expected_detection = build_edge_roi_detector(BootstrapCenterTargetConfig(num_workers=2)).detect(
                 to_bgr_uint8(read_image_unchanged(image_path))
             )[0]
 
@@ -123,10 +123,10 @@ class BootstrapAndPackTests(unittest.TestCase):
                 validate_rows=[{"width": 100, "height": 50, "box_xyxy": (40, 10, 90, 40)}],
             )
             split_paths = resolve_split_paths(root, "pack-fixture", "train")
-            run_bootstrap_center_target_stage(split_paths, BootstrapCenterTargetConfig())
+            run_bootstrap_center_target_stage(split_paths, BootstrapCenterTargetConfig(num_workers=2))
             summary = run_pack_roi_fcn_stage(
                 split_paths,
-                PackRoiFcnConfig(canvas_width=300, canvas_height=300, shard_size=0),
+                PackRoiFcnConfig(canvas_width=300, canvas_height=300, shard_size=0, compress=False, num_workers=2),
             )
 
             self.assertEqual(summary.successful_rows, 1)

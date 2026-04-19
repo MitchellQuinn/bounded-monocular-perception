@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+import os
 
 
 _VALID_DETECTOR_BACKENDS = {"edge_roi_v1"}
+
+
+def _default_worker_count() -> int:
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(8, cpu_count))
 
 
 @dataclass(frozen=True)
@@ -25,6 +31,7 @@ class BootstrapCenterTargetConfig:
     dry_run: bool = False
     continue_on_error: bool = True
     persist_debug_images: bool = False
+    num_workers: int = field(default_factory=_default_worker_count)
 
     def normalized_detector_backend(self) -> str:
         backend = str(self.detector_backend).strip().lower()
@@ -59,6 +66,9 @@ class BootstrapCenterTargetConfig:
     def normalized_edge_close_kernel_size(self) -> int:
         return max(1, int(self.edge_close_kernel_size))
 
+    def normalized_num_workers(self) -> int:
+        return max(1, int(self.num_workers))
+
     def to_log_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["detector_backend"] = self.normalized_detector_backend()
@@ -69,6 +79,7 @@ class BootstrapCenterTargetConfig:
         payload["edge_pad"] = self.normalized_edge_pad()
         payload["min_edge_pixels"] = self.normalized_min_edge_pixels()
         payload["edge_close_kernel_size"] = self.normalized_edge_close_kernel_size()
+        payload["num_workers"] = self.normalized_num_workers()
         return payload
 
 
@@ -79,11 +90,12 @@ class PackRoiFcnConfig:
     canvas_width: int = 480
     canvas_height: int = 300
     shard_size: int = 8192
-    compress: bool = True
+    compress: bool = False
 
     overwrite: bool = False
     dry_run: bool = False
     continue_on_error: bool = True
+    num_workers: int = field(default_factory=_default_worker_count)
 
     def normalized_canvas_width(self) -> int:
         return max(1, int(self.canvas_width))
@@ -97,9 +109,13 @@ class PackRoiFcnConfig:
             raise ValueError("shard_size must be >= 0")
         return size
 
+    def normalized_num_workers(self) -> int:
+        return max(1, int(self.num_workers))
+
     def to_log_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["canvas_width"] = self.normalized_canvas_width()
         payload["canvas_height"] = self.normalized_canvas_height()
         payload["shard_size"] = self.normalized_shard_size()
+        payload["num_workers"] = self.normalized_num_workers()
         return payload

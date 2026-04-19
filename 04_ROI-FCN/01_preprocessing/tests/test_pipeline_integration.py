@@ -32,8 +32,8 @@ class PipelineIntegrationTests(unittest.TestCase):
             summary = run_preprocessing_for_dataset(
                 root,
                 "integration-fixture",
-                bootstrap_config=BootstrapCenterTargetConfig(),
-                pack_config=PackRoiFcnConfig(canvas_width=128, canvas_height=128, shard_size=1),
+                bootstrap_config=BootstrapCenterTargetConfig(num_workers=2),
+                pack_config=PackRoiFcnConfig(canvas_width=128, canvas_height=128, shard_size=1, compress=False, num_workers=2),
             )
 
             self.assertEqual(
@@ -95,7 +95,7 @@ class PipelineIntegrationTests(unittest.TestCase):
                     root,
                     "abort-fixture",
                     bootstrap_config=BootstrapCenterTargetConfig(continue_on_error=False),
-                    pack_config=PackRoiFcnConfig(),
+                    pack_config=PackRoiFcnConfig(compress=False),
                 )
 
             self.assertFalse((root / "output" / "abort-fixture" / "validate").exists())
