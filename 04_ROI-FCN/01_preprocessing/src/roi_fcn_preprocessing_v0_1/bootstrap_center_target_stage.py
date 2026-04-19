@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import shutil
+import time
 from typing import Callable
 
 import cv2
@@ -39,6 +40,8 @@ from rb_pipeline_v4.logging_utils import StageLogger
 _STATUS_COLUMN = "bootstrap_center_target_stage_status"
 _ERROR_COLUMN = "bootstrap_center_target_stage_error"
 _ALGORITHM_NAME = "edge_roi_v1"
+_PROGRESS_LOG_INTERVAL_ROWS = 500
+_CHECKPOINT_WRITE_INTERVAL_ROWS = 2000
 
 
 def run_bootstrap_center_target_stage(
@@ -70,6 +73,7 @@ def run_bootstrap_center_target_stage(
         split_paths.output_manifests_dir,
         dry_run=config.dry_run,
     )
+    write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
 
     detector = build_edge_roi_detector(config)
 
@@ -88,10 +92,55 @@ def run_bootstrap_center_target_stage(
     logger.log_parameters(config.to_log_dict())
 
     capture_mask = capture_success_mask(samples_df)
+    total_rows = len(samples_df)
+    selected_rows = int(capture_mask.sum())
+    logger.log(f"Total input rows: {total_rows}")
+    logger.log(f"Capture-success rows queued for edge ROI bootstrap: {selected_rows}")
+    logger.log(
+        f"Progress will be logged every {_PROGRESS_LOG_INTERVAL_ROWS} rows; "
+        f"samples.csv checkpoints every {_CHECKPOINT_WRITE_INTERVAL_ROWS} rows."
+    )
+    logger.log("This stage writes manifest metadata only; arrays appear later during pack_roi_fcn.")
+    logger.write()
+
     aborted = False
+    processed_rows = 0
+    progress_success = 0
+    progress_failed = 0
+    progress_skipped = 0
+    started_at = time.perf_counter()
+
+    def _log_progress(*, force: bool = False) -> None:
+        if processed_rows <= 0:
+            return
+        if not force and processed_rows % _PROGRESS_LOG_INTERVAL_ROWS != 0:
+            return
+        elapsed = max(time.perf_counter() - started_at, 1e-9)
+        rows_per_sec = processed_rows / elapsed
+        remaining_rows = max(total_rows - processed_rows, 0)
+        eta_seconds = (remaining_rows / rows_per_sec) if rows_per_sec > 0.0 else float("inf")
+        logger.log(
+            "Progress bootstrap_center_target: "
+            f"{processed_rows}/{total_rows} rows "
+            f"(success={progress_success}, failed={progress_failed}, skipped={progress_skipped}, "
+            f"rate={rows_per_sec:.2f} rows/s, eta={_format_eta_seconds(eta_seconds)})"
+        )
+        logger.write()
+
+    def _checkpoint_samples(*, force: bool = False) -> None:
+        if not force and processed_rows % _CHECKPOINT_WRITE_INTERVAL_ROWS != 0:
+            return
+        write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
+        logger.log(f"Checkpointed samples.csv at {processed_rows}/{total_rows} rows.")
+        logger.write()
+
     for row_idx, row in samples_df.iterrows():
         if not bool(capture_mask.at[row_idx]):
             _mark_row_skipped(samples_df, row_idx)
+            processed_rows += 1
+            progress_skipped += 1
+            _log_progress(force=(processed_rows == total_rows))
+            _checkpoint_samples(force=(processed_rows == total_rows))
             continue
 
         try:
@@ -146,12 +195,19 @@ def run_bootstrap_center_target_stage(
                     dry_run=config.dry_run,
                 )
                 samples_df.at[row_idx, "bootstrap_debug_image_filename"] = debug_rel
+            progress_success += 1
         except Exception as exc:
             _mark_row_failed(samples_df, row_idx, str(exc))
+            progress_failed += 1
             if not config.continue_on_error:
                 aborted = True
                 logger.log(f"Stopping after row {row_idx} failure: {exc}")
-                break
+
+        processed_rows += 1
+        _log_progress(force=(processed_rows == total_rows))
+        _checkpoint_samples(force=(processed_rows == total_rows or aborted))
+        if aborted:
+            break
 
     write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
 
@@ -252,6 +308,19 @@ def _mark_row_failed(samples_df, row_idx: int, error_message: str) -> None:
     samples_df.at[row_idx, "bootstrap_center_x_px"] = ""
     samples_df.at[row_idx, "bootstrap_center_y_px"] = ""
     samples_df.at[row_idx, "bootstrap_debug_image_filename"] = ""
+
+
+def _format_eta_seconds(seconds: float) -> str:
+    if not np.isfinite(seconds) or seconds < 0.0:
+        return "unknown"
+    total_seconds = int(round(float(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes > 0:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
 def _write_debug_image(

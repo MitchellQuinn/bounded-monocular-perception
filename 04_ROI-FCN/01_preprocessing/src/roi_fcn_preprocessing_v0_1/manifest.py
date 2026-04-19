@@ -56,7 +56,7 @@ def copy_run_json(source_manifest_dir: Path, target_manifest_dir: Path, *, dry_r
     if dry_run:
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
+    shutil.copy(source, target)
     return target
 
 

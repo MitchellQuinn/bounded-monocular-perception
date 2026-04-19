@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Callable
 
 import cv2
@@ -32,6 +33,8 @@ from rb_pipeline_v4.logging_utils import StageLogger
 _STATUS_COLUMN = "pack_roi_fcn_stage_status"
 _ERROR_COLUMN = "pack_roi_fcn_stage_error"
 _BOOTSTRAP_STATUS_COLUMN = "bootstrap_center_target_stage_status"
+_PROGRESS_LOG_INTERVAL_ROWS = 500
+_CHECKPOINT_WRITE_INTERVAL_ROWS = 2000
 
 
 @dataclass(frozen=True)
@@ -94,6 +97,7 @@ def run_pack_roi_fcn_stage(
 
     ensure_split_output_dirs(split_paths, dry_run=config.dry_run)
     _prepare_arrays_dir(split_paths.output_arrays_dir, overwrite=config.overwrite, dry_run=config.dry_run)
+    write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
 
     canvas_width = config.normalized_canvas_width()
     canvas_height = config.normalized_canvas_height()
@@ -113,16 +117,65 @@ def run_pack_roi_fcn_stage(
     )
     logger.log_parameters(config.to_log_dict())
 
+    bootstrap_status_series = samples_df[_BOOTSTRAP_STATUS_COLUMN].fillna("").astype(str).str.strip().str.lower()
+    eligible_rows = int((bootstrap_status_series == "success").sum())
+    logger.log(f"Total input rows: {len(samples_df)}")
+    logger.log(f"Rows eligible for packing from bootstrap success: {eligible_rows}")
+    if shard_size > 0:
+        logger.log(
+            f"The first NPZ shard will appear after {shard_size} successful packed rows have been buffered."
+        )
+    else:
+        logger.log("Shard size is 0; one NPZ file will be written at the end of the split.")
+    logger.log(
+        f"Progress will be logged every {_PROGRESS_LOG_INTERVAL_ROWS} rows; "
+        f"samples.csv checkpoints every {_CHECKPOINT_WRITE_INTERVAL_ROWS} rows and after each shard write."
+    )
+    logger.write()
+
     buffer: list[_BufferedPackRow] = []
     written_npz_paths: list[Path] = []
     current_shard_idx = 0
     aborted = False
+    processed_rows = 0
+    progress_success = 0
+    progress_failed = 0
+    progress_skipped = 0
+    started_at = time.perf_counter()
+
+    def _log_progress(*, force: bool = False) -> None:
+        if processed_rows <= 0:
+            return
+        if not force and processed_rows % _PROGRESS_LOG_INTERVAL_ROWS != 0:
+            return
+        elapsed = max(time.perf_counter() - started_at, 1e-9)
+        rows_per_sec = processed_rows / elapsed
+        remaining_rows = max(len(samples_df) - processed_rows, 0)
+        eta_seconds = (remaining_rows / rows_per_sec) if rows_per_sec > 0.0 else float("inf")
+        logger.log(
+            "Progress pack_roi_fcn: "
+            f"{processed_rows}/{len(samples_df)} rows "
+            f"(ready={progress_success}, failed={progress_failed}, skipped={progress_skipped}, "
+            f"written={progress_success - len(buffer)}, buffered={len(buffer)}, "
+            f"rate={rows_per_sec:.2f} rows/s, eta={_format_eta_seconds(eta_seconds)})"
+        )
+        logger.write()
+
+    def _checkpoint_samples(*, force: bool = False, reason: str | None = None) -> None:
+        if not force and processed_rows % _CHECKPOINT_WRITE_INTERVAL_ROWS != 0:
+            return
+        write_samples_csv(samples_df, split_paths.output_samples_csv_path, dry_run=config.dry_run)
+        if reason is None:
+            reason = f"{processed_rows}/{len(samples_df)} rows"
+        logger.log(f"Checkpointed samples.csv at {reason}.")
+        logger.write()
 
     def flush_buffer() -> bool:
-        nonlocal current_shard_idx
+        nonlocal current_shard_idx, progress_success, progress_failed
         if not buffer:
             return True
 
+        buffered_count = len(buffer)
         npz_name = _shard_filename(
             split_paths.dataset_reference,
             split_paths.split_name,
@@ -174,12 +227,17 @@ def run_pack_roi_fcn_stage(
                 written_npz_paths.append(npz_path)
                 for local_row_index, item in enumerate(buffer):
                     _mark_row_success(samples_df, item, npz_name, local_row_index)
+            logger.log(f"Wrote shard {npz_name} with {buffered_count} rows.")
+            _checkpoint_samples(force=True, reason=f"shard write {npz_name}")
         except Exception as exc:
             if npz_path.exists() and not config.dry_run:
                 npz_path.unlink()
             for item in buffer:
                 _mark_row_failed(samples_df, item.row_idx, str(exc))
+            progress_success -= buffered_count
+            progress_failed += buffered_count
             logger.log(f"Failed to write shard {npz_name}: {exc}")
+            logger.write()
             buffer.clear()
             return False
 
@@ -191,6 +249,10 @@ def run_pack_roi_fcn_stage(
         bootstrap_status = str(row.get(_BOOTSTRAP_STATUS_COLUMN, "")).strip().lower()
         if bootstrap_status != "success":
             _mark_row_skipped(samples_df, row_idx)
+            processed_rows += 1
+            progress_skipped += 1
+            _log_progress(force=(processed_rows == len(samples_df)))
+            _checkpoint_samples(force=(processed_rows == len(samples_df)))
             continue
 
         try:
@@ -204,16 +266,22 @@ def run_pack_roi_fcn_stage(
                 canvas_height=canvas_height,
             )
             buffer.append(packed)
+            progress_success += 1
             if shard_size > 0 and len(buffer) >= shard_size:
                 if not flush_buffer() and not config.continue_on_error:
                     aborted = True
-                    break
         except Exception as exc:
             _mark_row_failed(samples_df, row_idx, str(exc))
+            progress_failed += 1
             if not config.continue_on_error:
                 aborted = True
                 logger.log(f"Stopping after row {row_idx} failure: {exc}")
-                break
+
+        processed_rows += 1
+        _log_progress(force=(processed_rows == len(samples_df)))
+        _checkpoint_samples(force=(processed_rows == len(samples_df) or aborted))
+        if aborted:
+            break
 
     if not aborted and buffer:
         if not flush_buffer() and not config.continue_on_error:
@@ -301,6 +369,19 @@ def run_pack_roi_fcn_stage(
         raise RuntimeError("pack_roi_fcn stopped after first row failure (continue_on_error=False).")
 
     return summary
+
+
+def _format_eta_seconds(seconds: float) -> str:
+    if not np.isfinite(seconds) or seconds < 0.0:
+        return "unknown"
+    total_seconds = int(round(float(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes > 0:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
 def _prepare_arrays_dir(arrays_dir: Path, *, overwrite: bool, dry_run: bool) -> None:

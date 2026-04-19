@@ -14,7 +14,7 @@ from .discovery import discover_dataset_references
 from .paths import dataset_output_root, find_preprocessing_root
 from .pipeline import run_preprocessing_for_dataset
 
-WIDGETS_UI_BUILD_V01 = "2026-04-17-roi-fcn-preprocessing-v0.1"
+WIDGETS_UI_BUILD_V01 = "2026-04-19-roi-fcn-preprocessing-v0.1-overwrite-control"
 
 
 class RoiFcnPreprocessingLauncherV01:
@@ -39,9 +39,14 @@ class RoiFcnPreprocessingLauncherV01:
         self.edge_pad = widgets.BoundedIntText(description="edge_pad", value=0, min=0)
         self.min_edge_pixels = widgets.BoundedIntText(description="min_edge_pixels", value=16, min=1)
 
-        self.canvas_width = widgets.BoundedIntText(description="canvas_width", value=300, min=1)
-        self.canvas_height = widgets.BoundedIntText(description="canvas_height", value=300, min=1)
-        self.shard_size = widgets.BoundedIntText(description="shard_size", value=8192, min=0)
+        self.canvas_width = widgets.IntText(description="canvas_width", value=480)
+        self.canvas_height = widgets.IntText(description="canvas_height", value=300)
+        self.shard_size = widgets.IntText(description="shard_size", value=8192)
+        self.overwrite_output_checkbox = widgets.Checkbox(
+            description="overwrite existing output",
+            value=False,
+            indent=False,
+        )
 
         self.run_button = widgets.Button(description="Run Preprocessing", button_style="primary")
         self.clear_log_button = widgets.Button(description="Clear Log", button_style="")
@@ -70,6 +75,7 @@ class RoiFcnPreprocessingLauncherV01:
                 widgets.HBox([self.fg_threshold, self.edge_pad, self.min_edge_pixels]),
                 widgets.HTML("<b>Packing Controls</b>"),
                 widgets.HBox([self.canvas_width, self.canvas_height, self.shard_size]),
+                self.overwrite_output_checkbox,
                 widgets.HBox([self.run_button, self.clear_log_button]),
                 self.final_verdict_html,
             ]
@@ -126,6 +132,8 @@ class RoiFcnPreprocessingLauncherV01:
         self.log_output.clear_output()
         self.final_verdict_html.value = ""
 
+        overwrite_enabled = bool(self.overwrite_output_checkbox.value)
+
         bootstrap_config = BootstrapCenterTargetConfig(
             detector_backend=str(self.detector_backend_dropdown.value),
             edge_blur_k=int(self.edge_blur_k.value),
@@ -134,11 +142,13 @@ class RoiFcnPreprocessingLauncherV01:
             fg_threshold=int(self.fg_threshold.value),
             edge_pad=int(self.edge_pad.value),
             min_edge_pixels=int(self.min_edge_pixels.value),
+            overwrite=overwrite_enabled,
         )
         pack_config = PackRoiFcnConfig(
             canvas_width=int(self.canvas_width.value),
             canvas_height=int(self.canvas_height.value),
             shard_size=int(self.shard_size.value),
+            overwrite=overwrite_enabled,
         )
 
         try:

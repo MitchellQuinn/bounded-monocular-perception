@@ -76,7 +76,7 @@ class BootstrapCenterTargetConfig:
 class PackRoiFcnConfig:
     """Config for stage 2 full-frame locator-canvas packing."""
 
-    canvas_width: int = 300
+    canvas_width: int = 480
     canvas_height: int = 300
     shard_size: int = 8192
     compress: bool = True
