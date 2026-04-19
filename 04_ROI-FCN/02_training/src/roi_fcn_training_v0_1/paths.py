@@ -13,6 +13,22 @@ PROJECT_TIMEZONE = ZoneInfo("Europe/London")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
+def _require_identifier(value: str, *, label: str) -> str:
+    text = str(value).strip()
+    if not _IDENTIFIER_RE.fullmatch(text):
+        raise ValueError(f"{label} must match {_IDENTIFIER_RE.pattern!r}; got {value!r}")
+    return text
+
+
+def _sanitize_run_name_suffix(run_name_suffix: str | None) -> str | None:
+    if run_name_suffix is None:
+        return None
+    suffix = "".join(ch for ch in str(run_name_suffix).strip() if ch.isalnum() or ch in ("-", "_"))
+    if not suffix:
+        raise ValueError("run_name_suffix produced an empty sanitized value.")
+    return suffix
+
+
 def module_training_root() -> Path:
     """Return the repository copy of 02_training."""
     return Path(__file__).resolve().parents[2]
@@ -89,6 +105,34 @@ def resolve_split_paths(
     )
 
 
+def suggest_model_run_id(
+    model_name: str,
+    *,
+    run_name_suffix: str | None = None,
+    now_local: datetime | None = None,
+) -> str:
+    """Return the default timestamp-based run id without creating directories."""
+    model_text = _require_identifier(model_name, label="model_name")
+    timestamp = (now_local or datetime.now(PROJECT_TIMEZONE)).strftime("%y%m%d-%H%M")
+    run_name = f"{timestamp}_{model_text}"
+    suffix = _sanitize_run_name_suffix(run_name_suffix)
+    if suffix is not None:
+        run_name = f"{run_name}_{suffix}"
+    return run_name
+
+
+def build_model_run_dir_path(
+    models_root_path: Path,
+    *,
+    model_name: str,
+    run_id: str,
+) -> Path:
+    """Return the expected run directory path without creating it."""
+    model_text = _require_identifier(model_name, label="model_name")
+    run_name = _require_identifier(run_id, label="run_id")
+    return Path(models_root_path) / model_text / "runs" / run_name
+
+
 def make_model_run_dir(
     models_root_path: Path,
     *,
@@ -98,27 +142,26 @@ def make_model_run_dir(
     now_local: datetime | None = None,
 ) -> Path:
     """Create a new run directory under models/<model_name>/runs/."""
-    model_text = str(model_name).strip()
-    if not _IDENTIFIER_RE.fullmatch(model_text):
-        raise ValueError(f"model_name must match {_IDENTIFIER_RE.pattern!r}; got {model_name!r}")
+    model_text = _require_identifier(model_name, label="model_name")
 
     if run_id is not None and run_name_suffix:
         raise ValueError("run_name_suffix cannot be used together with run_id.")
 
-    if run_id is None:
-        timestamp = (now_local or datetime.now(PROJECT_TIMEZONE)).strftime("%y%m%d-%H%M")
-        run_name = f"{timestamp}_{model_text}"
-        if run_name_suffix:
-            suffix = "".join(ch for ch in str(run_name_suffix).strip() if ch.isalnum() or ch in ("-", "_"))
-            if not suffix:
-                raise ValueError("run_name_suffix produced an empty sanitized value.")
-            run_name = f"{run_name}_{suffix}"
-    else:
-        run_name = str(run_id).strip()
-        if not _IDENTIFIER_RE.fullmatch(run_name):
-            raise ValueError(f"run_id must match {_IDENTIFIER_RE.pattern!r}; got {run_id!r}")
+    run_name = (
+        suggest_model_run_id(
+            model_text,
+            run_name_suffix=run_name_suffix,
+            now_local=now_local,
+        )
+        if run_id is None
+        else _require_identifier(run_id, label="run_id")
+    )
 
-    run_dir = models_root_path / model_text / "runs" / run_name
+    run_dir = build_model_run_dir_path(
+        models_root_path,
+        model_name=model_text,
+        run_id=run_name,
+    )
     if run_dir.exists():
         raise FileExistsError(f"Run directory already exists: {run_dir}")
     run_dir.mkdir(parents=True, exist_ok=False)
