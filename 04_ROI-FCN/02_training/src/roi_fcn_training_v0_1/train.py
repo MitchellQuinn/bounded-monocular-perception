@@ -533,7 +533,7 @@ def _train_one_epoch(
                 log_sink,
                 "[train] "
                 f"epoch={epoch_index} step={step_count} seen={total_count} loss={running_loss:.6f} "
-                f"bch_mn_con_err_px={batch_metrics.mean_center_error_px:.3f} "
+                f"bch_mn_ctr_err_px={batch_metrics.mean_center_error_px:.3f} "
                 f"bch_mn_pk_con={batch_metrics.mean_peak_confidence:.4f} "
                 f"bch_mn_heatmap_act={batch_metrics.mean_heatmap_activation:.6f} "
                 f"rn_mn_centre_err={running_mean_center_error_px:.3f} "
