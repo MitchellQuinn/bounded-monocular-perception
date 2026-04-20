@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -10,11 +11,16 @@ from unittest.mock import patch
 
 from _test_support import ensure_training_root
 from roi_fcn_training_v0_1.paths import PROJECT_TIMEZONE, suggest_model_run_id
+from roi_fcn_training_v0_1.resume_state import build_resume_state_payload, save_resume_state
 from roi_fcn_training_v0_1.tmux_launcher_v0_2 import (
     build_tmux_log_path,
     default_session_name,
     end_session,
     launch_session,
+    latest_resume_candidate,
+    list_model_directories,
+    list_resume_candidates,
+    plan_tmux_resume_launch,
     plan_tmux_training_launch,
     read_log_tail,
 )
@@ -101,6 +107,134 @@ class TmuxLauncherV02Tests(unittest.TestCase):
                 Path(plan.run_dir),
                 (root / "models" / "260420-1024_roi-fcn-tiny" / "runs" / "run_0002").resolve(),
             )
+
+    def test_resume_candidate_discovery_and_plan_resume_launch(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = ensure_training_root(Path(tmpdir))
+            models_root = root / "models"
+            model_directory = "260420-1024_roi-fcn-tiny"
+            source_run_dir = models_root / model_directory / "runs" / "run_0001"
+            source_run_dir.mkdir(parents=True, exist_ok=False)
+            (source_run_dir / "run_config.json").write_text(
+                json.dumps(
+                    {
+                        "training_dataset": "fixture_train",
+                        "validation_dataset": "fixture_validate",
+                        "datasets_root": "datasets",
+                        "models_root": "models",
+                        "seed": 42,
+                        "batch_size": 8,
+                        "epochs": 12,
+                        "learning_rate": 1e-3,
+                        "weight_decay": 1e-5,
+                        "gaussian_sigma_px": 2.5,
+                        "heatmap_positive_threshold": 0.05,
+                        "early_stopping_patience": 4,
+                        "topology_id": "roi_fcn_tiny",
+                        "topology_variant": "tiny_v1",
+                        "topology_params": {},
+                        "model_name": "roi-fcn-tiny",
+                        "model_directory": model_directory,
+                        "progress_log_interval_steps": 25,
+                        "roi_width_px": 300,
+                        "roi_height_px": 220,
+                        "evaluation_max_visual_examples": 6,
+                    }
+                ) + "\n",
+                encoding="utf-8",
+            )
+            save_resume_state(
+                source_run_dir / "resume_state.pt",
+                build_resume_state_payload(
+                    epoch=5,
+                    run_id="run_0001",
+                    training_dataset="fixture_train",
+                    validation_dataset="fixture_validate",
+                    topology_id="roi_fcn_tiny",
+                    topology_variant="tiny_v1",
+                    topology_params={},
+                    topology_spec_signature="sig-spec",
+                    topology_contract_signature="sig-contract",
+                    output_hw=(16, 24),
+                    train_split_contract={
+                        "dataset_reference": "fixture_train",
+                        "split_name": "train",
+                        "row_count": 10,
+                        "shard_count": 1,
+                        "geometry": {
+                            "canvas_width_px": 48,
+                            "canvas_height_px": 32,
+                            "image_layout": "N,C,H,W",
+                            "channels": 1,
+                            "normalization_range": [0.0, 1.0],
+                            "geometry_schema": ["schema"],
+                        },
+                        "preprocessing_contract_version": "rb-preprocess-roi-fcn-v0_1",
+                        "representation_kind": "roi_fcn_locator_npz",
+                        "representation_storage_format": "npz",
+                        "representation_array_keys": ["locator_input_image"],
+                        "bootstrap_bbox_available": True,
+                        "fixed_roi_width_px": 300,
+                        "fixed_roi_height_px": 220,
+                    },
+                    validation_split_contract={
+                        "dataset_reference": "fixture_validate",
+                        "split_name": "validate",
+                        "row_count": 4,
+                        "shard_count": 1,
+                        "geometry": {
+                            "canvas_width_px": 48,
+                            "canvas_height_px": 32,
+                            "image_layout": "N,C,H,W",
+                            "channels": 1,
+                            "normalization_range": [0.0, 1.0],
+                            "geometry_schema": ["schema"],
+                        },
+                        "preprocessing_contract_version": "rb-preprocess-roi-fcn-v0_1",
+                        "representation_kind": "roi_fcn_locator_npz",
+                        "representation_storage_format": "npz",
+                        "representation_array_keys": ["locator_input_image"],
+                        "bootstrap_bbox_available": True,
+                        "fixed_roi_width_px": 300,
+                        "fixed_roi_height_px": 220,
+                    },
+                    best_epoch=4,
+                    best_validation_loss=0.25,
+                    best_validation_mean_center_error_px=3.5,
+                    epochs_without_improvement=1,
+                    history_rows=[{"epoch": 1}],
+                    model_state_dict={},
+                    optimizer_state_dict={},
+                ),
+            )
+
+            self.assertEqual(list_model_directories(models_root), [model_directory])
+            candidates = list_resume_candidates(models_root, model_directory=model_directory)
+            self.assertEqual(len(candidates), 1)
+            self.assertTrue(bool(candidates[0]["is_resumable"]))
+            self.assertEqual(int(candidates[0]["completed_epochs"]), 5)
+            latest = latest_resume_candidate(models_root, model_directory=model_directory)
+            self.assertIsNotNone(latest)
+            assert latest is not None
+            self.assertEqual(str(latest["run_id"]), "run_0001")
+
+            plan = plan_tmux_resume_launch(
+                root,
+                source_run_dir=source_run_dir,
+                additional_epochs=3,
+                python_executable="/tmp/fake-python",
+                device_override="cuda",
+            )
+
+            self.assertEqual(plan.model_directory, model_directory)
+            self.assertEqual(plan.run_id, "run_0002")
+            tokens = shlex.split(plan.command)
+            self.assertIn("--resume-from-run-dir", tokens)
+            self.assertIn(str(source_run_dir.resolve()), tokens)
+            self.assertIn("--additional-epochs", tokens)
+            self.assertIn("3", tokens)
+            self.assertIn("--device", tokens)
+            self.assertIn("cuda", tokens)
 
     def test_plan_tmux_training_launch_fails_when_predicted_run_dir_exists(self) -> None:
         with TemporaryDirectory() as tmpdir:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 from typing import Any, Callable
 
 import numpy as np
@@ -21,15 +22,17 @@ from .contracts import (
     LATEST_CHECKPOINT_FILENAME,
     LOSS_HISTORY_PLOT_FILENAME,
     MODEL_ARCHITECTURE_FILENAME,
+    RESUME_STATE_FILENAME,
     RUN_CONFIG_FILENAME,
     SUMMARY_FILENAME,
     TRAINING_CONTRACT_VERSION,
 )
-from .data import load_and_validate_split_dataset, validate_run_compatibility, iter_split_batches
+from .data import iter_split_batches, load_and_validate_split_dataset, validate_run_compatibility
 from .evaluate import evaluate_split, infer_output_hw, resolve_device, write_split_artifacts
 from .geometry import decode_heatmap_argmax, derive_roi_bounds, roi_fully_contains_bbox
 from .paths import find_training_root, make_model_run_dir, resolve_models_root, to_repo_relative
 from .plots import save_history_plot
+from .resume_state import build_resume_state_payload, load_resume_state, save_resume_state
 from .targets import build_gaussian_heatmaps, compute_heatmap_loss
 from .topologies import (
     architecture_text_from_spec,
@@ -38,7 +41,7 @@ from .topologies import (
     topology_contract_signature,
     topology_spec_signature,
 )
-from .utils import environment_summary, git_metadata, set_random_seeds, utc_now_iso, write_json
+from .utils import environment_summary, git_metadata, read_json, set_random_seeds, utc_now_iso, write_json
 
 
 HEATMAP_LOSS_NAME = "balanced_mse_heatmap"
@@ -85,13 +88,19 @@ def _checkpoint_payload(
     model: nn.Module,
     optimizer: Adam,
     epoch: int,
+    best_epoch: int,
     best_validation_loss: float,
     best_validation_mean_center_error_px: float,
+    epochs_without_improvement: int,
+    history_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "epoch": int(epoch),
+        "best_epoch": int(best_epoch),
         "best_validation_loss": float(best_validation_loss),
         "best_validation_mean_center_error_px": float(best_validation_mean_center_error_px),
+        "epochs_without_improvement": int(epochs_without_improvement),
+        "history_rows": list(history_rows),
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
     }
@@ -127,6 +136,259 @@ def _can_reuse_precreated_run_dir(run_dir: Path) -> bool:
     if not entries:
         return True
     return len(entries) == 1 and entries[0].is_file() and entries[0].suffix == ".log"
+
+
+def _normalize_history_rows(raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("history_rows in resume state must be a list.")
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(raw):
+        if not isinstance(row, dict):
+            raise ValueError(f"history_rows[{index}] in resume state must be an object; got {type(row)}")
+        rows.append(dict(row))
+    return rows
+
+
+def _normalize_split_contract_for_resume(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"Split contract must be a mapping; got {type(raw)}")
+    payload = dict(raw)
+    for key in ("split_root", "run_json_path", "samples_csv_path"):
+        payload.pop(key, None)
+    geometry_raw = payload.get("geometry")
+    if not isinstance(geometry_raw, dict):
+        raise ValueError("Split contract is missing a geometry mapping.")
+    geometry = dict(geometry_raw)
+    if isinstance(geometry.get("geometry_schema"), (list, tuple)):
+        geometry["geometry_schema"] = list(geometry["geometry_schema"])
+    payload["geometry"] = geometry
+    array_keys = payload.get("representation_array_keys")
+    if isinstance(array_keys, (list, tuple)):
+        payload["representation_array_keys"] = list(array_keys)
+    return payload
+
+
+def _current_split_contract_for_resume(split_dataset) -> dict[str, Any]:
+    return _normalize_split_contract_for_resume(split_dataset.contract.to_dict())
+
+
+def _run_index_from_name(name: str) -> int:
+    text = str(name).strip()
+    if not text.startswith("run_"):
+        return -1
+    try:
+        return int(text.split("_", maxsplit=1)[1])
+    except ValueError:
+        return -1
+
+
+def _resolve_resume_source_run_dir(training_root: Path, source_raw: str | Path) -> Path:
+    source = Path(source_raw).expanduser()
+    repo_root = training_root.parents[1]
+    candidates: list[Path] = []
+    if source.is_absolute():
+        candidates.append(source.resolve())
+    else:
+        for base in (Path.cwd(), training_root, repo_root):
+            candidate = (base / source).resolve()
+            if candidate not in candidates:
+                candidates.append(candidate)
+    for candidate in candidates:
+        if candidate.is_dir() and (candidate / RUN_CONFIG_FILENAME).exists() and (candidate / RESUME_STATE_FILENAME).exists():
+            return candidate
+    child_candidates: list[Path] = []
+    for candidate in candidates:
+        for base in (candidate, candidate / "runs"):
+            if not base.exists() or not base.is_dir():
+                continue
+            for child in base.glob("run_*"):
+                if not child.is_dir():
+                    continue
+                if (child / RUN_CONFIG_FILENAME).exists() and (child / RESUME_STATE_FILENAME).exists():
+                    child_candidates.append(child.resolve())
+    if child_candidates:
+        child_candidates.sort(key=lambda item: (_run_index_from_name(item.name), item.stat().st_mtime))
+        return child_candidates[-1]
+    raise FileNotFoundError(f"Could not resolve a resumable source run directory from {source_raw!r}")
+
+
+def _assert_resume_config_matches_source(
+    current_config: TrainConfig,
+    *,
+    source_config: dict[str, Any],
+    validation_dataset: str,
+) -> None:
+    def _expect_equal(label: str, current: Any, source: Any) -> None:
+        if current != source:
+            raise ValueError(f"Resume config mismatch for {label}: source={source!r} current={current!r}")
+
+    def _expect_close(label: str, current: float, source: float) -> None:
+        if not np.isclose(float(current), float(source), atol=1e-12, rtol=0.0):
+            raise ValueError(f"Resume config mismatch for {label}: source={source!r} current={current!r}")
+
+    _expect_equal(
+        "training_dataset",
+        str(current_config.training_dataset).strip(),
+        str(source_config.get("training_dataset", "")).strip(),
+    )
+    _expect_equal(
+        "validation_dataset",
+        validation_dataset,
+        str(source_config.get("validation_dataset") or source_config.get("training_dataset") or "").strip(),
+    )
+    _expect_equal("epochs", int(current_config.epochs), int(source_config.get("epochs", current_config.epochs)))
+    _expect_equal("batch_size", int(current_config.batch_size), int(source_config.get("batch_size", current_config.batch_size)))
+    _expect_close(
+        "learning_rate",
+        float(current_config.learning_rate),
+        float(source_config.get("learning_rate", current_config.learning_rate)),
+    )
+    _expect_close(
+        "weight_decay",
+        float(current_config.weight_decay),
+        float(source_config.get("weight_decay", current_config.weight_decay)),
+    )
+    _expect_close(
+        "gaussian_sigma_px",
+        float(current_config.gaussian_sigma_px),
+        float(source_config.get("gaussian_sigma_px", current_config.gaussian_sigma_px)),
+    )
+    _expect_close(
+        "heatmap_positive_threshold",
+        float(current_config.heatmap_positive_threshold),
+        float(source_config.get("heatmap_positive_threshold", current_config.heatmap_positive_threshold)),
+    )
+    _expect_equal(
+        "early_stopping_patience",
+        int(current_config.early_stopping_patience),
+        int(source_config.get("early_stopping_patience", current_config.early_stopping_patience)),
+    )
+    _expect_equal(
+        "progress_log_interval_steps",
+        int(current_config.progress_log_interval_steps),
+        int(source_config.get("progress_log_interval_steps", current_config.progress_log_interval_steps)),
+    )
+    _expect_equal(
+        "roi_width_px",
+        int(current_config.roi_width_px),
+        int(source_config.get("roi_width_px", current_config.roi_width_px)),
+    )
+    _expect_equal(
+        "roi_height_px",
+        int(current_config.roi_height_px),
+        int(source_config.get("roi_height_px", current_config.roi_height_px)),
+    )
+    _expect_equal(
+        "topology_id",
+        str(current_config.topology_id).strip(),
+        str(source_config.get("topology_id", "")).strip(),
+    )
+    _expect_equal(
+        "topology_variant",
+        str(current_config.topology_variant).strip(),
+        str(source_config.get("topology_variant", "")).strip(),
+    )
+    source_topology_params = source_config.get("topology_params")
+    if not isinstance(source_topology_params, dict):
+        source_topology_params = {}
+    if dict(current_config.topology_params) != dict(source_topology_params):
+        raise ValueError(
+            "Resume config mismatch for topology_params: "
+            f"source={source_topology_params!r} current={current_config.topology_params!r}"
+        )
+
+
+def _load_resume_context(
+    *,
+    training_root: Path,
+    config: TrainConfig,
+    validation_dataset: str,
+    spec,
+    output_hw: tuple[int, int],
+    train_split,
+    validation_split,
+) -> dict[str, Any] | None:
+    source_raw = config.resume_from_run_dir
+    if source_raw is None:
+        return None
+
+    source_run_dir = _resolve_resume_source_run_dir(training_root, source_raw)
+    source_config = read_json(source_run_dir / RUN_CONFIG_FILENAME)
+    _assert_resume_config_matches_source(
+        config,
+        source_config=source_config,
+        validation_dataset=validation_dataset,
+    )
+    resume_state = load_resume_state(source_run_dir / RESUME_STATE_FILENAME, map_location="cpu")
+
+    state_training_dataset = str(resume_state.get("training_dataset", "")).strip()
+    if state_training_dataset != str(config.training_dataset).strip():
+        raise ValueError(
+            "Resume source training dataset mismatch: "
+            f"source={state_training_dataset!r} current={str(config.training_dataset).strip()!r}"
+        )
+    state_validation_dataset = str(resume_state.get("validation_dataset", "")).strip()
+    if state_validation_dataset != validation_dataset:
+        raise ValueError(
+            "Resume source validation dataset mismatch: "
+            f"source={state_validation_dataset!r} current={validation_dataset!r}"
+        )
+
+    source_topology_signature = str(resume_state.get("topology_spec_signature", "")).strip()
+    current_topology_signature = topology_spec_signature(spec)
+    if source_topology_signature != current_topology_signature:
+        raise ValueError(
+            "Resume source topology signature mismatch: "
+            f"source={source_topology_signature} current={current_topology_signature}"
+        )
+    source_contract_signature = str(resume_state.get("topology_contract_signature", "")).strip()
+    current_contract_signature = topology_contract_signature(spec)
+    if source_contract_signature != current_contract_signature:
+        raise ValueError(
+            "Resume source topology contract mismatch: "
+            f"source={source_contract_signature} current={current_contract_signature}"
+        )
+
+    state_output_hw = resume_state.get("output_hw")
+    if not isinstance(state_output_hw, (list, tuple)) or len(state_output_hw) != 2:
+        raise ValueError("Resume state output_hw must be a two-element list or tuple.")
+    source_output_hw = (int(state_output_hw[0]), int(state_output_hw[1]))
+    if source_output_hw != (int(output_hw[0]), int(output_hw[1])):
+        raise ValueError(
+            "Resume source output_hw mismatch: "
+            f"source={source_output_hw} current={(int(output_hw[0]), int(output_hw[1]))}"
+        )
+
+    source_train_contract = _normalize_split_contract_for_resume(resume_state.get("train_split_contract"))
+    current_train_contract = _current_split_contract_for_resume(train_split)
+    if source_train_contract != current_train_contract:
+        raise ValueError(
+            "Resume source training split contract mismatch: "
+            f"source={source_train_contract} current={current_train_contract}"
+        )
+    source_validation_contract = _normalize_split_contract_for_resume(resume_state.get("validation_split_contract"))
+    current_validation_contract = _current_split_contract_for_resume(validation_split)
+    if source_validation_contract != current_validation_contract:
+        raise ValueError(
+            "Resume source validation split contract mismatch: "
+            f"source={source_validation_contract} current={current_validation_contract}"
+        )
+
+    additional_epochs = config.additional_epochs
+    if additional_epochs is None:
+        raise ValueError("additional_epochs must be provided when resume_from_run_dir is set.")
+    if int(additional_epochs) <= 0:
+        raise ValueError(f"additional_epochs must be positive for resume runs; got {additional_epochs}")
+
+    return {
+        "source_run_dir": source_run_dir,
+        "source_run_id": str(resume_state.get("run_id") or source_config.get("run_id") or source_run_dir.name),
+        "source_config": source_config,
+        "resume_state": resume_state,
+        "additional_epochs": int(additional_epochs),
+    }
 
 
 def _summarize_training_batch_localisation(
@@ -300,6 +562,8 @@ def train_roi_fcn(
 ) -> dict[str, Any]:
     """Train one ROI-FCN run end-to-end."""
     train_config = config if isinstance(config, TrainConfig) else TrainConfig.from_mapping(config)
+    if train_config.resume_from_run_dir is None and train_config.additional_epochs is not None:
+        raise ValueError("additional_epochs can only be used when resume_from_run_dir is set.")
     if not str(train_config.training_dataset).strip():
         raise ValueError("training_dataset cannot be blank.")
     validation_dataset = str(train_config.validation_dataset or train_config.training_dataset).strip()
@@ -340,6 +604,8 @@ def train_roi_fcn(
         topology_variant=str(train_config.topology_variant).strip(),
         topology_params=train_config.topology_params,
     )
+    topology_spec_signature_value = topology_spec_signature(spec)
+    topology_contract_signature_value = topology_contract_signature(spec)
     model = build_model_from_spec(spec).to(device)
     output_hw = infer_output_hw(
         model,
@@ -354,6 +620,60 @@ def train_roi_fcn(
         lr=float(train_config.learning_rate),
         weight_decay=float(train_config.weight_decay),
     )
+
+    resume_context = _load_resume_context(
+        training_root=training_root,
+        config=train_config,
+        validation_dataset=validation_dataset,
+        spec=spec,
+        output_hw=output_hw,
+        train_split=train_split,
+        validation_split=validation_split,
+    )
+
+    history_rows: list[dict[str, Any]] = []
+    best_validation_loss = float("inf")
+    best_validation_mean_center_error_px = float("inf")
+    best_epoch = 0
+    epochs_without_improvement = 0
+    start_epoch = 1
+    total_epochs_target = int(train_config.epochs)
+    resume_mode = False
+    resume_source_run_id: str | None = None
+    resume_source_run_dir: str | None = None
+    if resume_context is not None:
+        resume_state = dict(resume_context["resume_state"])
+        source_run_dir = Path(resume_context["source_run_dir"]).resolve()
+        resume_source_run_dir = str(source_run_dir)
+        resume_source_run_id = str(resume_context["source_run_id"])
+        additional_epochs = int(resume_context["additional_epochs"])
+        model.load_state_dict(resume_state["model_state_dict"])
+        optimizer.load_state_dict(resume_state["optimizer_state_dict"])
+        history_rows = _normalize_history_rows(resume_state.get("history_rows"))
+        best_validation_loss = float(resume_state.get("best_validation_loss", float("inf")))
+        best_validation_mean_center_error_px = float(
+            resume_state.get("best_validation_mean_center_error_px", float("inf"))
+        )
+        best_epoch = int(resume_state.get("best_epoch", 0))
+        epochs_without_improvement = int(resume_state.get("epochs_without_improvement", 0))
+        last_completed_epoch = int(resume_state["epoch"])
+        start_epoch = last_completed_epoch + 1
+        total_epochs_target = last_completed_epoch + additional_epochs
+        if total_epochs_target < start_epoch:
+            raise ValueError(
+                "Resolved total epoch budget is before resume start: "
+                f"start_epoch={start_epoch} total_epochs_target={total_epochs_target}"
+            )
+        checkpoint_to_copy = None
+        for candidate_name in (BEST_CHECKPOINT_FILENAME, LATEST_CHECKPOINT_FILENAME):
+            candidate = source_run_dir / candidate_name
+            if candidate.exists():
+                checkpoint_to_copy = candidate
+                break
+        if checkpoint_to_copy is None:
+            raise FileNotFoundError(f"Resume source is missing both best.pt and latest.pt: {source_run_dir}")
+        shutil.copy2(checkpoint_to_copy, run_dir / BEST_CHECKPOINT_FILENAME)
+        resume_mode = True
 
     (run_dir / MODEL_ARCHITECTURE_FILENAME).write_text(
         architecture_text_from_spec(spec) + "\n",
@@ -380,8 +700,8 @@ def train_roi_fcn(
             "topology_variant": spec.topology_variant,
             "topology_params": dict(spec.topology_params),
             "topology_contract": dict(spec.topology_contract),
-            "topology_contract_signature": topology_contract_signature(spec),
-            "topology_spec_signature": topology_spec_signature(spec),
+            "topology_contract_signature": topology_contract_signature_value,
+            "topology_spec_signature": topology_spec_signature_value,
             "heatmap_loss_name": HEATMAP_LOSS_NAME,
             "model_directory": model_directory,
             "run_id": run_id,
@@ -391,11 +711,24 @@ def train_roi_fcn(
             "started_at_utc": utc_now_iso(),
             "environment": environment_summary(str(device)),
             "git": git_metadata(repo_root),
+            "resume_from_run_dir_resolved": resume_source_run_dir,
+            "resume_from_run_id": resume_source_run_id,
+            "resume": {
+                "enabled": bool(resume_mode),
+                "source_run_id": resume_source_run_id if resume_mode else None,
+                "source_run_dir": resume_source_run_dir if resume_mode else None,
+                "start_epoch": int(start_epoch),
+                "total_target_epochs": int(total_epochs_target),
+                "additional_epochs": (
+                    int(resume_context["additional_epochs"]) if resume_mode and resume_context is not None else None
+                ),
+            },
         }
     )
     write_json(run_dir / RUN_CONFIG_FILENAME, run_config_payload)
 
-    _log_message(log_sink, f"[train] model_directory={model_directory} run_id={run_id} run_dir={run_dir}")
+    mode_label = "resume" if resume_mode else "fresh"
+    _log_message(log_sink, f"[train] model_directory={model_directory} run_id={run_id} run_dir={run_dir} mode={mode_label}")
     _log_message(
         log_sink,
         f"[train] train_dataset={train_split.contract.dataset_reference} val_dataset={validation_split.contract.dataset_reference} device={device}",
@@ -408,14 +741,13 @@ def train_roi_fcn(
         log_sink,
         f"[train] heatmap_loss={HEATMAP_LOSS_NAME} positive_threshold={float(train_config.heatmap_positive_threshold):.3f}",
     )
+    if resume_mode and resume_source_run_id is not None:
+        _log_message(
+            log_sink,
+            f"[train] resuming from run_id={resume_source_run_id} start_epoch={start_epoch} total_target_epochs={total_epochs_target}",
+        )
 
-    history_rows: list[dict[str, Any]] = []
-    best_validation_loss = float("inf")
-    best_validation_mean_center_error_px = float("inf")
-    best_epoch = 0
-    epochs_without_improvement = 0
-
-    for epoch in range(1, int(train_config.epochs) + 1):
+    for epoch in range(start_epoch, total_epochs_target + 1):
         train_summary = _train_one_epoch(
             model,
             train_split,
@@ -456,19 +788,6 @@ def train_roi_fcn(
                 "validation_roi_full_containment_success_rate": validation_eval.roi_full_containment_success_rate,
             }
         )
-        history_df = pd.DataFrame(history_rows)
-        history_df.to_json(run_dir / HISTORY_FILENAME, orient="records", indent=2)
-        save_history_plot(history_df, run_dir / LOSS_HISTORY_PLOT_FILENAME)
-        torch.save(
-            _checkpoint_payload(
-                model=model,
-                optimizer=optimizer,
-                epoch=epoch,
-                best_validation_loss=best_validation_loss,
-                best_validation_mean_center_error_px=best_validation_mean_center_error_px,
-            ),
-            run_dir / LATEST_CHECKPOINT_FILENAME,
-        )
 
         improved = _is_better_validation_result(
             float(validation_eval.mean_center_error_px),
@@ -481,18 +800,49 @@ def train_roi_fcn(
             best_validation_mean_center_error_px = float(validation_eval.mean_center_error_px)
             best_epoch = int(epoch)
             epochs_without_improvement = 0
-            torch.save(
-                _checkpoint_payload(
-                    model=model,
-                    optimizer=optimizer,
-                    epoch=epoch,
-                    best_validation_loss=best_validation_loss,
-                    best_validation_mean_center_error_px=best_validation_mean_center_error_px,
-                ),
-                run_dir / BEST_CHECKPOINT_FILENAME,
-            )
         else:
             epochs_without_improvement += 1
+
+        history_df = pd.DataFrame(history_rows)
+        history_df.to_json(run_dir / HISTORY_FILENAME, orient="records", indent=2)
+        save_history_plot(history_df, run_dir / LOSS_HISTORY_PLOT_FILENAME)
+        checkpoint_payload = _checkpoint_payload(
+            model=model,
+            optimizer=optimizer,
+            epoch=epoch,
+            best_epoch=best_epoch,
+            best_validation_loss=best_validation_loss,
+            best_validation_mean_center_error_px=best_validation_mean_center_error_px,
+            epochs_without_improvement=epochs_without_improvement,
+            history_rows=history_rows,
+        )
+        torch.save(checkpoint_payload, run_dir / LATEST_CHECKPOINT_FILENAME)
+        if improved:
+            torch.save(checkpoint_payload, run_dir / BEST_CHECKPOINT_FILENAME)
+        save_resume_state(
+            run_dir / RESUME_STATE_FILENAME,
+            build_resume_state_payload(
+                epoch=epoch,
+                run_id=run_id,
+                training_dataset=str(train_config.training_dataset).strip(),
+                validation_dataset=validation_dataset,
+                topology_id=spec.topology_id,
+                topology_variant=spec.topology_variant,
+                topology_params=dict(spec.topology_params),
+                topology_spec_signature=topology_spec_signature_value,
+                topology_contract_signature=topology_contract_signature_value,
+                output_hw=output_hw,
+                train_split_contract=_current_split_contract_for_resume(train_split),
+                validation_split_contract=_current_split_contract_for_resume(validation_split),
+                best_epoch=best_epoch,
+                best_validation_loss=best_validation_loss,
+                best_validation_mean_center_error_px=best_validation_mean_center_error_px,
+                epochs_without_improvement=epochs_without_improvement,
+                history_rows=history_rows,
+                model_state_dict=model.state_dict(),
+                optimizer_state_dict=optimizer.state_dict(),
+            ),
+        )
 
         _log_message(
             log_sink,
@@ -551,12 +901,22 @@ def train_roi_fcn(
         "best_validation_loss": float(best_validation_loss),
         "best_validation_mean_center_error_px": float(best_validation_mean_center_error_px),
         "epochs_completed": int(len(history_rows)),
+        "resume_state_path": str(run_dir / RESUME_STATE_FILENAME),
+        "resume": {
+            "enabled": bool(resume_mode),
+            "source_run_id": resume_source_run_id if resume_mode else None,
+            "source_run_dir": resume_source_run_dir if resume_mode else None,
+            "start_epoch": int(start_epoch),
+            "total_target_epochs": int(total_epochs_target),
+            "additional_epochs": (
+                int(resume_context["additional_epochs"]) if resume_mode and resume_context is not None else None
+            ),
+        },
         "train_metrics": train_eval.metrics_dict(),
         "validation_metrics": validation_eval.metrics_dict(),
     }
     write_json(run_dir / SUMMARY_FILENAME, summary)
     return summary
-
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the ROI-FCN centre localiser.")
@@ -583,6 +943,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--roi-width-px", type=int, default=300)
     parser.add_argument("--roi-height-px", type=int, default=300)
     parser.add_argument("--evaluation-max-visual-examples", type=int, default=12)
+    parser.add_argument("--resume-from-run-dir", default=None)
+    parser.add_argument("--additional-epochs", type=int, default=None)
     return parser
 
 

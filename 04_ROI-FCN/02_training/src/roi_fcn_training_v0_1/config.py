@@ -35,6 +35,8 @@ class TrainConfig:
     roi_width_px: int = 300
     roi_height_px: int = 300
     evaluation_max_visual_examples: int = 12
+    resume_from_run_dir: str | Path | None = None
+    additional_epochs: int | None = None
     entrypoint_type: str = "python"
     entrypoint_path: str = "src/roi_fcn_training_v0_1/train.py"
 
