@@ -11,6 +11,7 @@ from .contracts import DATASETS_ROOT_NAME, MODELS_ROOT_NAME, NOTEBOOKS_ROOT_NAME
 
 PROJECT_TIMEZONE = ZoneInfo("Europe/London")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_RUN_ID_RE = re.compile(r"^run_([0-9]+)$")
 
 
 def _require_identifier(value: str, *, label: str) -> str:
@@ -105,64 +106,126 @@ def resolve_split_paths(
     )
 
 
+def suggest_model_directory(
+    model_name: str,
+    *,
+    run_name_suffix: str | None = None,
+    now_local: datetime | None = None,
+) -> str:
+    """Return the default timestamp-based model directory name."""
+    model_text = _require_identifier(model_name, label="model_name")
+    timestamp = (now_local or datetime.now(PROJECT_TIMEZONE)).strftime("%y%m%d-%H%M")
+    model_directory = f"{timestamp}_{model_text}"
+    suffix = _sanitize_run_name_suffix(run_name_suffix)
+    if suffix is not None:
+        model_directory = f"{model_directory}_{suffix}"
+    return model_directory
+
+
 def suggest_model_run_id(
     model_name: str,
     *,
     run_name_suffix: str | None = None,
     now_local: datetime | None = None,
 ) -> str:
-    """Return the default timestamp-based run id without creating directories."""
-    model_text = _require_identifier(model_name, label="model_name")
-    timestamp = (now_local or datetime.now(PROJECT_TIMEZONE)).strftime("%y%m%d-%H%M")
-    run_name = f"{timestamp}_{model_text}"
-    suffix = _sanitize_run_name_suffix(run_name_suffix)
-    if suffix is not None:
-        run_name = f"{run_name}_{suffix}"
-    return run_name
+    """Compatibility alias for the timestamp-based model directory name."""
+    return suggest_model_directory(
+        model_name,
+        run_name_suffix=run_name_suffix,
+        now_local=now_local,
+    )
+
+
+def build_model_dir_path(
+    models_root_path: str | Path,
+    *,
+    model_directory: str,
+) -> Path:
+    """Return the expected model directory path without creating it."""
+    model_dir_name = _require_identifier(model_directory, label="model_directory")
+    return Path(models_root_path) / model_dir_name
+
+
+def build_runs_root_path(
+    models_root_path: str | Path,
+    *,
+    model_directory: str,
+) -> Path:
+    """Return the expected runs root for one model directory."""
+    return build_model_dir_path(models_root_path, model_directory=model_directory) / "runs"
+
+
+def preview_next_run_id(
+    models_root_path: str | Path,
+    *,
+    model_directory: str,
+) -> str:
+    """Return the next run id, e.g. run_0001, without mutating state."""
+    runs_root = build_runs_root_path(models_root_path, model_directory=model_directory)
+    max_index = 0
+    if runs_root.exists():
+        for child in runs_root.iterdir():
+            if not child.is_dir():
+                continue
+            match = _RUN_ID_RE.fullmatch(child.name)
+            if match is None:
+                continue
+            max_index = max(max_index, int(match.group(1)))
+    return f"run_{max_index + 1:04d}"
 
 
 def build_model_run_dir_path(
-    models_root_path: Path,
+    models_root_path: str | Path,
     *,
-    model_name: str,
+    model_directory: str,
     run_id: str,
 ) -> Path:
     """Return the expected run directory path without creating it."""
-    model_text = _require_identifier(model_name, label="model_name")
+    model_dir_name = _require_identifier(model_directory, label="model_directory")
     run_name = _require_identifier(run_id, label="run_id")
-    return Path(models_root_path) / model_text / "runs" / run_name
+    return build_runs_root_path(models_root_path, model_directory=model_dir_name) / run_name
 
 
 def make_model_run_dir(
     models_root_path: Path,
     *,
     model_name: str,
+    model_directory: str | None = None,
     run_id: str | None = None,
     run_name_suffix: str | None = None,
     now_local: datetime | None = None,
 ) -> Path:
-    """Create a new run directory under models/<model_name>/runs/."""
+    """Create a new run directory under models/<model_directory>/runs/<run_id>."""
     model_text = _require_identifier(model_name, label="model_name")
 
-    if run_id is not None and run_name_suffix:
-        raise ValueError("run_name_suffix cannot be used together with run_id.")
+    if model_directory is not None and run_name_suffix:
+        raise ValueError("run_name_suffix cannot be used together with model_directory.")
 
-    run_name = (
-        suggest_model_run_id(
+    model_dir_name = (
+        suggest_model_directory(
             model_text,
             run_name_suffix=run_name_suffix,
             now_local=now_local,
         )
+        if model_directory is None
+        else _require_identifier(model_directory, label="model_directory")
+    )
+    run_name = (
+        preview_next_run_id(models_root_path, model_directory=model_dir_name)
         if run_id is None
         else _require_identifier(run_id, label="run_id")
     )
 
     run_dir = build_model_run_dir_path(
         models_root_path,
-        model_name=model_text,
+        model_directory=model_dir_name,
         run_id=run_name,
     )
     if run_dir.exists():
+        if run_id is not None and run_dir.is_dir():
+            existing_names = {entry.name for entry in run_dir.iterdir()}
+            if existing_names.issubset({"train.log"}):
+                return run_dir
         raise FileExistsError(f"Run directory already exists: {run_dir}")
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir

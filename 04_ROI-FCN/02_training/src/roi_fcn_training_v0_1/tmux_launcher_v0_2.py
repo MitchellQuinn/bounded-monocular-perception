@@ -11,11 +11,16 @@ import subprocess
 from typing import Any, Mapping, Sequence
 
 from .config import TrainConfig
-from .paths import build_model_run_dir_path, find_training_root, resolve_models_root, suggest_model_run_id
+from .paths import (
+    build_model_run_dir_path,
+    find_training_root,
+    preview_next_run_id,
+    resolve_models_root,
+    suggest_model_run_id,
+)
 
 TMUX_CONTROL_PANEL_BUILD_V02 = "2026-04-19-roi-fcn-tmux-v0.2"
 DEFAULT_TMUX_LOG_FILENAME = "train.log"
-TMUX_LOGS_DIRECTORY_NAME = "tmux_logs"
 TRAINING_MODULE_NAME = "roi_fcn_training_v0_1.train"
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
@@ -60,12 +65,22 @@ def _is_no_server_error(stderr_text: str) -> bool:
     )
 
 
+def _is_missing_session_error(stderr_text: str) -> bool:
+    text = str(stderr_text).lower()
+    return (
+        "can't find session" in text
+        or "session not found" in text
+        or "unknown session" in text
+    )
+
+
 @dataclass(frozen=True)
 class TmuxTrainingLaunchPlanV02:
     """Structured launch preview for one detached training session."""
 
     session_name: str
     model_name: str
+    model_directory: str
     run_id: str
     run_dir: str
     log_path: str
@@ -94,26 +109,30 @@ def session_exists(session_name: str) -> bool:
     return _require_identifier(session_name, label="session_name") in list_sessions()
 
 
-def default_session_name(model_name: str, run_id: str) -> str:
+def default_session_name(model_directory: str, run_id: str) -> str:
     """Build the default tmux session name for a training run."""
-    _ = _require_identifier(model_name, label="model_name")
+    parsed_model_directory = _require_identifier(model_directory, label="model_directory")
     parsed_run_id = _require_identifier(run_id, label="run_id")
-    return _require_identifier(f"roi_fcn_{parsed_run_id}", label="session_name")
+    return _require_identifier(f"roi_fcn_{parsed_model_directory}_{parsed_run_id}", label="session_name")
 
 
 def build_tmux_log_path(
     models_root_path: str | Path,
     *,
-    model_name: str,
+    model_directory: str,
     run_id: str,
     log_filename: str = DEFAULT_TMUX_LOG_FILENAME,
 ) -> Path:
-    """Return a notebook-owned tmux log path outside the training run directory."""
-    model_text = _require_identifier(model_name, label="model_name")
+    """Return the detached training log path under the predicted run directory."""
+    model_dir_name = _require_identifier(model_directory, label="model_directory")
     run_name = _require_identifier(run_id, label="run_id")
     resolved_log_filename = _require_log_filename(log_filename)
-    log_stem = f"{run_name}__{resolved_log_filename}"
-    return Path(models_root_path).expanduser().resolve() / model_text / TMUX_LOGS_DIRECTORY_NAME / log_stem
+    run_dir = build_model_run_dir_path(
+        Path(models_root_path).expanduser().resolve(),
+        model_directory=model_dir_name,
+        run_id=run_name,
+    )
+    return run_dir / resolved_log_filename
 
 
 def build_training_launch_command(
@@ -121,6 +140,7 @@ def build_training_launch_command(
     *,
     python_executable: str,
     model_name: str | None = None,
+    model_directory: str | None = None,
     run_id: str | None = None,
 ) -> str:
     """Build a shell-safe detached training command."""
@@ -131,7 +151,11 @@ def build_training_launch_command(
         raise ValueError("training_dataset cannot be blank.")
 
     model_text = _require_identifier(model_name or train_config.model_name or "roi-fcn-tiny", label="model_name")
-    run_name = _require_identifier(run_id or train_config.run_id or suggest_model_run_id(model_text), label="run_id")
+    model_dir_name = _require_identifier(
+        model_directory or train_config.model_directory or suggest_model_run_id(model_text, run_name_suffix=train_config.run_name_suffix),
+        label="model_directory",
+    )
+    run_name = _require_identifier(run_id or train_config.run_id or "run_0001", label="run_id")
     python_bin = str(Path(python_executable).expanduser())
     if not python_bin:
         raise ValueError("python_executable cannot be empty.")
@@ -143,6 +167,8 @@ def build_training_launch_command(
         TRAINING_MODULE_NAME,
         "--training-dataset",
         training_dataset,
+        "--validation-dataset",
+        str(train_config.validation_dataset or "").strip() or training_dataset,
         "--datasets-root",
         str(train_config.datasets_root),
         "--models-root",
@@ -159,6 +185,8 @@ def build_training_launch_command(
         str(float(train_config.weight_decay)),
         "--gaussian-sigma-px",
         str(float(train_config.gaussian_sigma_px)),
+        "--heatmap-positive-threshold",
+        str(float(train_config.heatmap_positive_threshold)),
         "--early-stopping-patience",
         str(int(train_config.early_stopping_patience)),
         "--topology-id",
@@ -167,6 +195,8 @@ def build_training_launch_command(
         str(train_config.topology_variant),
         "--model-name",
         model_text,
+        "--model-directory",
+        model_dir_name,
         "--run-id",
         run_name,
         "--progress-log-interval-steps",
@@ -178,10 +208,6 @@ def build_training_launch_command(
         "--evaluation-max-visual-examples",
         str(int(train_config.evaluation_max_visual_examples)),
     ]
-
-    validation_dataset = str(train_config.validation_dataset or "").strip()
-    if validation_dataset:
-        args.extend(["--validation-dataset", validation_dataset])
 
     device_text = str(train_config.device or "").strip()
     if device_text:
@@ -203,44 +229,52 @@ def plan_tmux_training_launch(
     train_config = config if isinstance(config, TrainConfig) else TrainConfig.from_mapping(dict(config))
 
     model_text = _require_identifier(train_config.model_name or "roi-fcn-tiny", label="model_name")
-    if train_config.run_id is not None and train_config.run_name_suffix:
-        raise ValueError("run_name_suffix cannot be used together with run_id.")
+    if train_config.model_directory is not None and train_config.run_name_suffix:
+        raise ValueError("run_name_suffix cannot be used together with model_directory.")
+
+    models_root = resolve_models_root(root, train_config.models_root)
+    model_dir_name = (
+        _require_identifier(train_config.model_directory, label="model_directory")
+        if train_config.model_directory is not None and str(train_config.model_directory).strip()
+        else suggest_model_run_id(model_text, run_name_suffix=train_config.run_name_suffix)
+    )
     run_name = (
         _require_identifier(train_config.run_id, label="run_id")
         if train_config.run_id is not None and str(train_config.run_id).strip()
-        else suggest_model_run_id(model_text, run_name_suffix=train_config.run_name_suffix)
+        else preview_next_run_id(models_root, model_directory=model_dir_name)
     )
     resolved_session_name = (
         _require_identifier(session_name, label="session_name")
         if session_name is not None and str(session_name).strip()
-        else default_session_name(model_text, run_name)
+        else default_session_name(model_dir_name, run_name)
     )
 
-    models_root = resolve_models_root(root, train_config.models_root)
-    run_dir = build_model_run_dir_path(models_root, model_name=model_text, run_id=run_name).resolve()
+    run_dir = build_model_run_dir_path(models_root, model_directory=model_dir_name, run_id=run_name).resolve()
     if run_dir.exists():
         raise FileExistsError(f"Run directory already exists: {run_dir}")
 
     log_path = build_tmux_log_path(
         models_root,
-        model_name=model_text,
+        model_directory=model_dir_name,
         run_id=run_name,
         log_filename=log_filename,
     )
     if log_path.exists():
-        raise FileExistsError(f"tmux log path already exists: {log_path}")
+        raise FileExistsError(f"run log path already exists: {log_path}")
 
     working_directory = (root / "src").resolve()
     command = build_training_launch_command(
         train_config,
         python_executable=python_executable,
         model_name=model_text,
+        model_directory=model_dir_name,
         run_id=run_name,
     )
 
     return TmuxTrainingLaunchPlanV02(
         session_name=resolved_session_name,
         model_name=model_text,
+        model_directory=model_dir_name,
         run_id=run_name,
         run_dir=str(run_dir),
         log_path=str(log_path),
@@ -276,6 +310,10 @@ def launch_session(
     result = _run_tmux(tmux_args)
     if result.returncode != 0:
         resolved_log_path.unlink(missing_ok=True)
+        try:
+            resolved_log_path.parent.rmdir()
+        except OSError:
+            pass
         raise RuntimeError(f"tmux new-session failed: {result.stderr.strip()}")
 
     return {
@@ -288,10 +326,10 @@ def launch_session(
 def end_session(session_name: str) -> bool:
     """Kill a tmux session by name. Returns False when the session does not exist."""
     run_session_name = _require_identifier(session_name, label="session_name")
-    if not session_exists(run_session_name):
-        return False
     result = _run_tmux(["kill-session", "-t", run_session_name])
     if result.returncode != 0:
+        if _is_no_server_error(result.stderr) or _is_missing_session_error(result.stderr):
+            return False
         raise RuntimeError(f"tmux kill-session failed: {result.stderr.strip()}")
     return True
 

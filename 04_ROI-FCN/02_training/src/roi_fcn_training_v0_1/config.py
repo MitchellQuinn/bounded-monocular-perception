@@ -21,11 +21,13 @@ class TrainConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-5
     gaussian_sigma_px: float = 2.5
+    heatmap_positive_threshold: float = 0.05
     early_stopping_patience: int = 4
     topology_id: str = "roi_fcn_tiny"
     topology_variant: str = "tiny_v1"
     topology_params: dict[str, Any] = field(default_factory=dict)
     model_name: str = "roi-fcn-tiny"
+    model_directory: str | None = None
     run_id: str | None = None
     run_name_suffix: str | None = None
     device: str | None = None

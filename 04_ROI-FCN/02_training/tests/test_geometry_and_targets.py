@@ -6,7 +6,11 @@ import numpy as np
 import torch
 
 from roi_fcn_training_v0_1.geometry import canvas_point_to_output_space, decode_heatmap_argmax
-from roi_fcn_training_v0_1.targets import build_gaussian_heatmaps
+from roi_fcn_training_v0_1.targets import (
+    build_balanced_heatmap_weights,
+    build_gaussian_heatmaps,
+    compute_heatmap_loss,
+)
 
 
 class GeometryAndTargetsTests(unittest.TestCase):
@@ -36,6 +40,32 @@ class GeometryAndTargetsTests(unittest.TestCase):
             output_hw=(16, 24),
         )
         self.assertTrue(np.allclose(mapped, np.asarray([12.0, 8.0], dtype=np.float32)))
+
+    def test_balanced_heatmap_loss_penalizes_blank_prediction_more_than_plain_mse(self) -> None:
+        target_canvas = torch.tensor([[240.0, 150.0]], dtype=torch.float32)
+        target_heatmaps = build_gaussian_heatmaps(
+            target_canvas,
+            canvas_hw=(300, 480),
+            output_hw=(300, 480),
+            sigma_px=2.5,
+        )
+        blank_prediction = torch.zeros_like(target_heatmaps)
+
+        plain_loss = compute_heatmap_loss(
+            blank_prediction,
+            target_heatmaps,
+            loss_name="mse_heatmap",
+        )
+        balanced_loss = compute_heatmap_loss(
+            blank_prediction,
+            target_heatmaps,
+            loss_name="balanced_mse_heatmap",
+            positive_threshold=0.05,
+        )
+        weights = build_balanced_heatmap_weights(target_heatmaps, positive_threshold=0.05)
+
+        self.assertGreater(float(balanced_loss), float(plain_loss) * 10.0)
+        self.assertAlmostEqual(float(weights.mean()), 1.0, delta=1e-5)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ from .plots import (
 )
 from .topologies import build_model_from_spec, resolve_topology_spec
 from .utils import read_json, utc_now_iso, write_json
-from .targets import build_gaussian_heatmaps
+from .targets import build_gaussian_heatmaps, compute_heatmap_loss
 
 
 @dataclass
@@ -150,6 +150,8 @@ def evaluate_split(
     device: torch.device,
     output_hw: tuple[int, int],
     gaussian_sigma_px: float,
+    heatmap_loss_name: str,
+    heatmap_positive_threshold: float,
     roi_width_px: int,
     roi_height_px: int,
     max_visual_examples: int,
@@ -159,7 +161,6 @@ def evaluate_split(
         split_dataset.contract.geometry.canvas_height_px,
         split_dataset.contract.geometry.canvas_width_px,
     )
-    criterion = nn.MSELoss(reduction="mean")
     model.eval()
 
     total_loss = 0.0
@@ -185,7 +186,12 @@ def evaluate_split(
                 sigma_px=float(gaussian_sigma_px),
             )
             predicted_heatmaps = model(images)
-            batch_loss = criterion(predicted_heatmaps, target_heatmaps)
+            batch_loss = compute_heatmap_loss(
+                predicted_heatmaps,
+                target_heatmaps,
+                loss_name=heatmap_loss_name,
+                positive_threshold=float(heatmap_positive_threshold),
+            )
             batch_n = int(images.shape[0])
             total_loss += float(batch_loss.item()) * batch_n
             total_count += batch_n
@@ -409,6 +415,8 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
     )
     output_hw = infer_output_hw(model, canvas_hw=canvas_hw, device=device)
     gaussian_sigma_px = float(run_config.get("gaussian_sigma_px", 2.5))
+    heatmap_loss_name = str(run_config.get("heatmap_loss_name", "mse_heatmap")).strip() or "mse_heatmap"
+    heatmap_positive_threshold = float(run_config.get("heatmap_positive_threshold", 0.05))
     roi_width_px = int(eval_config.roi_width_px or run_config.get("roi_width_px", 300))
     roi_height_px = int(eval_config.roi_height_px or run_config.get("roi_height_px", 300))
     max_examples = int(eval_config.evaluation_max_visual_examples)
@@ -420,6 +428,8 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         device=device,
         output_hw=output_hw,
         gaussian_sigma_px=gaussian_sigma_px,
+        heatmap_loss_name=heatmap_loss_name,
+        heatmap_positive_threshold=heatmap_positive_threshold,
         roi_width_px=roi_width_px,
         roi_height_px=roi_height_px,
         max_visual_examples=max_examples,
@@ -431,6 +441,8 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         device=device,
         output_hw=output_hw,
         gaussian_sigma_px=gaussian_sigma_px,
+        heatmap_loss_name=heatmap_loss_name,
+        heatmap_positive_threshold=heatmap_positive_threshold,
         roi_width_px=roi_width_px,
         roi_height_px=roi_height_px,
         max_visual_examples=max_examples,
