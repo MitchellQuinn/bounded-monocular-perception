@@ -51,7 +51,7 @@ class TrainingSmokeTests(unittest.TestCase):
                         log_sink=log_messages.append,
                     )
                 mocked_resolve_device.assert_called_once_with(None, require_cuda=True)
-                self.assertTrue(any("batch_roi_acc=" in message for message in log_messages))
+                self.assertTrue(any("bch_roi_acc=" in message for message in log_messages))
                 self.assertTrue(any("running_roi_acc=" in message for message in log_messages))
                 self.assertTrue(any("train_roi_acc=" in message and "val_roi_acc=" in message for message in log_messages))
             run_dir = Path(summary["run_dir"])

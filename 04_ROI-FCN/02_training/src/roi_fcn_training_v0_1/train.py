@@ -533,11 +533,11 @@ def _train_one_epoch(
                 log_sink,
                 "[train] "
                 f"epoch={epoch_index} step={step_count} seen={total_count} loss={running_loss:.6f} "
-                f"batch_mean_center_error_px={batch_metrics.mean_center_error_px:.3f} "
-                f"batch_mean_peak_confidence={batch_metrics.mean_peak_confidence:.4f} "
-                f"batch_mean_heatmap_activation={batch_metrics.mean_heatmap_activation:.6f} "
-                f"running_mean_center_error_px={running_mean_center_error_px:.3f} "
-                f"{_format_roi_accuracy('batch_roi_acc', batch_metrics.roi_full_containment_accuracy, batch_metrics.roi_full_containment_evaluable_count)} "
+                f"bch_mn_con_err_px={batch_metrics.mean_center_error_px:.3f} "
+                f"bch_mn_pk_con={batch_metrics.mean_peak_confidence:.4f} "
+                f"bch_mn_heatmap_act={batch_metrics.mean_heatmap_activation:.6f} "
+                f"rn_mn_centre_err={running_mean_center_error_px:.3f} "
+                f"{_format_roi_accuracy('bch_roi_acc', batch_metrics.roi_full_containment_accuracy, batch_metrics.roi_full_containment_evaluable_count)} "
                 f"{_format_roi_accuracy('running_roi_acc', running_roi_accuracy, total_containment_evaluable)}",
             )
 
