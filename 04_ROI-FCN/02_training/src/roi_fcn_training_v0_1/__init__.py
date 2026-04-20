@@ -1,8 +1,20 @@
 """ROI-FCN training harness v0.1."""
 
 from .config import EvalConfig, TrainConfig
-from .evaluate import evaluate_saved_run
-from .train import train_roi_fcn
+
+
+def evaluate_saved_run(*args, **kwargs):
+    """Lazy proxy to avoid importing evaluate.py on package import."""
+    from .evaluate import evaluate_saved_run as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def train_roi_fcn(*args, **kwargs):
+    """Lazy proxy to avoid importing train.py on package import."""
+    from .train import train_roi_fcn as _impl
+
+    return _impl(*args, **kwargs)
 
 __all__ = [
     "EvalConfig",
