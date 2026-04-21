@@ -19,6 +19,7 @@ from .pipeline import (
     load_model_context,
     load_roi_fcn_model_context,
     preprocess_single_sample,
+    run_multi_sample_inference,
     run_single_sample_inference,
     save_inference_result,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "load_roi_fcn_model_context",
     "normalize_model_family",
     "preprocess_single_sample",
+    "run_multi_sample_inference",
     "run_single_sample_inference",
     "save_inference_result",
     "select_sample_row",

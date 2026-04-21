@@ -1,0 +1,4610 @@
+[
+  {
+    "actual": {
+      "distance_m": 4.813927173614502,
+      "orientation_deg": 282.0838928222656
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000001_z04.673_j003.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04583168029785156,
+      "distance_signed_m": 0.04583168029785156,
+      "orientation_absolute_deg": 1.03900146484375,
+      "orientation_signed_deg": -1.03900146484375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.8597588539123535,
+      "orientation_deg": 281.0448913574219
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        980.0,
+        236.0
+      ],
+      "request_xyxy_px": [
+        830.0,
+        86.0,
+        1130.0,
+        386.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000001_z04.673_j003.png",
+      "sample_id": "defender90_f000001_z04.673_j003",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000001_z04.673_j003.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.020298004150391,
+      "orientation_deg": 349.3052062988281
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000002_z03.616_j217.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07407045364379883,
+      "distance_signed_m": 0.07407045364379883,
+      "orientation_absolute_deg": 1.74652099609375,
+      "orientation_signed_deg": 1.74652099609375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.0943684577941895,
+      "orientation_deg": 351.0517272949219
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        532.0,
+        320.0
+      ],
+      "request_xyxy_px": [
+        382.0,
+        170.0,
+        682.0,
+        470.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000002_z03.616_j217.png",
+      "sample_id": "defender90_f000002_z03.616_j217",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000002_z03.616_j217.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.717512130737305,
+      "orientation_deg": 349.80828857421875
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000003_z04.957_j207.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.1298065185546875,
+      "distance_signed_m": 0.1298065185546875,
+      "orientation_absolute_deg": 5.61590576171875,
+      "orientation_signed_deg": -5.61590576171875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.847318649291992,
+      "orientation_deg": 344.1923828125
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        320.0,
+        220.0
+      ],
+      "request_xyxy_px": [
+        170.0,
+        70.0,
+        470.0,
+        370.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000003_z04.957_j207.png",
+      "sample_id": "defender90_f000003_z04.957_j207",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000003_z04.957_j207.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 1.6648199558258057,
+      "orientation_deg": 2.441314935684204
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000004_z01.198_j443.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.013993263244628906,
+      "distance_signed_m": 0.013993263244628906,
+      "orientation_absolute_deg": 0.7987213134765625,
+      "orientation_signed_deg": -0.7987267971038818
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 1.6788132190704346,
+      "orientation_deg": 1.6425881385803223
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        856.0,
+        880.0
+      ],
+      "request_xyxy_px": [
+        706.0,
+        730.0,
+        1006.0,
+        1030.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000004_z01.198_j443.png",
+      "sample_id": "defender90_f000004_z01.198_j443",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000004_z01.198_j443.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.750469923019409,
+      "orientation_deg": 58.6575813293457
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000005_z03.359_j423.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.0434575080871582,
+      "distance_signed_m": 0.0434575080871582,
+      "orientation_absolute_deg": 0.626495361328125,
+      "orientation_signed_deg": 0.626495361328125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.7939274311065674,
+      "orientation_deg": 59.28407669067383
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        552.0,
+        344.0
+      ],
+      "request_xyxy_px": [
+        402.0,
+        194.0,
+        702.0,
+        494.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000005_z03.359_j423.png",
+      "sample_id": "defender90_f000005_z03.359_j423",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000005_z03.359_j423.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.9756319522857666,
+      "orientation_deg": 156.24349975585938
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000006_z02.499_j359.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05126690864562988,
+      "distance_signed_m": 0.05126690864562988,
+      "orientation_absolute_deg": 6.622039794921875,
+      "orientation_signed_deg": -6.622039794921875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.0268988609313965,
+      "orientation_deg": 149.6214599609375
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1440.0,
+        448.0
+      ],
+      "request_xyxy_px": [
+        1290.0,
+        298.0,
+        1590.0,
+        598.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000006_z02.499_j359.png",
+      "sample_id": "defender90_f000006_z02.499_j359",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000006_z02.499_j359.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.592860221862793,
+      "orientation_deg": 133.50390625
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000007_z04.203_j171.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.060961246490478516,
+      "distance_signed_m": 0.060961246490478516,
+      "orientation_absolute_deg": 4.8743896484375,
+      "orientation_signed_deg": -4.8743896484375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.6538214683532715,
+      "orientation_deg": 128.6295166015625
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        552.0,
+        268.0
+      ],
+      "request_xyxy_px": [
+        402.0,
+        118.0,
+        702.0,
+        418.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000007_z04.203_j171.png",
+      "sample_id": "defender90_f000007_z04.203_j171",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000007_z04.203_j171.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.702578067779541,
+      "orientation_deg": 154.80470275878906
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000008_z03.789_j222.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.0648031234741211,
+      "distance_signed_m": 0.0648031234741211,
+      "orientation_absolute_deg": 3.4715423583984375,
+      "orientation_signed_deg": 3.4715423583984375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.767381191253662,
+      "orientation_deg": 158.2762451171875
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        168.0,
+        300.0
+      ],
+      "request_xyxy_px": [
+        18.0,
+        150.0,
+        318.0,
+        450.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000008_z03.789_j222.png",
+      "sample_id": "defender90_f000008_z03.789_j222",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000008_z03.789_j222.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.2955191135406494,
+      "orientation_deg": 201.4925994873047
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000009_z01.900_j324.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04402589797973633,
+      "distance_signed_m": 0.04402589797973633,
+      "orientation_absolute_deg": 0.355682373046875,
+      "orientation_signed_deg": -0.355682373046875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.3395450115203857,
+      "orientation_deg": 201.1369171142578
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        652.0,
+        576.0
+      ],
+      "request_xyxy_px": [
+        502.0,
+        426.0,
+        802.0,
+        726.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000009_z01.900_j324.png",
+      "sample_id": "defender90_f000009_z01.900_j324",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000009_z01.900_j324.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.925022125244141,
+      "orientation_deg": 306.9967956542969
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000010_z04.218_j281.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07795429229736328,
+      "distance_signed_m": 0.07795429229736328,
+      "orientation_absolute_deg": 13.47845458984375,
+      "orientation_signed_deg": 13.47845458984375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.002976417541504,
+      "orientation_deg": 320.4752502441406
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        316.0,
+        268.0
+      ],
+      "request_xyxy_px": [
+        166.0,
+        118.0,
+        466.0,
+        418.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000010_z04.218_j281.png",
+      "sample_id": "defender90_f000010_z04.218_j281",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000010_z04.218_j281.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.164115905761719,
+      "orientation_deg": 307.2939147949219
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000011_z04.921_j138.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.03656959533691406,
+      "distance_signed_m": 0.03656959533691406,
+      "orientation_absolute_deg": 2.359130859375,
+      "orientation_signed_deg": -2.359130859375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.200685501098633,
+      "orientation_deg": 304.9347839355469
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1220.0,
+        220.0
+      ],
+      "request_xyxy_px": [
+        1070.0,
+        70.0,
+        1370.0,
+        370.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000011_z04.921_j138.png",
+      "sample_id": "defender90_f000011_z04.921_j138",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000011_z04.921_j138.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.1162850856781006,
+      "orientation_deg": 263.72900390625
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000012_z01.393_j393.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.13228535652160645,
+      "distance_signed_m": -0.13228535652160645,
+      "orientation_absolute_deg": 92.80380249023438,
+      "orientation_signed_deg": 92.80380249023438
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 1.9839997291564941,
+      "orientation_deg": 356.5328063964844
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1712.0,
+        764.0
+      ],
+      "request_xyxy_px": [
+        1562.0,
+        614.0,
+        1862.0,
+        914.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000012_z01.393_j393.png",
+      "sample_id": "defender90_f000012_z01.393_j393",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000012_z01.393_j393.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.7543420791625977,
+      "orientation_deg": 241.8916015625
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000013_z02.929_j143.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.02732086181640625,
+      "distance_signed_m": 0.02732086181640625,
+      "orientation_absolute_deg": 17.122222900390625,
+      "orientation_signed_deg": 17.122222900390625
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.781662940979004,
+      "orientation_deg": 259.0138244628906
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1728.0,
+        412.0
+      ],
+      "request_xyxy_px": [
+        1578.0,
+        262.0,
+        1878.0,
+        562.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000013_z02.929_j143.png",
+      "sample_id": "defender90_f000013_z02.929_j143",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000013_z02.929_j143.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.4987781047821045,
+      "orientation_deg": 298.3584899902344
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000014_z03.292_j034.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07522797584533691,
+      "distance_signed_m": 0.07522797584533691,
+      "orientation_absolute_deg": 5.046966552734375,
+      "orientation_signed_deg": -5.046966552734375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.5740060806274414,
+      "orientation_deg": 293.3115234375
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        852.0,
+        352.0
+      ],
+      "request_xyxy_px": [
+        702.0,
+        202.0,
+        1002.0,
+        502.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000014_z03.292_j034.png",
+      "sample_id": "defender90_f000014_z03.292_j034",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000014_z03.292_j034.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.9987521171569824,
+      "orientation_deg": 251.1688995361328
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000015_z02.692_j343.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07631802558898926,
+      "distance_signed_m": 0.07631802558898926,
+      "orientation_absolute_deg": 14.718124389648438,
+      "orientation_signed_deg": 14.718124389648438
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.0750701427459717,
+      "orientation_deg": 265.88702392578125
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1232.0,
+        428.0
+      ],
+      "request_xyxy_px": [
+        1082.0,
+        278.0,
+        1382.0,
+        578.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000015_z02.692_j343.png",
+      "sample_id": "defender90_f000015_z02.692_j343",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000015_z02.692_j343.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 1.5883209705352783,
+      "orientation_deg": 128.13180541992188
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000016_z01.033_j515.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.10142123699188232,
+      "distance_signed_m": 0.10142123699188232,
+      "orientation_absolute_deg": 178.1507568359375,
+      "orientation_signed_deg": -178.1507568359375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 1.6897422075271606,
+      "orientation_deg": 309.9810485839844
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        644.0,
+        904.0
+      ],
+      "request_xyxy_px": [
+        494.0,
+        754.0,
+        794.0,
+        1054.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000016_z01.033_j515.png",
+      "sample_id": "defender90_f000016_z01.033_j515",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000016_z01.033_j515.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.163602113723755,
+      "orientation_deg": 101.69539642333984
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000017_z01.691_j323.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.02496790885925293,
+      "distance_signed_m": 0.02496790885925293,
+      "orientation_absolute_deg": 158.00473022460938,
+      "orientation_signed_deg": -158.00472259521484
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.188570022583008,
+      "orientation_deg": 303.690673828125
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        500.0,
+        640.0
+      ],
+      "request_xyxy_px": [
+        350.0,
+        490.0,
+        650.0,
+        790.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000017_z01.691_j323.png",
+      "sample_id": "defender90_f000017_z01.691_j323",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000017_z01.691_j323.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.6804089546203613,
+      "orientation_deg": 229.34939575195312
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000018_z01.924_j071.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.052510738372802734,
+      "distance_signed_m": 0.052510738372802734,
+      "orientation_absolute_deg": 0.2756805419921875,
+      "orientation_signed_deg": 0.2756805419921875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.732919692993164,
+      "orientation_deg": 229.6250762939453
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1760.0,
+        576.0
+      ],
+      "request_xyxy_px": [
+        1610.0,
+        426.0,
+        1910.0,
+        726.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000018_z01.924_j071.png",
+      "sample_id": "defender90_f000018_z01.924_j071",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000018_z01.924_j071.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.642334938049316,
+      "orientation_deg": 70.55272674560547
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000019_z04.689_j460.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.008105278015136719,
+      "distance_signed_m": 0.008105278015136719,
+      "orientation_absolute_deg": 2.0719757080078125,
+      "orientation_signed_deg": -2.0719757080078125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.650440216064453,
+      "orientation_deg": 68.48075103759766
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        212.0,
+        232.0
+      ],
+      "request_xyxy_px": [
+        62.0,
+        82.0,
+        362.0,
+        382.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000019_z04.689_j460.png",
+      "sample_id": "defender90_f000019_z04.689_j460",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000019_z04.689_j460.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.2287797927856445,
+      "orientation_deg": 112.60929870605469
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000020_z04.172_j185.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.24504423141479492,
+      "distance_signed_m": -0.24504423141479492,
+      "orientation_absolute_deg": 86.30317687988281,
+      "orientation_signed_deg": -86.30317497253418
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.98373556137085,
+      "orientation_deg": 26.306123733520508
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1808.0,
+        268.0
+      ],
+      "request_xyxy_px": [
+        1658.0,
+        118.0,
+        1958.0,
+        418.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000020_z04.172_j185.png",
+      "sample_id": "defender90_f000020_z04.172_j185",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000020_z04.172_j185.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 6.490527153015137,
+      "orientation_deg": 265.59149169921875
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000021_z05.158_j253.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.0020818710327148438,
+      "distance_signed_m": -0.0020818710327148438,
+      "orientation_absolute_deg": 11.07568359375,
+      "orientation_signed_deg": 11.07568359375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 6.488445281982422,
+      "orientation_deg": 276.66717529296875
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1848.0,
+        208.0
+      ],
+      "request_xyxy_px": [
+        1698.0,
+        58.0,
+        1998.0,
+        358.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000021_z05.158_j253.png",
+      "sample_id": "defender90_f000021_z05.158_j253",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000021_z05.158_j253.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.509552001953125,
+      "orientation_deg": 263.1512145996094
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000022_z02.939_j507.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.0751035213470459,
+      "distance_signed_m": 0.0751035213470459,
+      "orientation_absolute_deg": 2.41552734375,
+      "orientation_signed_deg": -2.41552734375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.584655523300171,
+      "orientation_deg": 260.7356872558594
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        356.0,
+        396.0
+      ],
+      "request_xyxy_px": [
+        206.0,
+        246.0,
+        506.0,
+        546.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000022_z02.939_j507.png",
+      "sample_id": "defender90_f000022_z02.939_j507",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000022_z02.939_j507.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.5245537757873535,
+      "orientation_deg": 245.06570434570312
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000023_z04.311_j346.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.010683536529541016,
+      "distance_signed_m": 0.010683536529541016,
+      "orientation_absolute_deg": 8.895538330078125,
+      "orientation_signed_deg": 8.895538330078125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.5352373123168945,
+      "orientation_deg": 253.96124267578125
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        740.0,
+        260.0
+      ],
+      "request_xyxy_px": [
+        590.0,
+        110.0,
+        890.0,
+        410.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000023_z04.311_j346.png",
+      "sample_id": "defender90_f000023_z04.311_j346",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000023_z04.311_j346.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.2825629711151123,
+      "orientation_deg": 72.79769897460938
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000024_z02.990_j301.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04752373695373535,
+      "distance_signed_m": 0.04752373695373535,
+      "orientation_absolute_deg": 3.8626251220703125,
+      "orientation_signed_deg": 3.8626251220703125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.3300867080688477,
+      "orientation_deg": 76.66032409667969
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1244.0,
+        384.0
+      ],
+      "request_xyxy_px": [
+        1094.0,
+        234.0,
+        1394.0,
+        534.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000024_z02.990_j301.png",
+      "sample_id": "defender90_f000024_z02.990_j301",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000024_z02.990_j301.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.313443899154663,
+      "orientation_deg": 229.22140502929688
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000025_z02.650_j425.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04673933982849121,
+      "distance_signed_m": 0.04673933982849121,
+      "orientation_absolute_deg": 7.0805511474609375,
+      "orientation_signed_deg": -7.0805511474609375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.3601832389831543,
+      "orientation_deg": 222.14085388183594
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1616.0,
+        460.0
+      ],
+      "request_xyxy_px": [
+        1466.0,
+        310.0,
+        1766.0,
+        610.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000025_z02.650_j425.png",
+      "sample_id": "defender90_f000025_z02.650_j425",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000025_z02.650_j425.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.7040300369262695,
+      "orientation_deg": 78.19818878173828
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000026_z02.443_j131.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07300448417663574,
+      "distance_signed_m": 0.07300448417663574,
+      "orientation_absolute_deg": 2.504791259765625,
+      "orientation_signed_deg": 2.5047836303710938
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.7770345211029053,
+      "orientation_deg": 80.70297241210938
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1036.0,
+        468.0
+      ],
+      "request_xyxy_px": [
+        886.0,
+        318.0,
+        1186.0,
+        618.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000026_z02.443_j131.png",
+      "sample_id": "defender90_f000026_z02.443_j131",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000026_z02.443_j131.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.080857992172241,
+      "orientation_deg": 65.43708038330078
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000027_z02.358_j503.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05138659477233887,
+      "distance_signed_m": 0.05138659477233887,
+      "orientation_absolute_deg": 4.522491455078125,
+      "orientation_signed_deg": -4.522483825683594
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.13224458694458,
+      "orientation_deg": 60.91459655761719
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        228.0,
+        484.0
+      ],
+      "request_xyxy_px": [
+        78.0,
+        334.0,
+        378.0,
+        634.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000027_z02.358_j503.png",
+      "sample_id": "defender90_f000027_z02.358_j503",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000027_z02.358_j503.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 6.104286193847656,
+      "orientation_deg": 44.21992111206055
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000028_z05.530_j103.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04102516174316406,
+      "distance_signed_m": 0.04102516174316406,
+      "orientation_absolute_deg": 6.166534423828125,
+      "orientation_signed_deg": 6.166534423828125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 6.14531135559082,
+      "orientation_deg": 50.38645553588867
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        448.0,
+        192.0
+      ],
+      "request_xyxy_px": [
+        298.0,
+        42.0,
+        598.0,
+        342.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000028_z05.530_j103.png",
+      "sample_id": "defender90_f000028_z05.530_j103",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000028_z05.530_j103.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.378958225250244,
+      "orientation_deg": 28.616270065307617
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000029_z04.621_j386.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.018497467041015625,
+      "distance_signed_m": 0.018497467041015625,
+      "orientation_absolute_deg": 7.8651885986328125,
+      "orientation_signed_deg": 7.865182876586914
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.39745569229126,
+      "orientation_deg": 36.48145294189453
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        308.0,
+        240.0
+      ],
+      "request_xyxy_px": [
+        158.0,
+        90.0,
+        458.0,
+        390.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000029_z04.621_j386.png",
+      "sample_id": "defender90_f000029_z04.621_j386",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000029_z04.621_j386.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.981657028198242,
+      "orientation_deg": 324.89459228515625
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000030_z04.767_j113.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05787372589111328,
+      "distance_signed_m": 0.05787372589111328,
+      "orientation_absolute_deg": 1.0556640625,
+      "orientation_signed_deg": -1.0556640625
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.0395307540893555,
+      "orientation_deg": 323.83892822265625
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1180.0,
+        232.0
+      ],
+      "request_xyxy_px": [
+        1030.0,
+        82.0,
+        1330.0,
+        382.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000030_z04.767_j113.png",
+      "sample_id": "defender90_f000030_z04.767_j113",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000030_z04.767_j113.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.80374813079834,
+      "orientation_deg": 127.09230041503906
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000031_z04.070_j053.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07730627059936523,
+      "distance_signed_m": 0.07730627059936523,
+      "orientation_absolute_deg": 12.738265991210938,
+      "orientation_signed_deg": -12.738265991210938
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.881054401397705,
+      "orientation_deg": 114.35403442382812
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1632.0,
+        280.0
+      ],
+      "request_xyxy_px": [
+        1482.0,
+        130.0,
+        1782.0,
+        430.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000031_z04.070_j053.png",
+      "sample_id": "defender90_f000031_z04.070_j053",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000031_z04.070_j053.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.452091217041016,
+      "orientation_deg": 336.5954895019531
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000032_z03.751_j076.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.055452823638916016,
+      "distance_signed_m": 0.055452823638916016,
+      "orientation_absolute_deg": 3.94598388671875,
+      "orientation_signed_deg": -3.94598388671875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.507544040679932,
+      "orientation_deg": 332.6495056152344
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1612.0,
+        304.0
+      ],
+      "request_xyxy_px": [
+        1462.0,
+        154.0,
+        1762.0,
+        454.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000032_z03.751_j076.png",
+      "sample_id": "defender90_f000032_z03.751_j076",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000032_z03.751_j076.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.418468952178955,
+      "orientation_deg": 182.62159729003906
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000033_z02.950_j337.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.030419588088989258,
+      "distance_signed_m": 0.030419588088989258,
+      "orientation_absolute_deg": 1.2560272216796875,
+      "orientation_signed_deg": 1.2560272216796875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.4488885402679443,
+      "orientation_deg": 183.87762451171875
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1468.0,
+        412.0
+      ],
+      "request_xyxy_px": [
+        1318.0,
+        262.0,
+        1618.0,
+        562.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000033_z02.950_j337.png",
+      "sample_id": "defender90_f000033_z02.950_j337",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000033_z02.950_j337.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.019162893295288,
+      "orientation_deg": 105.19190216064453
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000034_z02.633_j029.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.0826418399810791,
+      "distance_signed_m": 0.0826418399810791,
+      "orientation_absolute_deg": 5.781890869140625,
+      "orientation_signed_deg": -5.781898498535156
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.101804733276367,
+      "orientation_deg": 99.41000366210938
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1364.0,
+        440.0
+      ],
+      "request_xyxy_px": [
+        1214.0,
+        290.0,
+        1514.0,
+        590.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000034_z02.633_j029.png",
+      "sample_id": "defender90_f000034_z02.633_j029",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000034_z02.633_j029.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.4476940631866455,
+      "orientation_deg": 125.6072006225586
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000035_z03.249_j016.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07465457916259766,
+      "distance_signed_m": 0.07465457916259766,
+      "orientation_absolute_deg": 9.192108154296875,
+      "orientation_signed_deg": -9.192100524902344
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.522348642349243,
+      "orientation_deg": 116.41510009765625
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        944.0,
+        360.0
+      ],
+      "request_xyxy_px": [
+        794.0,
+        210.0,
+        1094.0,
+        510.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000035_z03.249_j016.png",
+      "sample_id": "defender90_f000035_z03.249_j016",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000035_z03.249_j016.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.418034076690674,
+      "orientation_deg": 252.8022003173828
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000036_z04.252_j320.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04638671875,
+      "distance_signed_m": 0.04638671875,
+      "orientation_absolute_deg": 11.396255493164062,
+      "orientation_signed_deg": 11.396255493164062
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.464420795440674,
+      "orientation_deg": 264.1984558105469
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        856.0,
+        264.0
+      ],
+      "request_xyxy_px": [
+        706.0,
+        114.0,
+        1006.0,
+        414.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000036_z04.252_j320.png",
+      "sample_id": "defender90_f000036_z04.252_j320",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000036_z04.252_j320.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.0550220012664795,
+      "orientation_deg": 153.24380493164062
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000037_z01.415_j410.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.01978588104248047,
+      "distance_signed_m": 0.01978588104248047,
+      "orientation_absolute_deg": 11.79345703125,
+      "orientation_signed_deg": -11.79345703125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.07480788230896,
+      "orientation_deg": 141.45034790039062
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1616.0,
+        752.0
+      ],
+      "request_xyxy_px": [
+        1466.0,
+        602.0,
+        1766.0,
+        902.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000037_z01.415_j410.png",
+      "sample_id": "defender90_f000037_z01.415_j410",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000037_z01.415_j410.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 6.9977288246154785,
+      "orientation_deg": 306.87579345703125
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000038_z05.808_j012.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.01548624038696289,
+      "distance_signed_m": -0.01548624038696289,
+      "orientation_absolute_deg": 2.123382568359375,
+      "orientation_signed_deg": -2.123382568359375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 6.982242584228516,
+      "orientation_deg": 304.7524108886719
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1752.0,
+        176.0
+      ],
+      "request_xyxy_px": [
+        1602.0,
+        26.0,
+        1902.0,
+        326.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000038_z05.808_j012.png",
+      "sample_id": "defender90_f000038_z05.808_j012",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000038_z05.808_j012.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.927354097366333,
+      "orientation_deg": 171.4365997314453
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000039_z02.668_j294.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07868146896362305,
+      "distance_signed_m": 0.07868146896362305,
+      "orientation_absolute_deg": 0.560455322265625,
+      "orientation_signed_deg": 0.560455322265625
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.006035566329956,
+      "orientation_deg": 171.99705505371094
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1108.0,
+        424.0
+      ],
+      "request_xyxy_px": [
+        958.0,
+        274.0,
+        1258.0,
+        574.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000039_z02.668_j294.png",
+      "sample_id": "defender90_f000039_z02.668_j294",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000039_z02.668_j294.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.323441028594971,
+      "orientation_deg": 62.92665100097656
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000040_z04.051_j013.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.03802299499511719,
+      "distance_signed_m": 0.03802299499511719,
+      "orientation_absolute_deg": 1.3465118408203125,
+      "orientation_signed_deg": -1.3465080261230469
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.361464023590088,
+      "orientation_deg": 61.580142974853516
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1252.0,
+        280.0
+      ],
+      "request_xyxy_px": [
+        1102.0,
+        130.0,
+        1402.0,
+        430.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000040_z04.051_j013.png",
+      "sample_id": "defender90_f000040_z04.051_j013",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000040_z04.051_j013.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.572603940963745,
+      "orientation_deg": 95.1765365600586
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000041_z02.067_j185.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.08708477020263672,
+      "distance_signed_m": 0.08708477020263672,
+      "orientation_absolute_deg": 14.592605590820312,
+      "orientation_signed_deg": -14.592605590820312
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.659688711166382,
+      "orientation_deg": 80.58393096923828
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        460.0,
+        544.0
+      ],
+      "request_xyxy_px": [
+        310.0,
+        394.0,
+        610.0,
+        694.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000041_z02.067_j185.png",
+      "sample_id": "defender90_f000041_z02.067_j185",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000041_z02.067_j185.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.314789772033691,
+      "orientation_deg": 311.1036071777344
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000042_z03.641_j239.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04147768020629883,
+      "distance_signed_m": 0.04147768020629883,
+      "orientation_absolute_deg": 7.5908203125,
+      "orientation_signed_deg": -7.5908203125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.35626745223999,
+      "orientation_deg": 303.5127868652344
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1600.0,
+        312.0
+      ],
+      "request_xyxy_px": [
+        1450.0,
+        162.0,
+        1750.0,
+        462.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000042_z03.641_j239.png",
+      "sample_id": "defender90_f000042_z03.641_j239",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000042_z03.641_j239.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.826963901519775,
+      "orientation_deg": 225.5749969482422
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000043_z04.004_j517.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05730915069580078,
+      "distance_signed_m": 0.05730915069580078,
+      "orientation_absolute_deg": 3.13787841796875,
+      "orientation_signed_deg": -3.13787841796875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.884273052215576,
+      "orientation_deg": 222.43711853027344
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1676.0,
+        284.0
+      ],
+      "request_xyxy_px": [
+        1526.0,
+        134.0,
+        1826.0,
+        434.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000043_z04.004_j517.png",
+      "sample_id": "defender90_f000043_z04.004_j517",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000043_z04.004_j517.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.0410709381103516,
+      "orientation_deg": 305.47821044921875
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000044_z02.814_j208.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.062200307846069336,
+      "distance_signed_m": 0.062200307846069336,
+      "orientation_absolute_deg": 4.14093017578125,
+      "orientation_signed_deg": -4.14093017578125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.103271245956421,
+      "orientation_deg": 301.3372802734375
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        980.0,
+        412.0
+      ],
+      "request_xyxy_px": [
+        830.0,
+        262.0,
+        1130.0,
+        562.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000044_z02.814_j208.png",
+      "sample_id": "defender90_f000044_z02.814_j208",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000044_z02.814_j208.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.291731834411621,
+      "orientation_deg": 100.33470153808594
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000045_z05.147_j324.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.06508302688598633,
+      "distance_signed_m": 0.06508302688598633,
+      "orientation_absolute_deg": 0.03228759765625,
+      "orientation_signed_deg": 0.03227996826171875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.356814861297607,
+      "orientation_deg": 100.36698150634766
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        864.0,
+        208.0
+      ],
+      "request_xyxy_px": [
+        714.0,
+        58.0,
+        1014.0,
+        358.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000045_z05.147_j324.png",
+      "sample_id": "defender90_f000045_z05.147_j324",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000045_z05.147_j324.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.47550106048584,
+      "orientation_deg": 157.26510620117188
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000046_z02.141_j278.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04866147041320801,
+      "distance_signed_m": 0.04866147041320801,
+      "orientation_absolute_deg": 3.5954132080078125,
+      "orientation_signed_deg": -3.5954132080078125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.524162530899048,
+      "orientation_deg": 153.66969299316406
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1172.0,
+        496.0
+      ],
+      "request_xyxy_px": [
+        1022.0,
+        346.0,
+        1322.0,
+        646.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000046_z02.141_j278.png",
+      "sample_id": "defender90_f000046_z02.141_j278",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000046_z02.141_j278.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.386805057525635,
+      "orientation_deg": 7.505675792694092
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000047_z04.016_j095.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.11329889297485352,
+      "distance_signed_m": 0.11329889297485352,
+      "orientation_absolute_deg": 7.536376953125,
+      "orientation_signed_deg": -7.536345958709717
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.500103950500488,
+      "orientation_deg": 359.9693298339844
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        568.0,
+        284.0
+      ],
+      "request_xyxy_px": [
+        418.0,
+        134.0,
+        718.0,
+        434.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000047_z04.016_j095.png",
+      "sample_id": "defender90_f000047_z04.016_j095",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000047_z04.016_j095.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.1852869987487793,
+      "orientation_deg": 285.11138916015625
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000048_z01.702_j431.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.06163954734802246,
+      "distance_signed_m": 0.06163954734802246,
+      "orientation_absolute_deg": 5.310028076171875,
+      "orientation_signed_deg": -5.310028076171875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.2469265460968018,
+      "orientation_deg": 279.8013610839844
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        492.0,
+        644.0
+      ],
+      "request_xyxy_px": [
+        342.0,
+        494.0,
+        642.0,
+        794.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000048_z01.702_j431.png",
+      "sample_id": "defender90_f000048_z01.702_j431",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000048_z01.702_j431.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 1.8318840265274048,
+      "orientation_deg": 117.56199645996094
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000049_z01.238_j351.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.020546793937683105,
+      "distance_signed_m": 0.020546793937683105,
+      "orientation_absolute_deg": 12.084671020507812,
+      "orientation_signed_deg": -12.084671020507812
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 1.852430820465088,
+      "orientation_deg": 105.47732543945312
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        436.0,
+        836.0
+      ],
+      "request_xyxy_px": [
+        286.0,
+        686.0,
+        586.0,
+        986.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000049_z01.238_j351.png",
+      "sample_id": "defender90_f000049_z01.238_j351",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000049_z01.238_j351.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.287108898162842,
+      "orientation_deg": 254.7344970703125
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000050_z04.256_j234.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.15012264251708984,
+      "distance_signed_m": 0.15012264251708984,
+      "orientation_absolute_deg": 19.5103759765625,
+      "orientation_signed_deg": 19.5103759765625
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.437231540679932,
+      "orientation_deg": 274.244873046875
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        132.0,
+        268.0
+      ],
+      "request_xyxy_px": [
+        -18.0,
+        118.0,
+        282.0,
+        418.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000050_z04.256_j234.png",
+      "sample_id": "defender90_f000050_z04.256_j234",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000050_z04.256_j234.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 1.6948579549789429,
+      "orientation_deg": 53.975860595703125
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000051_z01.054_j319.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04195725917816162,
+      "distance_signed_m": 0.04195725917816162,
+      "orientation_absolute_deg": 115.89398193359375,
+      "orientation_signed_deg": -115.89398193359375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 1.7368152141571045,
+      "orientation_deg": 298.0818786621094
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        436.0,
+        880.0
+      ],
+      "request_xyxy_px": [
+        286.0,
+        730.0,
+        586.0,
+        1030.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000051_z01.054_j319.png",
+      "sample_id": "defender90_f000051_z01.054_j319",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000051_z01.054_j319.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.599859237670898,
+      "orientation_deg": 53.32101058959961
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000052_z04.269_j035.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05511188507080078,
+      "distance_signed_m": 0.05511188507080078,
+      "orientation_absolute_deg": 0.2835845947265625,
+      "orientation_signed_deg": -0.2835845947265625
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.654971122741699,
+      "orientation_deg": 53.03742599487305
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1320.0,
+        264.0
+      ],
+      "request_xyxy_px": [
+        1170.0,
+        114.0,
+        1470.0,
+        414.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000052_z04.269_j035.png",
+      "sample_id": "defender90_f000052_z04.269_j035",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000052_z04.269_j035.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.2738919258117676,
+      "orientation_deg": 202.66619873046875
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000053_z02.860_j435.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.033312082290649414,
+      "distance_signed_m": 0.033312082290649414,
+      "orientation_absolute_deg": 5.2846221923828125,
+      "orientation_signed_deg": -5.2846221923828125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.307204008102417,
+      "orientation_deg": 197.38157653808594
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1384.0,
+        428.0
+      ],
+      "request_xyxy_px": [
+        1234.0,
+        278.0,
+        1534.0,
+        578.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000053_z02.860_j435.png",
+      "sample_id": "defender90_f000053_z02.860_j435",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000053_z02.860_j435.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.891932964324951,
+      "orientation_deg": 181.61019897460938
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000054_z03.929_j152.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.06530523300170898,
+      "distance_signed_m": 0.06530523300170898,
+      "orientation_absolute_deg": 1.3706512451171875,
+      "orientation_signed_deg": 1.3706512451171875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.95723819732666,
+      "orientation_deg": 182.98085021972656
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        148.0,
+        288.0
+      ],
+      "request_xyxy_px": [
+        -2.0,
+        138.0,
+        298.0,
+        438.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000054_z03.929_j152.png",
+      "sample_id": "defender90_f000054_z03.929_j152",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000054_z03.929_j152.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.903110027313232,
+      "orientation_deg": 82.87317657470703
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000055_z05.213_j289.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.07370853424072266,
+      "distance_signed_m": 0.07370853424072266,
+      "orientation_absolute_deg": 2.967926025390625,
+      "orientation_signed_deg": -2.967926025390625
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.976818561553955,
+      "orientation_deg": 79.9052505493164
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1556.0,
+        208.0
+      ],
+      "request_xyxy_px": [
+        1406.0,
+        58.0,
+        1706.0,
+        358.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000055_z05.213_j289.png",
+      "sample_id": "defender90_f000055_z05.213_j289",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000055_z05.213_j289.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.7417590618133545,
+      "orientation_deg": 73.14047241210938
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000056_z02.253_j302.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04752612113952637,
+      "distance_signed_m": 0.04752612113952637,
+      "orientation_absolute_deg": 1.5895233154296875,
+      "orientation_signed_deg": 1.5895233154296875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.789285182952881,
+      "orientation_deg": 74.72999572753906
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1492.0,
+        508.0
+      ],
+      "request_xyxy_px": [
+        1342.0,
+        358.0,
+        1642.0,
+        658.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000056_z02.253_j302.png",
+      "sample_id": "defender90_f000056_z02.253_j302",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000056_z02.253_j302.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.737401008605957,
+      "orientation_deg": 90.28362274169922
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000057_z02.474_j264.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.06976747512817383,
+      "distance_signed_m": 0.06976747512817383,
+      "orientation_absolute_deg": 4.255615234375,
+      "orientation_signed_deg": -4.255622863769531
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.807168483734131,
+      "orientation_deg": 86.02799987792969
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        868.0,
+        468.0
+      ],
+      "request_xyxy_px": [
+        718.0,
+        318.0,
+        1018.0,
+        618.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000057_z02.474_j264.png",
+      "sample_id": "defender90_f000057_z02.474_j264",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000057_z02.474_j264.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.1119608879089355,
+      "orientation_deg": 45.671810150146484
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000058_z03.744_j513.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.037096500396728516,
+      "distance_signed_m": 0.037096500396728516,
+      "orientation_absolute_deg": 4.20703125,
+      "orientation_signed_deg": -4.207023620605469
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.149057388305664,
+      "orientation_deg": 41.464786529541016
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1360.0,
+        304.0
+      ],
+      "request_xyxy_px": [
+        1210.0,
+        154.0,
+        1510.0,
+        454.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000058_z03.744_j513.png",
+      "sample_id": "defender90_f000058_z03.744_j513",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000058_z03.744_j513.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 4.001781940460205,
+      "orientation_deg": 95.41783142089844
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000059_z03.800_j379.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.0319666862487793,
+      "distance_signed_m": 0.0319666862487793,
+      "orientation_absolute_deg": 12.253753662109375,
+      "orientation_signed_deg": -12.253746032714844
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 4.033748626708984,
+      "orientation_deg": 83.1640853881836
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1124.0,
+        300.0
+      ],
+      "request_xyxy_px": [
+        974.0,
+        150.0,
+        1274.0,
+        450.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000059_z03.800_j379.png",
+      "sample_id": "defender90_f000059_z03.800_j379",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000059_z03.800_j379.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 2.160767078399658,
+      "orientation_deg": 178.49240112304688
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000060_z01.701_j010.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05044293403625488,
+      "distance_signed_m": 0.05044293403625488,
+      "orientation_absolute_deg": 1.3807373046875,
+      "orientation_signed_deg": 1.3807373046875
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 2.211210012435913,
+      "orientation_deg": 179.87313842773438
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        564.0,
+        640.0
+      ],
+      "request_xyxy_px": [
+        414.0,
+        490.0,
+        714.0,
+        790.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000060_z01.701_j010.png",
+      "sample_id": "defender90_f000060_z01.701_j010",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000060_z01.701_j010.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.6763739585876465,
+      "orientation_deg": 313.1488952636719
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000061_z05.374_j043.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.09444618225097656,
+      "distance_signed_m": 0.09444618225097656,
+      "orientation_absolute_deg": 15.72003173828125,
+      "orientation_signed_deg": 15.72003173828125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.770820140838623,
+      "orientation_deg": 328.8689270019531
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        632.0,
+        200.0
+      ],
+      "request_xyxy_px": [
+        482.0,
+        50.0,
+        782.0,
+        350.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000061_z05.374_j043.png",
+      "sample_id": "defender90_f000061_z05.374_j043",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000061_z05.374_j043.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.0245211124420166,
+      "orientation_deg": 211.94009399414062
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000062_z02.790_j483.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.05819201469421387,
+      "distance_signed_m": 0.05819201469421387,
+      "orientation_absolute_deg": 4.708343505859375,
+      "orientation_signed_deg": -4.708343505859375
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.0827131271362305,
+      "orientation_deg": 207.23175048828125
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1044.0,
+        412.0
+      ],
+      "request_xyxy_px": [
+        894.0,
+        262.0,
+        1194.0,
+        562.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000062_z02.790_j483.png",
+      "sample_id": "defender90_f000062_z02.790_j483",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000062_z02.790_j483.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 3.3262829780578613,
+      "orientation_deg": 214.15679931640625
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000063_z02.983_j357.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04851984977722168,
+      "distance_signed_m": 0.04851984977722168,
+      "orientation_absolute_deg": 0.6534423828125,
+      "orientation_signed_deg": 0.6534423828125
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 3.374802827835083,
+      "orientation_deg": 214.81024169921875
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        612.0,
+        384.0
+      ],
+      "request_xyxy_px": [
+        462.0,
+        234.0,
+        762.0,
+        534.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000063_z02.983_j357.png",
+      "sample_id": "defender90_f000063_z02.983_j357",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000063_z02.983_j357.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  },
+  {
+    "actual": {
+      "distance_m": 5.225004196166992,
+      "orientation_deg": 51.3143196105957
+    },
+    "artifacts": {
+      "json_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/inference-output_260415-1146_ds-2d-cnn.json",
+      "roi_image_path": "05_inference-v0.2/output/260415-1146_ds-2d-cnn/20260421T110508Z__def90_synth_v023-validation-shuffled__defender90_f000064_z04.762_j346.roi.png"
+    },
+    "created_utc": "2026-04-21T11:05:08+00:00",
+    "deltas": {
+      "distance_absolute_m": 0.04695415496826172,
+      "distance_signed_m": 0.04695415496826172,
+      "orientation_absolute_deg": 0.805328369140625,
+      "orientation_signed_deg": -0.8053245544433594
+    },
+    "model_input": {
+      "dtype": "float32",
+      "preprocessing_contract_version": "rb-preprocess-v4-dual-stream-orientation-v1",
+      "shape": [
+        300,
+        300
+      ]
+    },
+    "prediction": {
+      "distance_m": 5.271958351135254,
+      "orientation_deg": 50.508995056152344
+    },
+    "roi_prediction": {
+      "center_original_xy_px": [
+        1424.0,
+        232.0
+      ],
+      "request_xyxy_px": [
+        1274.0,
+        82.0,
+        1574.0,
+        382.0
+      ]
+    },
+    "runtime": {
+      "distance_orientation_device": "cuda",
+      "roi_fcn_device": "cuda"
+    },
+    "selected_corpus": {
+      "name": "def90_synth_v023-validation-shuffled",
+      "source_run_json_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/run.json",
+      "source_samples_csv_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/manifests/samples.csv"
+    },
+    "selected_image": {
+      "image_filename": "defender90_f000064_z04.762_j346.png",
+      "sample_id": "defender90_f000064_z04.762_j346",
+      "source_image_path": "02_synthetic-data-processing-v3.0/input-images/def90_synth_v023-validation-shuffled/images/defender90_f000064_z04.762_j346.png"
+    },
+    "selected_model": {
+      "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+      "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+      "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+    },
+    "selected_models": {
+      "distance_orientation": {
+        "checkpoint_path": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001/best.pt",
+        "label": "distance-orientation / 260415-1146_ds-2d-cnn / run_0001",
+        "run_dir": "05_inference-v0.2/models/distance-orientation/260415-1146_ds-2d-cnn/runs/run_0001"
+      },
+      "roi_fcn": {
+        "checkpoint_path": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003/best.pt",
+        "label": "roi-fcn / 260420-1219_roi-fcn-tiny / run_0003",
+        "run_dir": "05_inference-v0.2/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+      }
+    }
+  }
+]

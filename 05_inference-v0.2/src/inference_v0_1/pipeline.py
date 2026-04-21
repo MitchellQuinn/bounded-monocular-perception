@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from .discovery import RawCorpus
+from .discovery import RawCorpus, load_corpus_samples
 from .external import ensure_external_paths
 from .paths import results_root, sanitize_identifier, timestamp_slug, to_repo_relative
 
@@ -817,51 +817,37 @@ def _build_single_sample_batch(preprocessed: PreprocessedSample) -> Batch:
     )
 
 
-def save_inference_result(
-    result: InferenceResult,
-    *,
-    root: str | Path | None = None,
-) -> tuple[Path, Path]:
-    """Write the optional JSON result artifact and ROI image."""
-    target_root = Path(root).expanduser().resolve() if root is not None else results_root()
-    target_root.mkdir(parents=True, exist_ok=True)
+def _build_multi_sample_batch(preprocessed_samples: list[PreprocessedSample]) -> Batch:
+    if not preprocessed_samples:
+        raise ValueError("At least one preprocessed sample is required.")
 
-    stem = "__".join(
-        [
-            timestamp_slug(),
-            sanitize_identifier(result.selected_corpus_name),
-            sanitize_identifier(result.sample_id),
-        ]
+    return Batch(
+        images=np.stack(
+            [sample.model_image for sample in preprocessed_samples],
+            axis=0,
+        ).astype(np.float32),
+        targets=np.asarray(
+            [
+                [
+                    sample.actual_distance_m,
+                    sample.actual_yaw_sin,
+                    sample.actual_yaw_cos,
+                ]
+                for sample in preprocessed_samples
+            ],
+            dtype=np.float32,
+        ),
+        rows=[dict(sample.sample_row) for sample in preprocessed_samples],
+        bbox_features=np.stack(
+            [sample.bbox_features for sample in preprocessed_samples],
+            axis=0,
+        ).astype(np.float32),
     )
-    roi_path = target_root / f"{stem}.roi.png"
-    json_path = target_root / f"{stem}.json"
-
-    write_grayscale_png(roi_path, np.clip(result.roi_image * 255.0, 0, 255).astype(np.uint8))
-    payload = result.to_json_payload()
-    payload["artifacts"] = {
-        "json_path": to_repo_relative(json_path),
-        "roi_image_path": to_repo_relative(roi_path),
-    }
-    write_json(json_path, payload)
-    return json_path, roi_path
 
 
-def run_single_sample_inference(
-    model_run_dir: str | Path,
-    corpus_dir: str | Path,
-    image_name: str,
-    *,
-    roi_model_run_dir: str | Path | None = None,
-    save_result: bool = False,
-    results_root_path: str | Path | None = None,
-    device: str | None = None,
-) -> InferenceResult:
-    """Run one end-to-end raw-image inference pass using ROI-FCN crop placement."""
-    if roi_model_run_dir is None:
-        raise ValueError("roi_model_run_dir is required for v0.2 inference.")
-
+def _resolve_raw_corpus(corpus_dir: str | Path) -> RawCorpus:
     corpus_root = Path(corpus_dir).expanduser().resolve()
-    corpus = RawCorpus(
+    return RawCorpus(
         name=corpus_root.name,
         root=corpus_root,
         images_dir=(corpus_root / "images").resolve(),
@@ -869,20 +855,13 @@ def run_single_sample_inference(
         samples_csv_path=(corpus_root / "manifests" / "samples.csv").resolve(),
     )
 
-    from .discovery import select_sample_row
 
-    sample_row = select_sample_row(corpus, image_name)
-    model, model_context = load_model_context(model_run_dir, device=device)
-    roi_model, roi_model_context = load_roi_fcn_model_context(roi_model_run_dir, device=device)
-    preprocessed = preprocess_single_sample(
-        corpus=corpus,
-        sample_row=sample_row,
-        model_context=model_context,
-        roi_model=roi_model,
-        roi_model_context=roi_model_context,
-    )
-    batch = _build_single_sample_batch(preprocessed)
-
+def _run_prediction_batch(
+    *,
+    model: torch.nn.Module,
+    batch: Batch,
+    model_context: ModelContext,
+) -> pd.DataFrame:
     device_obj = torch.device(model_context.device)
     with torch.no_grad():
         model_inputs = batch_to_model_inputs(batch, model_context.task_contract, device=device_obj)
@@ -909,18 +888,26 @@ def run_single_sample_inference(
         collect_predictions=True,
     )
     if metrics.predictions is None or metrics.predictions.empty:
-        raise RuntimeError("Single-sample inference did not produce a prediction row.")
+        raise RuntimeError("Inference did not produce any prediction rows.")
+    return metrics.predictions.reset_index(drop=True)
 
-    prediction_row = metrics.predictions.iloc[0]
+
+def _build_inference_result(
+    *,
+    preprocessed: PreprocessedSample,
+    prediction_row: pd.Series,
+    model_context: ModelContext,
+    roi_model_context: RoiFcnModelContext,
+) -> InferenceResult:
     predicted_distance_m = float(prediction_row["prediction_distance_m"])
     actual_distance_m = float(prediction_row["truth_distance_m"])
     predicted_orientation_deg = float(prediction_row["prediction_yaw_deg"])
     actual_orientation_deg = float(prediction_row["truth_yaw_deg"])
 
-    result = InferenceResult(
+    return InferenceResult(
         selected_model_label=model_context.label,
         selected_roi_model_label=roi_model_context.label,
-        selected_corpus_name=corpus.name,
+        selected_corpus_name=str(preprocessed.source_run_json_path.parent.parent.name),
         selected_image_name=str(preprocessed.sample_row["image_filename"]),
         sample_id=str(preprocessed.sample_row["sample_id"]),
         roi_image=preprocessed.roi_image,
@@ -952,6 +939,99 @@ def run_single_sample_inference(
         ).strip(),
     )
 
+
+def _model_output_name(run_dir: str | Path) -> str:
+    """Derive a stable filesystem-safe name for aggregated inference artifacts."""
+    resolved_run_dir = Path(run_dir).expanduser().resolve()
+    if (
+        resolved_run_dir.name.startswith("run_")
+        and resolved_run_dir.parent.name == "runs"
+        and resolved_run_dir.parent.parent.name
+    ):
+        return sanitize_identifier(resolved_run_dir.parent.parent.name)
+    return sanitize_identifier(resolved_run_dir.name)
+
+
+def save_inference_result(
+    result: InferenceResult,
+    *,
+    root: str | Path | None = None,
+) -> tuple[Path, Path]:
+    """Write the optional JSON result artifact and ROI image."""
+    target_root = Path(root).expanduser().resolve() if root is not None else results_root()
+    target_root.mkdir(parents=True, exist_ok=True)
+
+    model_output_name = _model_output_name(result.run_dir)
+    stem = "__".join(
+        [
+            timestamp_slug(),
+            sanitize_identifier(result.selected_corpus_name),
+            sanitize_identifier(result.sample_id),
+        ]
+    )
+    roi_path = target_root / f"{stem}.roi.png"
+    json_path = target_root / f"inference-output_{model_output_name}.json"
+
+    write_grayscale_png(roi_path, np.clip(result.roi_image * 255.0, 0, 255).astype(np.uint8))
+    payload = result.to_json_payload()
+    payload["artifacts"] = {
+        "json_path": to_repo_relative(json_path),
+        "roi_image_path": to_repo_relative(roi_path),
+    }
+    existing_payloads: list[dict[str, Any]] = []
+    if json_path.exists():
+        existing_content = read_json(json_path)
+        if isinstance(existing_content, list):
+            existing_payloads = existing_content
+        elif isinstance(existing_content, dict):
+            existing_payloads = [existing_content]
+        else:
+            raise ValueError(f"Unsupported JSON payload in existing inference output: {json_path}")
+    existing_payloads.append(payload)
+    write_json(json_path, existing_payloads)
+    return json_path, roi_path
+
+
+def run_single_sample_inference(
+    model_run_dir: str | Path,
+    corpus_dir: str | Path,
+    image_name: str,
+    *,
+    roi_model_run_dir: str | Path | None = None,
+    save_result: bool = False,
+    results_root_path: str | Path | None = None,
+    device: str | None = None,
+) -> InferenceResult:
+    """Run one end-to-end raw-image inference pass using ROI-FCN crop placement."""
+    if roi_model_run_dir is None:
+        raise ValueError("roi_model_run_dir is required for v0.2 inference.")
+
+    corpus = _resolve_raw_corpus(corpus_dir)
+
+    from .discovery import select_sample_row
+
+    sample_row = select_sample_row(corpus, image_name)
+    model, model_context = load_model_context(model_run_dir, device=device)
+    roi_model, roi_model_context = load_roi_fcn_model_context(roi_model_run_dir, device=device)
+    preprocessed = preprocess_single_sample(
+        corpus=corpus,
+        sample_row=sample_row,
+        model_context=model_context,
+        roi_model=roi_model,
+        roi_model_context=roi_model_context,
+    )
+    prediction_rows = _run_prediction_batch(
+        model=model,
+        batch=_build_single_sample_batch(preprocessed),
+        model_context=model_context,
+    )
+    result = _build_inference_result(
+        preprocessed=preprocessed,
+        prediction_row=prediction_rows.iloc[0],
+        model_context=model_context,
+        roi_model_context=roi_model_context,
+    )
+
     if save_result:
         json_path, roi_path = save_inference_result(
             result,
@@ -963,3 +1043,86 @@ def run_single_sample_inference(
             saved_roi_path=roi_path,
         )
     return result
+
+
+def run_multi_sample_inference(
+    model_run_dir: str | Path,
+    corpus_dir: str | Path,
+    *,
+    roi_model_run_dir: str | Path | None = None,
+    offset: int = 0,
+    num_samples: int = 1,
+    save_result: bool = False,
+    results_root_path: str | Path | None = None,
+    device: str | None = None,
+) -> list[InferenceResult]:
+    """Run one corpus slice without reloading the models for each sample."""
+    if roi_model_run_dir is None:
+        raise ValueError("roi_model_run_dir is required for v0.2 inference.")
+
+    offset_value = int(offset)
+    num_samples_value = int(num_samples)
+    if offset_value < 0:
+        raise ValueError(f"offset must be >= 0, got {offset_value}")
+    if num_samples_value <= 0:
+        raise ValueError(f"num_samples must be > 0, got {num_samples_value}")
+
+    corpus = _resolve_raw_corpus(corpus_dir)
+    samples_df = load_corpus_samples(corpus)
+    total_samples = int(len(samples_df))
+    if total_samples <= 0:
+        raise ValueError(f"Corpus {corpus.name} has no selectable samples.")
+    if offset_value >= total_samples:
+        raise ValueError(
+            f"offset {offset_value} is out of range for corpus {corpus.name} "
+            f"with {total_samples} selectable samples"
+        )
+
+    selected_df = samples_df.iloc[offset_value : offset_value + num_samples_value].copy()
+    if selected_df.empty:
+        raise RuntimeError("Resolved an empty sample slice for multi-sample inference.")
+
+    model, model_context = load_model_context(model_run_dir, device=device)
+    roi_model, roi_model_context = load_roi_fcn_model_context(roi_model_run_dir, device=device)
+
+    preprocessed_samples = [
+        preprocess_single_sample(
+            corpus=corpus,
+            sample_row=sample_row,
+            model_context=model_context,
+            roi_model=roi_model,
+            roi_model_context=roi_model_context,
+        )
+        for _, sample_row in selected_df.iterrows()
+    ]
+    prediction_rows = _run_prediction_batch(
+        model=model,
+        batch=_build_multi_sample_batch(preprocessed_samples),
+        model_context=model_context,
+    )
+    if len(prediction_rows) != len(preprocessed_samples):
+        raise RuntimeError(
+            "Prediction row count did not match the requested sample slice: "
+            f"predictions={len(prediction_rows)}, samples={len(preprocessed_samples)}"
+        )
+
+    results: list[InferenceResult] = []
+    for index, preprocessed in enumerate(preprocessed_samples):
+        result = _build_inference_result(
+            preprocessed=preprocessed,
+            prediction_row=prediction_rows.iloc[index],
+            model_context=model_context,
+            roi_model_context=roi_model_context,
+        )
+        if save_result:
+            json_path, roi_path = save_inference_result(
+                result,
+                root=results_root_path,
+            )
+            result = replace(
+                result,
+                saved_json_path=json_path,
+                saved_roi_path=roi_path,
+            )
+        results.append(result)
+    return results
