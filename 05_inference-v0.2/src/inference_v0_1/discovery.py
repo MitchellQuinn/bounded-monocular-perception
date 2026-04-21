@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 import pandas as pd
 
@@ -19,12 +20,13 @@ class ModelRunArtifact:
     """One selectable trained run artifact."""
 
     label: str
+    model_family: str
     model_name: str
     run_id: str
     model_dir: Path
     run_dir: Path
     config_path: Path
-    run_manifest_path: Path | None
+    metadata_path: Path | None
     checkpoint_path: Path
 
 
@@ -37,6 +39,25 @@ class RawCorpus:
     images_dir: Path
     run_json_path: Path
     samples_csv_path: Path
+
+
+def normalize_model_family(value: str | None) -> str:
+    """Normalize one model-family identifier."""
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    aliases = {
+        "distance": "distance-orientation",
+        "distance orientation": "distance-orientation",
+        "distance-orientation": "distance-orientation",
+        "distance_orientation": "distance-orientation",
+        "regression": "distance-orientation",
+        "roi": "roi-fcn",
+        "roi-fcn": "roi-fcn",
+        "roi_fcn": "roi-fcn",
+        "roifcn": "roi-fcn",
+    }
+    return aliases.get(text, text)
 
 
 def default_raw_corpus_roots() -> list[Path]:
@@ -56,16 +77,66 @@ def default_raw_corpus_roots() -> list[Path]:
     return roots
 
 
-def discover_model_runs(root: Path | None = None) -> list[ModelRunArtifact]:
+def _discover_config_paths(models_root: Path) -> Iterable[Path]:
+    seen: set[Path] = set()
+    for pattern in ("**/runs/run_*/config.json", "**/runs/run_*/run_config.json"):
+        for config_path in sorted(models_root.glob(pattern)):
+            resolved = config_path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            yield resolved
+
+
+def _infer_model_family(models_root: Path, *, model_dir: Path, config_path: Path) -> str:
+    try:
+        relative_parts = model_dir.relative_to(models_root).parts
+    except ValueError:
+        relative_parts = ()
+
+    if len(relative_parts) >= 2:
+        inferred = normalize_model_family(relative_parts[0])
+        if inferred:
+            return inferred
+    if len(relative_parts) == 1:
+        inferred = normalize_model_family(models_root.name)
+        if inferred:
+            return inferred
+
+    if config_path.name == "run_config.json":
+        return "roi-fcn"
+    if config_path.name == "config.json":
+        return "distance-orientation"
+    return "unknown"
+
+
+def _resolve_metadata_path(run_dir: Path) -> Path | None:
+    for filename in ("run_manifest.json", "dataset_contract.json", "dataset_summary.json"):
+        candidate = run_dir / filename
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def discover_model_runs(
+    root: Path | None = None,
+    *,
+    family: str | None = None,
+) -> list[ModelRunArtifact]:
     """Discover runnable model artifacts under `./models`."""
     models_root = (root or default_models_root()).resolve()
     if not models_root.exists():
         raise FileNotFoundError(f"Models root does not exist: {models_root}")
 
+    selected_family = normalize_model_family(family)
     artifacts: list[ModelRunArtifact] = []
-    for config_path in sorted(models_root.glob("*/runs/run_*/config.json")):
+    for config_path in _discover_config_paths(models_root):
         run_dir = config_path.parent.resolve()
         model_dir = run_dir.parent.parent.resolve()
+        model_family = _infer_model_family(models_root, model_dir=model_dir, config_path=config_path)
+        if selected_family and model_family != selected_family:
+            continue
+
         checkpoint_path = next(
             (
                 candidate
@@ -76,20 +147,28 @@ def discover_model_runs(root: Path | None = None) -> list[ModelRunArtifact]:
         )
         if checkpoint_path is None:
             continue
-        run_manifest_path = run_dir / "run_manifest.json"
+
         artifacts.append(
             ModelRunArtifact(
-                label=f"{model_dir.name} / {run_dir.name}",
+                label=f"{model_family} / {model_dir.name} / {run_dir.name}",
+                model_family=model_family,
                 model_name=model_dir.name,
                 run_id=run_dir.name,
                 model_dir=model_dir,
                 run_dir=run_dir,
-                config_path=config_path.resolve(),
-                run_manifest_path=(run_manifest_path.resolve() if run_manifest_path.exists() else None),
+                config_path=config_path,
+                metadata_path=_resolve_metadata_path(run_dir),
                 checkpoint_path=checkpoint_path.resolve(),
             )
         )
-    return artifacts
+    return sorted(
+        artifacts,
+        key=lambda artifact: (
+            artifact.model_family,
+            artifact.model_name,
+            artifact.run_id,
+        ),
+    )
 
 
 def _discover_raw_corpora_under_root(input_root: Path) -> list[RawCorpus]:

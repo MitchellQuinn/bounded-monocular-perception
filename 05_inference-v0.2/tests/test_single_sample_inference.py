@@ -1,4 +1,4 @@
-"""End-to-end smoke tests for the v0.1 raw-image inference pipeline."""
+"""End-to-end smoke tests for the v0.2 raw-image inference pipeline."""
 
 from __future__ import annotations
 
@@ -24,6 +24,15 @@ class SingleSampleInferenceTests(unittest.TestCase):
         self.assertTrue(corpora)
         return next((corpus for corpus in corpora if "input-images" in corpus.root.parts), corpora[0])
 
+    def test_discover_model_runs_includes_both_runtime_families(self) -> None:
+        models = discover_model_runs(PROJECT_ROOT / "models")
+        families = {artifact.model_family for artifact in models}
+
+        self.assertIn("distance-orientation", families)
+        self.assertIn("roi-fcn", families)
+        self.assertTrue(discover_model_runs(PROJECT_ROOT / "models", family="distance"))
+        self.assertTrue(discover_model_runs(PROJECT_ROOT / "models", family="roi"))
+
     def test_discover_raw_corpora_ignores_npz_only_input(self) -> None:
         explicit_local = discover_raw_corpora(PROJECT_ROOT / "input")
         self.assertEqual(explicit_local, [])
@@ -36,21 +45,31 @@ class SingleSampleInferenceTests(unittest.TestCase):
         self.assertTrue(any("input-images" in corpus.root.parts for corpus in corpora))
 
     def test_single_sample_inference_runs_end_to_end(self) -> None:
-        model = discover_model_runs(PROJECT_ROOT / "models")[0]
+        distance_model = discover_model_runs(
+            PROJECT_ROOT / "models",
+            family="distance-orientation",
+        )[0]
+        roi_model = discover_model_runs(
+            PROJECT_ROOT / "models",
+            family="roi-fcn",
+        )[-1]
         corpus = self._select_raw_corpus()
         image_name = list_corpus_image_names(corpus)[0]
 
         with TemporaryDirectory() as tmp_dir:
             result = run_single_sample_inference(
-                model.run_dir,
+                distance_model.run_dir,
                 corpus.root,
                 image_name,
+                roi_model_run_dir=roi_model.run_dir,
                 save_result=True,
                 results_root_path=Path(tmp_dir),
                 device="cpu",
             )
 
             self.assertEqual(result.selected_image_name, image_name)
+            self.assertEqual(result.selected_model_label, distance_model.label)
+            self.assertEqual(result.selected_roi_model_label, roi_model.label)
             self.assertEqual(result.roi_image.shape, (300, 300))
             self.assertGreaterEqual(float(result.roi_image.min()), 0.0)
             self.assertLessEqual(float(result.roi_image.max()), 1.0)
@@ -65,6 +84,16 @@ class SingleSampleInferenceTests(unittest.TestCase):
             payload = json.loads(result.saved_json_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["selected_image"]["image_filename"], image_name)
             self.assertEqual(payload["selected_corpus"]["name"], corpus.name)
+            self.assertEqual(
+                payload["selected_models"]["distance_orientation"]["label"],
+                distance_model.label,
+            )
+            self.assertEqual(
+                payload["selected_models"]["roi_fcn"]["label"],
+                roi_model.label,
+            )
+            self.assertEqual(len(payload["roi_prediction"]["center_original_xy_px"]), 2)
+            self.assertEqual(len(payload["roi_prediction"]["request_xyxy_px"]), 4)
 
 
 if __name__ == "__main__":
