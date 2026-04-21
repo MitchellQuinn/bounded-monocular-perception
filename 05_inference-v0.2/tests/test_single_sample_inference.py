@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import numpy as np
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -19,10 +20,12 @@ if str(SRC_ROOT) not in sys.path:
 
 from inference_v0_1.discovery import discover_model_runs, discover_raw_corpora, list_corpus_image_names
 from inference_v0_1.pipeline import (
+    InferenceResult,
     load_model_context,
     load_roi_fcn_model_context,
     run_multi_sample_inference,
     run_single_sample_inference,
+    save_inference_result,
 )
 
 
@@ -51,6 +54,62 @@ class SingleSampleInferenceTests(unittest.TestCase):
         self.assertTrue(corpus_names)
         self.assertNotIn("26-04-11_v021-validate-shuffled-images", corpus_names)
         self.assertTrue(any("input-images" in corpus.root.parts for corpus in corpora))
+
+    def test_save_inference_result_can_skip_roi_image_output(self) -> None:
+        run_dir = PROJECT_ROOT / "models" / "distance-orientation" / "demo-model" / "runs" / "run_demo"
+        checkpoint_path = run_dir / "best.pt"
+        roi_run_dir = PROJECT_ROOT / "models" / "roi-fcn" / "demo-roi" / "runs" / "run_demo"
+        roi_checkpoint_path = roi_run_dir / "best.pt"
+        source_image_path = PROJECT_ROOT / "tests" / "fixtures" / "sample.png"
+        source_run_json_path = PROJECT_ROOT / "tests" / "fixtures" / "run.json"
+        source_samples_csv_path = PROJECT_ROOT / "tests" / "fixtures" / "samples.csv"
+        result = InferenceResult(
+            selected_model_label="distance-orientation / demo-model / run_demo",
+            selected_roi_model_label="roi-fcn / demo-roi / run_demo",
+            selected_corpus_name="demo-corpus",
+            selected_image_name="sample.png",
+            sample_id="sample-001",
+            roi_image=np.array([[0.0, 0.5], [1.0, 0.25]], dtype=np.float32),
+            predicted_crop_center_x_px=123.0,
+            predicted_crop_center_y_px=456.0,
+            predicted_roi_request_xyxy_px=np.array([10.0, 20.0, 30.0, 40.0], dtype=np.float32),
+            predicted_distance_m=4.5,
+            actual_distance_m=4.0,
+            distance_delta_m=0.5,
+            absolute_distance_error_m=0.5,
+            predicted_orientation_deg=91.0,
+            actual_orientation_deg=89.0,
+            orientation_delta_deg=2.0,
+            absolute_orientation_error_deg=2.0,
+            device="cuda",
+            roi_device="cuda",
+            run_dir=run_dir,
+            checkpoint_path=checkpoint_path,
+            roi_run_dir=roi_run_dir,
+            roi_checkpoint_path=roi_checkpoint_path,
+            source_image_path=source_image_path,
+            source_run_json_path=source_run_json_path,
+            source_samples_csv_path=source_samples_csv_path,
+            preprocessing_contract_version="v-test",
+        )
+
+        with TemporaryDirectory() as tmp_dir:
+            json_path, roi_path = save_inference_result(
+                result,
+                root=tmp_dir,
+                save_roi_image=False,
+            )
+
+            self.assertTrue(json_path.is_file())
+            self.assertIsNone(roi_path)
+            self.assertEqual(list(Path(tmp_dir).glob("*.roi.png")), [])
+
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertIsInstance(payload, list)
+            self.assertEqual(len(payload), 1)
+            self.assertEqual(payload[0]["selected_image"]["image_filename"], "sample.png")
+            self.assertEqual(payload[0]["artifacts"]["json_path"], str(json_path.resolve()))
+            self.assertNotIn("roi_image_path", payload[0]["artifacts"])
 
     def test_distance_model_loading_requires_cuda(self) -> None:
         distance_model = discover_model_runs(

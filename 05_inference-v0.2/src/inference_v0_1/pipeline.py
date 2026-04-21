@@ -980,8 +980,9 @@ def save_inference_result(
     result: InferenceResult,
     *,
     root: str | Path | None = None,
-) -> tuple[Path, Path]:
-    """Write the optional JSON result artifact and ROI image."""
+    save_roi_image: bool = True,
+) -> tuple[Path, Path | None]:
+    """Write the optional JSON result artifact and, optionally, the ROI image."""
     target_root = Path(root).expanduser().resolve() if root is not None else results_root()
     target_root.mkdir(parents=True, exist_ok=True)
 
@@ -993,15 +994,18 @@ def save_inference_result(
             sanitize_identifier(result.sample_id),
         ]
     )
-    roi_path = target_root / f"{stem}.roi.png"
     json_path = target_root / f"inference-output_{model_output_name}.json"
-
-    write_grayscale_png(roi_path, np.clip(result.roi_image * 255.0, 0, 255).astype(np.uint8))
+    roi_path: Path | None = None
+    if save_roi_image:
+        roi_path = target_root / f"{stem}.roi.png"
+        write_grayscale_png(roi_path, np.clip(result.roi_image * 255.0, 0, 255).astype(np.uint8))
     payload = result.to_json_payload()
-    payload["artifacts"] = {
+    artifacts_payload = {
         "json_path": to_repo_relative(json_path),
-        "roi_image_path": to_repo_relative(roi_path),
     }
+    if roi_path is not None:
+        artifacts_payload["roi_image_path"] = to_repo_relative(roi_path)
+    payload["artifacts"] = artifacts_payload
     existing_payloads: list[dict[str, Any]] = []
     if json_path.exists():
         existing_content = read_json(json_path)
@@ -1023,6 +1027,7 @@ def run_single_sample_inference(
     *,
     roi_model_run_dir: str | Path | None = None,
     save_result: bool = False,
+    save_roi_images: bool = True,
     results_root_path: str | Path | None = None,
     device: str | None = None,
 ) -> InferenceResult:
@@ -1060,6 +1065,7 @@ def run_single_sample_inference(
         json_path, roi_path = save_inference_result(
             result,
             root=results_root_path,
+            save_roi_image=save_roi_images,
         )
         result = replace(
             result,
@@ -1077,6 +1083,7 @@ def run_multi_sample_inference(
     offset: int = 0,
     num_samples: int = 1,
     save_result: bool = False,
+    save_roi_images: bool = True,
     results_root_path: str | Path | None = None,
     device: str | None = None,
 ) -> list[InferenceResult]:
@@ -1142,6 +1149,7 @@ def run_multi_sample_inference(
             json_path, roi_path = save_inference_result(
                 result,
                 root=results_root_path,
+                save_roi_image=save_roi_images,
             )
             result = replace(
                 result,

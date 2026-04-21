@@ -147,6 +147,7 @@ Thumbs.db
 # Local machine one-off notes
 # ------------------------------
 *pyenv*-before-uninstall*.txt
+AGENTS.md
 
 # Keep intentional placeholders
 !.gitkeep
