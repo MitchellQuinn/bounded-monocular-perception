@@ -7,6 +7,9 @@ from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+
+import torch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +18,12 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from inference_v0_1.discovery import discover_model_runs, discover_raw_corpora, list_corpus_image_names
-from inference_v0_1.pipeline import run_multi_sample_inference, run_single_sample_inference
+from inference_v0_1.pipeline import (
+    load_model_context,
+    load_roi_fcn_model_context,
+    run_multi_sample_inference,
+    run_single_sample_inference,
+)
 
 
 class SingleSampleInferenceTests(unittest.TestCase):
@@ -44,6 +52,27 @@ class SingleSampleInferenceTests(unittest.TestCase):
         self.assertNotIn("26-04-11_v021-validate-shuffled-images", corpus_names)
         self.assertTrue(any("input-images" in corpus.root.parts for corpus in corpora))
 
+    def test_distance_model_loading_requires_cuda(self) -> None:
+        distance_model = discover_model_runs(
+            PROJECT_ROOT / "models",
+            family="distance-orientation",
+        )[0]
+
+        with patch("inference_v0_1.pipeline.torch.cuda.is_available", return_value=False):
+            with self.assertRaisesRegex(ValueError, "Inference requires CUDA"):
+                load_model_context(distance_model.run_dir)
+
+    def test_roi_fcn_model_loading_rejects_cpu_override(self) -> None:
+        roi_model = discover_model_runs(
+            PROJECT_ROOT / "models",
+            family="roi-fcn",
+        )[-1]
+
+        with patch("inference_v0_1.pipeline.torch.cuda.is_available", return_value=True):
+            with self.assertRaisesRegex(ValueError, "Requested device 'cpu' cannot be used for inference"):
+                load_roi_fcn_model_context(roi_model.run_dir, device="cpu")
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA required for inference smoke tests.")
     def test_single_sample_inference_runs_end_to_end(self) -> None:
         distance_model = discover_model_runs(
             PROJECT_ROOT / "models",
@@ -68,7 +97,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
                 roi_model_run_dir=roi_model.run_dir,
                 save_result=True,
                 results_root_path=results_root_path,
-                device="cpu",
+                device="cuda",
             )
             second_result = run_single_sample_inference(
                 distance_model.run_dir,
@@ -77,7 +106,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
                 roi_model_run_dir=roi_model.run_dir,
                 save_result=True,
                 results_root_path=results_root_path,
-                device="cpu",
+                device="cuda",
             )
 
             self.assertEqual(first_result.selected_image_name, first_image_name)
@@ -122,6 +151,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
             self.assertEqual(len(payload[1]["roi_prediction"]["request_xyxy_px"]), 4)
 
 
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA required for inference smoke tests.")
     def test_multi_sample_inference_runs_requested_slice(self) -> None:
         distance_model = discover_model_runs(
             PROJECT_ROOT / "models",
@@ -148,7 +178,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
                 num_samples=requested_count,
                 save_result=True,
                 results_root_path=results_root_path,
-                device="cpu",
+                device="cuda",
             )
 
             self.assertEqual(len(results), len(expected_image_names))

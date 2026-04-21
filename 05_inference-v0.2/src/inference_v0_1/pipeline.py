@@ -295,6 +295,36 @@ def _pack_settings_from_contract(preprocessing_contract: Mapping[str, Any]) -> d
     }
 
 
+def _cuda_required_message(requested_device: str | None = None) -> str:
+    """Return the canonical CUDA-required error message for inference."""
+    requested_text = str(requested_device).strip() if requested_device is not None else ""
+    prefix = (
+        f"Requested device {requested_text!r} cannot be used for inference."
+        if requested_text
+        else "Inference requires CUDA."
+    )
+    return (
+        f"{prefix} CPU fallback is disabled. Activate the CUDA-enabled .venv and ensure "
+        "torch.cuda.is_available() is true before launching inference."
+    )
+
+
+def resolve_inference_device(raw_device: str | None) -> torch.device:
+    """Resolve a runtime device and require CUDA for all inference runs."""
+    requested = str(raw_device).strip() if raw_device is not None else ""
+    if not requested:
+        if not torch.cuda.is_available():
+            raise ValueError(_cuda_required_message())
+        return torch.device("cuda")
+
+    device = torch.device(requested)
+    if device.type != "cuda":
+        raise ValueError(_cuda_required_message(requested))
+    if not torch.cuda.is_available():
+        raise ValueError(_cuda_required_message(requested))
+    return device
+
+
 def load_model_context(
     model_run_dir: str | Path,
     *,
@@ -306,10 +336,7 @@ def load_model_context(
     run_manifest_path = run_dir / "run_manifest.json"
     run_manifest = read_json(run_manifest_path) if run_manifest_path.exists() else {}
 
-    device_text = str(device).strip() if device is not None else ""
-    if not device_text:
-        device_text = "cuda" if torch.cuda.is_available() else "cpu"
-    device_obj = torch.device(device_text)
+    device_obj = resolve_inference_device(device)
 
     model, topology_spec = _load_model_from_run(run_dir, run_config, device_obj)
     model.eval()
@@ -346,10 +373,7 @@ def load_roi_fcn_model_context(
     dataset_contract_path = run_dir / "dataset_contract.json"
     dataset_contract = read_json(dataset_contract_path) if dataset_contract_path.exists() else {}
 
-    device_text = str(device).strip() if device is not None else ""
-    if not device_text:
-        device_text = "cuda" if torch.cuda.is_available() else "cpu"
-    device_obj = torch.device(device_text)
+    device_obj = resolve_inference_device(device)
 
     topology_params = run_config.get("topology_params")
     topology_params = topology_params if isinstance(topology_params, Mapping) else {}
