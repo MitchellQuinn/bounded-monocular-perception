@@ -1,6 +1,6 @@
-# Raccoon Ball
+#  A Bounded Monocular Perception Stack
 
-Raccoon Ball is a bounded monocular perception research-engineering repository.
+This repository captures a bounded monocular perception research-engineering system for vehicle distance and yaw inference from a fixed-camera image stream.
 
 At its current snapshot, the repository substantiates an end-to-end stack for a controlled synthetic vision problem around one known vehicle family, a fixed calibrated camera, explicit preprocessing contracts, trained distance and orientation models, an ROI-FCN crop-centre localiser, and raw-image inference pipelines that compose those pieces into runnable paths.
 
