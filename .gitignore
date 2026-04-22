@@ -46,8 +46,8 @@ pip-wheel-metadata/
 02_synthetic-data-processing-v3.0/boundbox-images/
 02_synthetic-data-processing-v3.0/input-images/*
 !02_synthetic-data-processing-v3.0/input-images/.gitkeep
-04_inference-v0.1/input/
-04_inference-v0.1/models/
+05_inference-v0.1/input/
+05_inference-v0.1/models/
 
 
 # ------------------------------
@@ -83,6 +83,7 @@ checkpoints/
 *.npz
 *.png
 *.zip
+!examples/defender-images/**
 
 # ------------------------------
 # Unity project generated and user-specific files
@@ -148,6 +149,7 @@ Thumbs.db
 # ------------------------------
 *pyenv*-before-uninstall*.txt
 AGENTS.md
+tempreference/
 
 # Keep intentional placeholders
 !.gitkeep

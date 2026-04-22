@@ -1,0 +1,14 @@
+Raccoon Ball - Defender example images
+
+This archive is intended to contain a bounded curated subset of Defender example
+images associated with the Raccoon Ball repository.
+
+Source asset:
+- 1997 Land Rover Defender 90
+- Sketchfab source page:
+  https://sketchfab.com/3d-models/1997-land-rover-defender-90-8896fdfcb98542d290c04f198766e61c
+- Publisher: Ddiaz Design
+- Stated source license: CC BY-NC-SA 4.0
+- License URL: https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+The original .fbx source asset is not included in this archive.
