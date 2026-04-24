@@ -48,6 +48,7 @@ pip-wheel-metadata/
 !02_synthetic-data-processing-v3.0/input-images/.gitkeep
 05_inference-v0.1/input/
 05_inference-v0.1/models/
+05_inference-v0.2/output/**/brightness-analysis_*.json
 
 
 # ------------------------------
@@ -60,6 +61,7 @@ generated/
 outputs/
 artifacts/
 checkpoints/
+analysis/
 **/checkpoints/
 **/runs/
 
