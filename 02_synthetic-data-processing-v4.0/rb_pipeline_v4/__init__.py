@@ -1,12 +1,14 @@
 """Raccoon Ball synthetic preprocessing pipeline v4 (dual-stream)."""
 
 from .config import (
+    BrightnessNormalizationConfigV4,
     DetectStageConfigV4,
     PackDualStreamStageConfigV4,
     ShuffleStageConfigV4,
     SilhouetteStageConfigV4,
     StageSummaryV4,
 )
+from .brightness_normalization import BrightnessNormalizationResultV4, apply_brightness_normalization_v4
 from .detector import EdgeRoiDetector, UltralyticsYoloDetector
 from .detect_stage import run_detect_stage_v4
 from .input_corpus_shuffle import (
@@ -26,6 +28,8 @@ from .silhouette_stage import run_silhouette_stage_v4
 
 __all__ = [
     "DetectStageConfigV4",
+    "BrightnessNormalizationConfigV4",
+    "BrightnessNormalizationResultV4",
     "EdgeRoiDetector",
     "InputCorpusSummary",
     "InputCorpusShuffleError",
@@ -37,6 +41,7 @@ __all__ = [
     "StageSummaryV4",
     "STAGE_ORDER_V4",
     "default_input_shuffle_destination",
+    "apply_brightness_normalization_v4",
     "discover_input_corpuses",
     "parse_shuffle_seed",
     "run_detect_stage_v4",

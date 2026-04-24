@@ -11,7 +11,12 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from rb_pipeline_v4.config import DetectStageConfigV4, PackDualStreamStageConfigV4, SilhouetteStageConfigV4
+from rb_pipeline_v4.config import (
+    BrightnessNormalizationConfigV4,
+    DetectStageConfigV4,
+    PackDualStreamStageConfigV4,
+    SilhouetteStageConfigV4,
+)
 from rb_pipeline_v4.contracts import Detection
 from rb_pipeline_v4.detect_stage import run_detect_stage_v4
 from rb_pipeline_v4.manifest import load_samples_csv, samples_csv_path
@@ -179,6 +184,70 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 (project_root / "training-data-v4" / run_name / "arrays").rglob("*.npy")
             )
             self.assertEqual(len(staged_npy_paths), 2)
+
+    def test_pack_applies_masked_median_darkness_gain_when_enabled(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_brightness_norm"
+            self._make_fixture(project_root, run_name)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            target_darkness = 0.55
+            summary = run_pack_dual_stream_stage_v4(
+                project_root,
+                run_name,
+                PackDualStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    include_v1_compat_arrays=False,
+                    shard_size=0,
+                    brightness_normalization=BrightnessNormalizationConfigV4(
+                        enabled=True,
+                        method="masked_median_darkness_gain",
+                        target_median_darkness=target_darkness,
+                        min_gain=0.1,
+                        max_gain=10.0,
+                    ),
+                ),
+            )
+
+            self.assertEqual(summary.successful_rows, 2)
+            output_root = project_root / "training-data-v4" / run_name
+            output_samples = load_samples_csv(samples_csv_path(output_root / "manifests"))
+            self.assertIn("brightness_normalization_status", output_samples.columns)
+            self.assertTrue((output_samples["brightness_normalization_status"] == "success").all())
+
+            run_manifest = json.loads((output_root / "manifests" / "run.json").read_text(encoding="utf-8"))
+            brightness_contract = run_manifest["PreprocessingContract"]["Stages"]["pack_dual_stream"][
+                "BrightnessNormalization"
+            ]
+            self.assertTrue(brightness_contract["Enabled"])
+            self.assertEqual(brightness_contract["Method"], "masked_median_darkness_gain")
+            self.assertAlmostEqual(float(brightness_contract["TargetMedianDarkness"]), target_darkness)
+
+            npz_path = output_root / f"{run_name}.npz"
+            with np.load(npz_path, allow_pickle=False) as payload:
+                packed = payload["silhouette_crop"][:, 0, :, :]
+            foreground = packed < 0.999
+            self.assertTrue(bool(np.any(foreground)))
+            median_darkness = float(np.median((1.0 - packed)[foreground]))
+            self.assertAlmostEqual(median_darkness, target_darkness, places=5)
+            np.testing.assert_array_equal(packed[~foreground], np.ones_like(packed[~foreground]))
 
     def test_pack_fails_when_canvas_too_small_with_fail_policy(self) -> None:
         with TemporaryDirectory() as tmpdir:

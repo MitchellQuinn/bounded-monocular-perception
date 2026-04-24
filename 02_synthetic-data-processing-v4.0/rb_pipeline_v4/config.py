@@ -2,13 +2,131 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+import math
 from pathlib import Path
+from typing import Mapping
 
 
 _VALID_REPRESENTATION_MODES = {"outline", "filled"}
 _VALID_CLIP_POLICIES = {"fail", "clip"}
 _VALID_DETECTOR_BACKENDS = {"yolo", "edge"}
+_VALID_BRIGHTNESS_NORMALIZATION_METHODS = {"none", "masked_median_darkness_gain"}
+_VALID_EMPTY_MASK_POLICIES = {"skip", "fail"}
+
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    if text in {"1", "true", "t", "yes", "y"}:
+        return True
+    if text in {"0", "false", "f", "no", "n", ""}:
+        return False
+    return bool(value)
+
+
+@dataclass(frozen=True)
+class BrightnessNormalizationConfigV4:
+    """Config for deterministic foreground-only brightness normalization."""
+
+    enabled: bool = False
+    method: str = "none"
+    target_median_darkness: float = 0.55
+    min_gain: float = 0.5
+    max_gain: float = 2.0
+    epsilon: float = 1e-6
+    empty_mask_policy: str = "skip"
+
+    def normalized_enabled(self) -> bool:
+        return bool(self.enabled)
+
+    def normalized_method(self) -> str:
+        value = str(self.method).strip().lower()
+        if value not in _VALID_BRIGHTNESS_NORMALIZATION_METHODS:
+            allowed = ", ".join(sorted(_VALID_BRIGHTNESS_NORMALIZATION_METHODS))
+            raise ValueError(f"Unsupported brightness normalization method '{self.method}'. Allowed: {allowed}.")
+        return value
+
+    def normalized_target_median_darkness(self) -> float:
+        value = float(self.target_median_darkness)
+        if not math.isfinite(value) or value < 0.05 or value > 0.95:
+            raise ValueError("target_median_darkness must be finite and in [0.05, 0.95]")
+        return value
+
+    def normalized_min_gain(self) -> float:
+        value = float(self.min_gain)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError("min_gain must be finite and > 0")
+        return value
+
+    def normalized_max_gain(self) -> float:
+        value = float(self.max_gain)
+        min_gain = self.normalized_min_gain()
+        if not math.isfinite(value) or value < min_gain:
+            raise ValueError("max_gain must be finite and >= min_gain")
+        return value
+
+    def normalized_epsilon(self) -> float:
+        value = float(self.epsilon)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError("epsilon must be finite and > 0")
+        return value
+
+    def normalized_empty_mask_policy(self) -> str:
+        value = str(self.empty_mask_policy).strip().lower()
+        if value not in _VALID_EMPTY_MASK_POLICIES:
+            allowed = ", ".join(sorted(_VALID_EMPTY_MASK_POLICIES))
+            raise ValueError(f"Unsupported empty_mask_policy '{self.empty_mask_policy}'. Allowed: {allowed}.")
+        return value
+
+    def active_method(self) -> str:
+        method = self.normalized_method()
+        return method if self.normalized_enabled() else "none"
+
+    def to_contract_dict(self) -> dict[str, object]:
+        return {
+            "Enabled": self.normalized_enabled(),
+            "Method": self.normalized_method(),
+            "TargetMedianDarkness": self.normalized_target_median_darkness(),
+            "MinGain": self.normalized_min_gain(),
+            "MaxGain": self.normalized_max_gain(),
+            "Epsilon": self.normalized_epsilon(),
+            "EmptyMaskPolicy": self.normalized_empty_mask_policy(),
+        }
+
+    def to_log_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload["enabled"] = self.normalized_enabled()
+        payload["method"] = self.normalized_method()
+        payload["target_median_darkness"] = self.normalized_target_median_darkness()
+        payload["min_gain"] = self.normalized_min_gain()
+        payload["max_gain"] = self.normalized_max_gain()
+        payload["epsilon"] = self.normalized_epsilon()
+        payload["empty_mask_policy"] = self.normalized_empty_mask_policy()
+        return payload
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, object]) -> "BrightnessNormalizationConfigV4":
+        def read(*names: str, default: object) -> object:
+            for name in names:
+                if name in payload:
+                    return payload[name]
+            return default
+
+        return cls(
+            enabled=_coerce_bool(read("enabled", "Enabled", default=False)),
+            method=str(read("method", "Method", default="none")),
+            target_median_darkness=float(
+                read("target_median_darkness", "TargetMedianDarkness", default=0.55)
+            ),
+            min_gain=float(read("min_gain", "MinGain", default=0.5)),
+            max_gain=float(read("max_gain", "MaxGain", default=2.0)),
+            epsilon=float(read("epsilon", "Epsilon", default=1e-6)),
+            empty_mask_policy=str(read("empty_mask_policy", "EmptyMaskPolicy", default="skip")),
+        )
 
 
 @dataclass(frozen=True)
@@ -227,6 +345,9 @@ class PackDualStreamStageConfigV4:
     include_optional_metadata_arrays: bool = True
     use_intermediate_npy: bool = True
     delete_source_npy_after_pack: bool = True
+    brightness_normalization: BrightnessNormalizationConfigV4 | Mapping[str, object] | None = field(
+        default_factory=BrightnessNormalizationConfigV4
+    )
 
     shard_size: int = 8192
     compress: bool = True
@@ -256,6 +377,18 @@ class PackDualStreamStageConfigV4:
             raise ValueError("shard_size must be >= 0")
         return size
 
+    def normalized_brightness_normalization(self) -> BrightnessNormalizationConfigV4:
+        config = self.brightness_normalization
+        if config is None:
+            return BrightnessNormalizationConfigV4()
+        if isinstance(config, BrightnessNormalizationConfigV4):
+            return config
+        if isinstance(config, Mapping):
+            return BrightnessNormalizationConfigV4.from_mapping(config)
+        raise TypeError(
+            "brightness_normalization must be a BrightnessNormalizationConfigV4, mapping, or None"
+        )
+
     def normalized_sample_offset(self) -> int:
         return max(0, int(self.sample_offset))
 
@@ -267,6 +400,7 @@ class PackDualStreamStageConfigV4:
         payload["clip_policy"] = self.normalized_clip_policy()
         payload["canvas_width_px"] = self.normalized_canvas_width_px()
         payload["canvas_height_px"] = self.normalized_canvas_height_px()
+        payload["brightness_normalization"] = self.normalized_brightness_normalization().to_log_dict()
         return payload
 
 

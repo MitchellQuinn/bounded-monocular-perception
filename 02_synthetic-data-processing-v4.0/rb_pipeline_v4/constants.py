@@ -12,7 +12,7 @@ RUN_JSON_FILENAME = "run.json"
 SAMPLES_FILENAME = "samples.csv"
 
 PREPROCESSING_CONTRACT_KEY = "PreprocessingContract"
-PREPROCESSING_CONTRACT_VERSION_V4 = "rb-preprocess-v4-dual-stream-orientation-v1"
+PREPROCESSING_CONTRACT_VERSION_V4 = "rb-preprocess-v4-dual-stream-orientation-brightness-v1"
 PREPROCESSING_STAGE_ORDER_V4 = ("detect", "silhouette", "pack_dual_stream")
 
 KNOWN_STAGE_SUBDIRS = {"images", "arrays", "manifests"}
@@ -95,6 +95,16 @@ PACK_STAGE_COLUMNS = [
     "bbox_feat_h_norm",
     "bbox_feat_aspect_ratio",
     "bbox_feat_area_norm",
+]
+
+BRIGHTNESS_NORMALIZATION_COLUMNS = [
+    "brightness_normalization_enabled",
+    "brightness_normalization_method",
+    "brightness_normalization_status",
+    "brightness_normalization_foreground_px",
+    "brightness_normalization_current_median_darkness",
+    "brightness_normalization_effective_median_darkness",
+    "brightness_normalization_gain",
 ]
 
 BBOX_FEATURE_SCHEMA = (

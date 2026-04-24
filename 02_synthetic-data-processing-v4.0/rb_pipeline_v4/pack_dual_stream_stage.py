@@ -9,9 +9,11 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
+from .brightness_normalization import apply_brightness_normalization_v4
 from .config import PackDualStreamStageConfigV4, StageSummaryV4
 from .constants import (
     BBOX_FEATURE_SCHEMA,
+    BRIGHTNESS_NORMALIZATION_COLUMNS,
     DETECT_STAGE_COLUMNS,
     ORIENTATION_TARGET_COLUMNS,
     PACK_STAGE_COLUMNS,
@@ -94,6 +96,10 @@ def run_pack_dual_stream_stage_v4(
     canvas_h = config.normalized_canvas_height_px()
     clip_policy = config.normalized_clip_policy()
     shard_size = config.normalized_shard_size()
+    brightness_config = config.normalized_brightness_normalization()
+    brightness_contract = brightness_config.to_contract_dict()
+    brightness_method = brightness_config.normalized_method()
+    brightness_active = brightness_config.normalized_enabled() and brightness_method != "none"
     stage_via_intermediate_npy = bool(config.use_intermediate_npy and not config.dry_run)
     delete_source_npy_after_pack = bool(config.delete_source_npy_after_pack)
     stage_npy_dir = (output_paths.arrays_dir or (output_paths.root / "arrays")) / "__pack_dual_stream_stage_tmp"
@@ -115,6 +121,7 @@ def run_pack_dual_stream_stage_v4(
             "DeleteSourceNpyAfterPack": bool(config.delete_source_npy_after_pack),
             "Compress": bool(config.compress),
             "ShardSize": int(shard_size),
+            "BrightnessNormalization": brightness_contract,
             "SampleOffset": config.normalized_sample_offset(),
             "SampleLimit": config.normalized_sample_limit(),
         },
@@ -139,6 +146,7 @@ def run_pack_dual_stream_stage_v4(
             "ImagePolarity": "dark_vehicle_detail_on_white_background",
             "ImageContent": "grayscale_vehicle_detail_inside_silhouette",
             "SilhouetteScaling": "disabled",
+            "BrightnessNormalization": brightness_contract,
         },
         dry_run=config.dry_run,
     )
@@ -153,6 +161,21 @@ def run_pack_dual_stream_stage_v4(
     )
     logger.log(f"Running v4 pack_dual_stream stage for run '{run_name}'")
     logger.log_parameters(config.to_log_dict())
+
+    if brightness_active:
+        append_columns(samples_df, BRIGHTNESS_NORMALIZATION_COLUMNS)
+        for column in BRIGHTNESS_NORMALIZATION_COLUMNS:
+            samples_df[column] = samples_df[column].astype("object")
+        logger.log(
+            "Brightness normalization enabled: "
+            f"method={brightness_method}, "
+            f"target_median_darkness={brightness_config.normalized_target_median_darkness():.6g}, "
+            f"gain=[{brightness_config.normalized_min_gain():.6g}, "
+            f"{brightness_config.normalized_max_gain():.6g}], "
+            f"empty_mask_policy={brightness_config.normalized_empty_mask_policy()}"
+        )
+    else:
+        logger.log("Brightness normalization disabled.")
 
     existing_npz = sorted(output_paths.root.glob(f"{run_name}*.npz"))
     if existing_npz and not config.overwrite:
@@ -394,6 +417,14 @@ def run_pack_dual_stream_stage_v4(
         samples_df.at[row_idx, "npz_row_index"] = pd.NA
         samples_df.at[row_idx, "canvas_width_px"] = int(canvas_w)
         samples_df.at[row_idx, "canvas_height_px"] = int(canvas_h)
+        if brightness_active:
+            samples_df.at[row_idx, "brightness_normalization_enabled"] = True
+            samples_df.at[row_idx, "brightness_normalization_method"] = brightness_method
+            samples_df.at[row_idx, "brightness_normalization_status"] = ""
+            samples_df.at[row_idx, "brightness_normalization_foreground_px"] = pd.NA
+            samples_df.at[row_idx, "brightness_normalization_current_median_darkness"] = pd.NA
+            samples_df.at[row_idx, "brightness_normalization_effective_median_darkness"] = pd.NA
+            samples_df.at[row_idx, "brightness_normalization_gain"] = pd.NA
 
         if row_idx not in selected_rows:
             samples_df.at[row_idx, "pack_dual_stream_stage_status"] = "skipped"
@@ -451,6 +482,24 @@ def run_pack_dual_stream_stage_v4(
                 roi_source_gray,
                 silhouette_background_mask,
             )
+            if brightness_active:
+                brightness_result = apply_brightness_normalization_v4(
+                    roi_repr,
+                    silhouette_background_mask < 0.5,
+                    brightness_config,
+                )
+                roi_repr = brightness_result.image
+                samples_df.at[row_idx, "brightness_normalization_status"] = brightness_result.status
+                samples_df.at[row_idx, "brightness_normalization_foreground_px"] = int(
+                    brightness_result.foreground_pixel_count
+                )
+                samples_df.at[row_idx, "brightness_normalization_current_median_darkness"] = float(
+                    brightness_result.current_median_darkness
+                )
+                samples_df.at[row_idx, "brightness_normalization_effective_median_darkness"] = float(
+                    brightness_result.effective_median_darkness
+                )
+                samples_df.at[row_idx, "brightness_normalization_gain"] = float(brightness_result.gain)
 
             canvas, clipped = _place_image_on_canvas(
                 roi_repr,

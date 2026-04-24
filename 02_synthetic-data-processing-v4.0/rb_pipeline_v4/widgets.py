@@ -11,7 +11,13 @@ import numpy as np
 import pandas as pd
 from IPython.display import display
 
-from .config import DetectStageConfigV4, PackDualStreamStageConfigV4, SilhouetteStageConfigV4
+from .brightness_normalization import apply_brightness_normalization_v4
+from .config import (
+    BrightnessNormalizationConfigV4,
+    DetectStageConfigV4,
+    PackDualStreamStageConfigV4,
+    SilhouetteStageConfigV4,
+)
 from .contracts import Detection
 from .detector import EdgeRoiDetector, UltralyticsYoloDetector
 from .image_io import read_image_unchanged, to_bgr_uint8, to_grayscale_uint8
@@ -31,7 +37,7 @@ from .silhouette_algorithms import (
     OutlineArtifactWriterV1,
 )
 
-WIDGETS_UI_BUILD = "2026-04-14-pack-grayscale-yaw-preview-v14"
+WIDGETS_UI_BUILD = "2026-04-24-brightness-normalization-before-pack-v3"
 
 
 def _load_samples(manifests_dir: Path) -> pd.DataFrame | None:
@@ -778,6 +784,65 @@ class PipelineLauncherV4:
             value="fail",
         )
         self.shard_size_int = widgets.IntText(description="Shard size:", value=8192)
+        self.brightness_norm_enabled_checkbox = widgets.Checkbox(
+            value=False,
+            description="Brightness norm",
+        )
+        self.brightness_norm_method_dropdown = widgets.Dropdown(
+            description="Method:",
+            options=[
+                ("None", "none"),
+                ("Masked median darkness gain", "masked_median_darkness_gain"),
+            ],
+            value="none",
+        )
+        self.brightness_norm_target_float = widgets.BoundedFloatText(
+            description="Target dark:",
+            value=0.55,
+            min=0.05,
+            max=0.95,
+            step=0.01,
+        )
+        self.brightness_norm_min_gain_float = widgets.BoundedFloatText(
+            description="Min gain:",
+            value=0.5,
+            min=0.000001,
+            max=100.0,
+            step=0.05,
+        )
+        self.brightness_norm_max_gain_float = widgets.BoundedFloatText(
+            description="Max gain:",
+            value=2.0,
+            min=0.000001,
+            max=100.0,
+            step=0.05,
+        )
+        self.brightness_norm_epsilon_float = widgets.BoundedFloatText(
+            description="Epsilon:",
+            value=1e-6,
+            min=1e-12,
+            max=1.0,
+            step=1e-6,
+        )
+        self.brightness_norm_empty_policy_dropdown = widgets.Dropdown(
+            description="Empty mask:",
+            options=[("Skip", "skip"), ("Fail", "fail")],
+            value="skip",
+        )
+        self.brightness_norm_pane = widgets.VBox(
+            [
+                widgets.HTML("<b>Brightness Normalization</b>"),
+                widgets.HBox([self.brightness_norm_enabled_checkbox, self.brightness_norm_method_dropdown]),
+                widgets.HBox([self.brightness_norm_target_float, self.brightness_norm_empty_policy_dropdown]),
+                widgets.HBox([self.brightness_norm_min_gain_float, self.brightness_norm_max_gain_float]),
+                self.brightness_norm_epsilon_float,
+            ],
+            layout=widgets.Layout(
+                border="1px solid #ddd",
+                padding="8px",
+                margin="8px 0 0 0",
+            ),
+        )
 
         self.sample_offset_input = widgets.BoundedIntText(description="Sample offset:", value=0, min=0, max=1_000_000)
         self.sample_limit_input = widgets.BoundedIntText(description="Sample limit:", value=0, min=0, max=1_000_000)
@@ -864,6 +929,8 @@ class PipelineLauncherV4:
                 self.threshold_high_slider,
                 widgets.HBox([self.min_area_input, self.roi_padding_int]),
                 widgets.HBox([self.fill_holes_checkbox, self.close_kernel_slider, self.outline_thickness_slider]),
+                widgets.HTML("<hr>"),
+                self.brightness_norm_pane,
                 widgets.HTML("<hr><b>Pack Dual Stream</b>"),
                 widgets.HBox([self.canvas_w_int, self.canvas_h_int]),
                 widgets.HBox([self.clip_policy_dropdown, self.shard_size_int]),
@@ -889,7 +956,7 @@ class PipelineLauncherV4:
                 self.preview_extracted_roi,
                 widgets.HTML("<b>3) Silhouette Debug Strip (raw edge | post morph | selected component)</b>"),
                 self.preview_silhouette_debug,
-                widgets.HTML("<b>4) ROI Detail Isolated By Silhouette (inverted grayscale, white outside mask)</b>"),
+                widgets.HTML("<b>4) ROI Detail Isolated By Silhouette (after optional brightness normalization)</b>"),
                 self.preview_silhouette_roi,
                 widgets.HTML("<b>5) Packed Canvas (exact npz['silhouette_crop'] geometry; dark detail on white)</b>"),
                 self.preview_packed_canvas,
@@ -1004,6 +1071,15 @@ class PipelineLauncherV4:
             canvas_height_px=int(self.canvas_h_int.value),
             clip_policy=str(self.clip_policy_dropdown.value),
             include_v1_compat_arrays=False,
+            brightness_normalization=BrightnessNormalizationConfigV4(
+                enabled=bool(self.brightness_norm_enabled_checkbox.value),
+                method=str(self.brightness_norm_method_dropdown.value),
+                target_median_darkness=float(self.brightness_norm_target_float.value),
+                min_gain=float(self.brightness_norm_min_gain_float.value),
+                max_gain=float(self.brightness_norm_max_gain_float.value),
+                epsilon=float(self.brightness_norm_epsilon_float.value),
+                empty_mask_policy=str(self.brightness_norm_empty_policy_dropdown.value),
+            ),
             shard_size=int(self.shard_size_int.value),
             sample_offset=self._sample_offset(),
             sample_limit=self._sample_limit(),
@@ -1420,6 +1496,7 @@ class PipelineLauncherV4:
         silhouette_status = "not_run"
         silhouette_error = ""
         canvas_clipped = False
+        brightness_note = ""
         if extracted_roi_gray is not None and extracted_roi_gray.size > 0:
             try:
                 generator = ContourSilhouetteGeneratorV2()
@@ -1483,6 +1560,23 @@ class PipelineLauncherV4:
                     extracted_roi_gray,
                     background_mask,
                 )
+                brightness_config = pack_config.normalized_brightness_normalization()
+                brightness_method = brightness_config.normalized_method()
+                if brightness_config.normalized_enabled() and brightness_method != "none":
+                    brightness_result = apply_brightness_normalization_v4(
+                        roi_repr,
+                        background_mask < 0.5,
+                        brightness_config,
+                    )
+                    roi_repr = brightness_result.image
+                    if brightness_result.status == "success":
+                        brightness_note = (
+                            "brightness normalization "
+                            f"{brightness_result.method}: gain={brightness_result.gain:.4f}, "
+                            f"median={brightness_result.current_median_darkness:.4f}"
+                        )
+                    else:
+                        brightness_note = f"brightness normalization {brightness_result.status}"
                 roi_canvas, canvas_clipped = _place_image_on_canvas_for_preview(
                     roi_repr,
                     canvas_height=pack_config.normalized_canvas_height_px(),
@@ -1546,11 +1640,13 @@ class PipelineLauncherV4:
             f"<b>ROI Canvas (from Pack):</b> {pack_config.normalized_canvas_width_px()}x{pack_config.normalized_canvas_height_px()}",
             (
                 "<b>Saved Path:</b> fixed ROI canvas -> silhouette mask isolation -> invert grayscale inside mask "
-                "-> white outside mask -> centered canvas "
+                "-> white outside mask -> optional foreground brightness normalization -> centered canvas "
                 f"({pack_config.normalized_canvas_height_px()}x{pack_config.normalized_canvas_width_px()})"
                 " -> npz['silhouette_crop']"
             ),
         ]
+        if brightness_note:
+            notes.append(brightness_note)
         if notes:
             status_lines.append(f"<b>Notes:</b> {'; '.join(notes)}")
         self.preview_status_html.value = "<br>".join(status_lines)
