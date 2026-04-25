@@ -12,7 +12,7 @@ from .config import DetectStageConfigV4
 from .paths import find_project_root
 from .widgets import PipelineLauncherV4
 
-WIDGETS_UI_BUILD_V05 = "2026-04-24-edge-only-v05-brightness-normalization-before-pack-v3"
+WIDGETS_UI_BUILD_V05 = "2026-04-24-edge-only-v05-brightness-normalization-before-pack-v4"
 
 
 class PipelineLauncherV5(PipelineLauncherV4):

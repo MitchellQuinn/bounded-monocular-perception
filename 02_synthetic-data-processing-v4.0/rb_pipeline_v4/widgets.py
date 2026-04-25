@@ -37,7 +37,8 @@ from .silhouette_algorithms import (
     OutlineArtifactWriterV1,
 )
 
-WIDGETS_UI_BUILD = "2026-04-24-brightness-normalization-before-pack-v3"
+WIDGETS_UI_BUILD = "2026-04-24-brightness-normalization-before-pack-v4"
+DEFAULT_BRIGHTNESS_NORMALIZATION_METHOD = "masked_median_darkness_gain"
 
 
 def _load_samples(manifests_dir: Path) -> pd.DataFrame | None:
@@ -641,6 +642,9 @@ class PipelineLauncherV4:
         self.project_root = Path(project_root).resolve()
         self._preview_detector: UltralyticsYoloDetector | EdgeRoiDetector | None = None
         self._preview_detector_key: tuple[object, ...] | None = None
+        self._widget_root: widgets.Widget | None = None
+        self._callbacks_registered = False
+        self._execution_in_progress = False
 
         self.run_dropdown = widgets.Dropdown(description="Run:", options=[])
         self.stage_dropdown = widgets.Dropdown(
@@ -760,7 +764,7 @@ class PipelineLauncherV4:
         self.fill_holes_checkbox = widgets.Checkbox(value=True, description="Fill internal holes")
         self.close_kernel_slider = widgets.IntSlider(
             description="Close k",
-            value=1,
+            value=3,
             min=1,
             max=31,
             step=1,
@@ -776,8 +780,8 @@ class PipelineLauncherV4:
         )
         self.roi_padding_int = widgets.IntText(description="ROI pad:", value=0)
 
-        self.canvas_w_int = widgets.IntText(description="Canvas W:", value=224)
-        self.canvas_h_int = widgets.IntText(description="Canvas H:", value=224)
+        self.canvas_w_int = widgets.IntText(description="Canvas W:", value=300)
+        self.canvas_h_int = widgets.IntText(description="Canvas H:", value=300)
         self.clip_policy_dropdown = widgets.Dropdown(
             description="Clip:",
             options=[("Fail", "fail"), ("Clip", "clip")],
@@ -785,16 +789,15 @@ class PipelineLauncherV4:
         )
         self.shard_size_int = widgets.IntText(description="Shard size:", value=8192)
         self.brightness_norm_enabled_checkbox = widgets.Checkbox(
-            value=False,
+            value=True,
             description="Brightness norm",
         )
         self.brightness_norm_method_dropdown = widgets.Dropdown(
             description="Method:",
             options=[
-                ("None", "none"),
                 ("Masked median darkness gain", "masked_median_darkness_gain"),
             ],
-            value="none",
+            value=DEFAULT_BRIGHTNESS_NORMALIZATION_METHOD,
         )
         self.brightness_norm_target_float = widgets.BoundedFloatText(
             description="Target dark:",
@@ -897,6 +900,9 @@ class PipelineLauncherV4:
         self.run_dropdown.observe(self._on_run_change, names="value")
         self.sample_offset_input.observe(self._on_sample_offset_change, names="value")
         self.preview_sample_offset_input.observe(self._on_preview_sample_offset_change, names="value")
+        self.brightness_norm_enabled_checkbox.observe(self._on_brightness_norm_enabled_change, names="value")
+        self.brightness_norm_method_dropdown.observe(self._on_brightness_norm_method_change, names="value")
+        self._callbacks_registered = True
 
         self._syncing_sample_offset = False
         self._suspend_run_change_preview = True
@@ -908,6 +914,11 @@ class PipelineLauncherV4:
 
     @property
     def widget(self) -> widgets.Widget:
+        if self._widget_root is None:
+            self._widget_root = self._build_widget()
+        return self._widget_root
+
+    def _build_widget(self) -> widgets.Widget:
         controls = widgets.VBox(
             [
                 widgets.HTML(f"<b>Pipeline Launcher (v4)</b> <code>{WIDGETS_UI_BUILD}</code>"),
@@ -968,6 +979,24 @@ class PipelineLauncherV4:
 
         return widgets.HBox([controls, preview], layout=widgets.Layout(width="100%"))
 
+    def close(self) -> None:
+        """Release widget callbacks and front-end views for notebook reruns."""
+
+        if self._callbacks_registered:
+            self.refresh_button.on_click(self._on_refresh, remove=True)
+            self.execute_button.on_click(self._on_execute, remove=True)
+            self.preview_refresh_button.on_click(self._on_preview_refresh, remove=True)
+            self.run_dropdown.unobserve(self._on_run_change, names="value")
+            self.sample_offset_input.unobserve(self._on_sample_offset_change, names="value")
+            self.preview_sample_offset_input.unobserve(self._on_preview_sample_offset_change, names="value")
+            self.brightness_norm_enabled_checkbox.unobserve(self._on_brightness_norm_enabled_change, names="value")
+            self.brightness_norm_method_dropdown.unobserve(self._on_brightness_norm_method_change, names="value")
+            self._callbacks_registered = False
+
+        if self._widget_root is not None:
+            self._widget_root.close()
+            self._widget_root = None
+
     def refresh_runs(self) -> None:
         runs = list_input_runs(self.project_root)
         self.run_dropdown.options = runs
@@ -1024,6 +1053,21 @@ class PipelineLauncherV4:
         self._set_sample_offset_value(int(self.preview_sample_offset_input.value))
         self.render_preview()
 
+    def _on_brightness_norm_enabled_change(self, _change: dict) -> None:
+        if (
+            bool(self.brightness_norm_enabled_checkbox.value)
+            and str(self.brightness_norm_method_dropdown.value) == "none"
+        ):
+            self.brightness_norm_method_dropdown.value = DEFAULT_BRIGHTNESS_NORMALIZATION_METHOD
+
+    def _on_brightness_norm_method_change(self, _change: dict) -> None:
+        method = str(self.brightness_norm_method_dropdown.value)
+        enabled = bool(self.brightness_norm_enabled_checkbox.value)
+        if method == "none" and enabled:
+            self.brightness_norm_enabled_checkbox.value = False
+        elif method != "none" and not enabled:
+            self.brightness_norm_enabled_checkbox.value = True
+
     def _sample_offset(self) -> int:
         return int(self.sample_offset_input.value)
 
@@ -1066,14 +1110,21 @@ class PipelineLauncherV4:
         )
 
     def _build_pack_config(self) -> PackDualStreamStageConfigV4:
+        brightness_enabled = bool(self.brightness_norm_enabled_checkbox.value)
+        brightness_method = (
+            str(self.brightness_norm_method_dropdown.value)
+            if brightness_enabled
+            else "none"
+        )
+
         return PackDualStreamStageConfigV4(
             canvas_width_px=int(self.canvas_w_int.value),
             canvas_height_px=int(self.canvas_h_int.value),
             clip_policy=str(self.clip_policy_dropdown.value),
             include_v1_compat_arrays=False,
             brightness_normalization=BrightnessNormalizationConfigV4(
-                enabled=bool(self.brightness_norm_enabled_checkbox.value),
-                method=str(self.brightness_norm_method_dropdown.value),
+                enabled=brightness_enabled,
+                method=brightness_method,
                 target_median_darkness=float(self.brightness_norm_target_float.value),
                 min_gain=float(self.brightness_norm_min_gain_float.value),
                 max_gain=float(self.brightness_norm_max_gain_float.value),
@@ -1173,6 +1224,9 @@ class PipelineLauncherV4:
         return ref
 
     def _on_execute(self, _button: widgets.Button) -> None:
+        if self._execution_in_progress:
+            return
+
         run_name = self.run_dropdown.value
         stage_name = self.stage_dropdown.value
         if not run_name:
@@ -1180,16 +1234,18 @@ class PipelineLauncherV4:
                 print("No run selected.")
             return
 
-        detect_config = self._build_detect_config()
-        silhouette_config = self._build_silhouette_config()
-        pack_config = self._build_pack_config()
-
+        self._execution_in_progress = True
         self.execute_button.disabled = True
-        self.log_output.clear_output(wait=False)
-        with self.log_output:
-            print(f"Running stage '{stage_name}' for run '{run_name}' ...")
 
         try:
+            self.log_output.clear_output(wait=False)
+            with self.log_output:
+                print(f"Running stage '{stage_name}' for run '{run_name}' ...")
+
+            detect_config = self._build_detect_config()
+            silhouette_config = self._build_silhouette_config()
+            pack_config = self._build_pack_config()
+
             summaries = run_v4_stage_sequence_for_run(
                 self.project_root,
                 str(run_name),
@@ -1210,6 +1266,7 @@ class PipelineLauncherV4:
             with self.log_output:
                 print(f"Error: {exc}")
         finally:
+            self._execution_in_progress = False
             self.execute_button.disabled = False
             self.render_preview()
 
