@@ -50,6 +50,7 @@ pip-wheel-metadata/
 !02_synthetic-data-processing-v4.0/input-images/.gitkeep
 05_inference-v0.1/input/
 05_inference-v0.1/models/
+05_inference-v0.2/output/**/inference-output_*.json
 05_inference-v0.2/output/**/brightness-analysis_*.json
 
 
