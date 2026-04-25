@@ -32,7 +32,7 @@ class ModelRunArtifact:
 
 @dataclass(frozen=True)
 class RawCorpus:
-    """One selectable raw-image corpus that matches the input-images contract."""
+    """One selectable raw-image corpus staged under the inference input contract."""
 
     name: str
     root: Path
@@ -62,10 +62,7 @@ def normalize_model_family(value: str | None) -> str:
 
 def default_raw_corpus_roots() -> list[Path]:
     """Return the ordered raw-corpus roots searched by default."""
-    candidates = [
-        default_input_root(),
-        repo_root() / "02_synthetic-data-processing-v3.0" / "input-images",
-    ]
+    candidates = [default_input_root()]
     roots: list[Path] = []
     seen: set[Path] = set()
     for candidate in candidates:
@@ -201,8 +198,7 @@ def _discover_raw_corpora_under_root(input_root: Path) -> list[RawCorpus]:
 def discover_raw_corpora(root: Path | None = None) -> list[RawCorpus]:
     """Discover raw-image corpora.
 
-    When `root` is omitted, search the local inference `input/` folder plus the
-    sibling preprocessing `input-images/` root when present.
+    When `root` is omitted, search the local inference `input/` folder.
     """
     if root is not None:
         return _discover_raw_corpora_under_root(Path(root).resolve())

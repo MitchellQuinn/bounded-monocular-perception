@@ -10,7 +10,7 @@ from .paths import repo_root
 
 def preprocessing_root() -> Path:
     """Return the sibling synthetic preprocessing project root."""
-    return repo_root() / "02_synthetic-data-processing-v3.0"
+    return repo_root() / "02_synthetic-data-processing-v4.0"
 
 
 def training_root() -> Path:

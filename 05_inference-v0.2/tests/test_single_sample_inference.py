@@ -18,7 +18,12 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from inference_v0_1.discovery import discover_model_runs, discover_raw_corpora, list_corpus_image_names
+from inference_v0_1.discovery import (
+    default_raw_corpus_roots,
+    discover_model_runs,
+    discover_raw_corpora,
+    list_corpus_image_names,
+)
 from inference_v0_1.pipeline import (
     InferenceResult,
     load_model_context,
@@ -32,8 +37,9 @@ from inference_v0_1.pipeline import (
 class SingleSampleInferenceTests(unittest.TestCase):
     def _select_raw_corpus(self):
         corpora = discover_raw_corpora()
-        self.assertTrue(corpora)
-        return next((corpus for corpus in corpora if "input-images" in corpus.root.parts), corpora[0])
+        if not corpora:
+            self.skipTest("No local raw-image corpora available under 05_inference-v0.2/input.")
+        return corpora[0]
 
     def test_discover_model_runs_includes_both_runtime_families(self) -> None:
         models = discover_model_runs(PROJECT_ROOT / "models")
@@ -44,16 +50,18 @@ class SingleSampleInferenceTests(unittest.TestCase):
         self.assertTrue(discover_model_runs(PROJECT_ROOT / "models", family="distance"))
         self.assertTrue(discover_model_runs(PROJECT_ROOT / "models", family="roi"))
 
+    def test_default_raw_corpus_roots_use_local_inference_input_only(self) -> None:
+        self.assertEqual(default_raw_corpus_roots(), [(PROJECT_ROOT / "input").resolve()])
+
     def test_discover_raw_corpora_ignores_npz_only_input(self) -> None:
         explicit_local = discover_raw_corpora(PROJECT_ROOT / "input")
-        self.assertEqual(explicit_local, [])
+        default_local = discover_raw_corpora()
 
-        corpora = discover_raw_corpora()
-        corpus_names = [corpus.name for corpus in corpora]
+        self.assertEqual(default_local, explicit_local)
 
-        self.assertTrue(corpus_names)
+        corpus_names = [corpus.name for corpus in explicit_local]
         self.assertNotIn("26-04-11_v021-validate-shuffled-images", corpus_names)
-        self.assertTrue(any("input-images" in corpus.root.parts for corpus in corpora))
+        self.assertTrue(all(PROJECT_ROOT / "input" in corpus.root.parents for corpus in explicit_local))
 
     def test_save_inference_result_can_skip_roi_image_output(self) -> None:
         run_dir = PROJECT_ROOT / "models" / "distance-orientation" / "demo-model" / "runs" / "run_demo"

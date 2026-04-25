@@ -25,6 +25,7 @@ from inference_v0_1.brightness_analysis import (
     _summarize_per_sample,
     apply_vehicle_darkness_gain,
 )
+from inference_v0_1.external import ensure_external_paths, preprocessing_root
 
 
 class BrightnessAnalysisTests(unittest.TestCase):
@@ -32,6 +33,19 @@ class BrightnessAnalysisTests(unittest.TestCase):
         self.assertTrue(hasattr(inference_v0_1, "run_brightness_sensitivity_analysis"))
         self.assertTrue(hasattr(inference_v0_1, "apply_vehicle_darkness_gain"))
         self.assertTrue(hasattr(inference_v0_1, "BrightnessSensitivityResult"))
+
+    def test_external_preprocessing_root_exposes_rb_pipeline_v4(self) -> None:
+        root = preprocessing_root()
+
+        self.assertEqual(root.name, "02_synthetic-data-processing-v4.0")
+        self.assertTrue((root / "rb_pipeline_v4" / "__init__.py").is_file())
+
+        ensure_external_paths()
+        self.assertIn(str(root.resolve()), sys.path)
+
+        import rb_pipeline_v4
+
+        self.assertEqual(Path(rb_pipeline_v4.__file__).resolve().parents[1], root.resolve())
 
     def test_apply_vehicle_darkness_gain_preserves_background_and_shape(self) -> None:
         image = np.array([[[1.0, 0.75], [0.5, 1.0]]], dtype=np.float32)
