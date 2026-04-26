@@ -1,0 +1,367 @@
+# Failure Analysis Report: `260425-1025_ds-2d-cnn`
+
+## 1. Evaluation Scope
+
+This report applies the failure-labelling scheme defined in **Failure Analysis Framework v0.2** to the validation output of `260425-1025_ds-2d-cnn/run_0001`.
+
+The analysed source file is:
+
+- `05_inference-v0.3/output/260425-1025_ds-2d-cnn/inference-output_260425-1025_ds-2d-cnn.json`
+
+The underlying benchmark is the `def90_synth_v023-validation-shuffled` corpus, representing the current full-frame, full-yaw synthetic validation regime.
+
+The analysed output contains `49,999` inference rows, generated between `2026-04-25T15:35:31+00:00` and `2026-04-25T16:00:41+00:00`.
+
+The operational definitions used in this report are:
+
+- **failure**: distance absolute error `> 0.10 m` **or** yaw absolute error `> 5°`
+- **clean success**: distance absolute error `<= 0.05 m` **and** yaw absolute error `<= 2.5°`
+
+These definitions support both continuous evaluation and operationally interpretable thresholded analysis.
+
+---
+
+## 2. Executive Summary
+
+This validation run does not show the tight, sparse-tail behaviour of the earlier analysed model. Instead, operational failure is broad and is dominated by yaw error.
+
+The principal findings are:
+
+- joint success under the framework is only `38.31%`
+- yaw error is the dominant failure mode, with `30,789` samples exceeding `5°`
+- the median yaw error is `7.27°`, meaning the yaw problem is not limited to rare outliers
+- distance performance is acceptable in the bulk, but has a meaningful operational failure tail
+- severe distance failures are strongly associated with ROI crops extending beyond the image boundary
+- near-range and lower-frame samples are the clearest structural concentration of failures
+
+The overall interpretation is that `260425-1025_ds-2d-cnn` is not yet a stable operational model under the framework. The first priority is to diagnose the broad yaw degradation, while separately auditing the smaller but severe distance/crop failure mode.
+
+---
+
+## 3. Continuous Performance Summary
+
+### 3.1 Distance error
+
+- validation MAE: `0.047844 m`
+- validation RMSE: `0.108534 m`
+- median absolute error: `0.03439 m`
+- `p95`: `0.09174 m`
+- `p99`: `0.36707 m`
+- `p99.9`: `0.75476 m`
+- maximum absolute error: `3.21665 m`
+- mean signed error: `+0.04177 m`
+
+### 3.2 Orientation error
+
+- mean angular error: `16.48438°`
+- median angular error: `7.26825°`
+- `p95` angular error: `68.38524°`
+- `p99` angular error: `156.32052°`
+- `p99.9` angular error: `177.38237°`
+- maximum angular error: `179.96466°`
+- mean signed angular error: `+0.87862°`
+
+These continuous metrics show that the two targets fail in different ways. Distance has a tolerable central distribution but a damaging high-error tail. Yaw is weaker across the main distribution and also has a severe near-180° tail.
+
+---
+
+## 4. Thresholded Operational Outcomes
+
+### 4.1 Primary threshold results
+
+- distance accuracy within `5 cm`: `0.76490` = `38,244 / 49,999`
+- distance accuracy within `10 cm`: `0.95312` = `47,655 / 49,999`
+- distance accuracy within `25 cm`: `0.97082` = `48,540 / 49,999`
+- distance accuracy within `50 cm`: `0.99876` = `49,937 / 49,999`
+- yaw accuracy within `2.5°`: `0.21076` = `10,538 / 49,999`
+- yaw accuracy within `5°`: `0.38421` = `19,210 / 49,999`
+- yaw accuracy within `10°`: `0.59861` = `29,930 / 49,999`
+- yaw accuracy within `15°`: `0.72163` = `36,081 / 49,999`
+
+### 4.2 Joint success under the framework
+
+The exact overlap between distance and yaw failures is recoverable from the full output.
+
+- **joint success**: `19,155 / 49,999` = `38.31%`
+- **clean success**: `8,678 / 49,999` = `17.36%`
+- **total failures under the framework**: `30,844 / 49,999` = `61.69%`
+
+Only `2,344` samples exceed the `10 cm` distance threshold, while `30,789` samples exceed the `5°` yaw threshold. The operational failure population is therefore overwhelmingly yaw-dominated.
+
+---
+
+## 5. Failure-Category Decomposition
+
+Using the framework's primary metric-defined categories:
+
+- **F1: distance-only failure**: `55` samples (`0.11%`)
+- **F2: yaw-only failure**: `28,500` samples (`57.00%`)
+- **F3: joint failure**: `2,289` samples (`4.58%`)
+
+This decomposition establishes the central result of the present failure pass:
+
+> **The model's residual operational weakness is not a sparse edge tail. It is broad yaw underperformance, with a smaller joint-failure population where distance also degrades.**
+
+The following interpretive tags can be inferred from the available JSON fields:
+
+- **F4: likely orientation flip / near-180° confusion**: `622` samples have yaw error `>= 150°`
+- **F5: likely ROI / crop issue**: `3,009` samples have ROI crops extending beyond the image boundary; all `62` samples with distance error `> 0.50 m` fall in this group
+- **F6: edge-of-frame / positional extremity**: lateral extremity alone is not strongly explanatory, but lower-frame / near-range position is strongly associated with failure
+- **F7: visually ambiguous / hard case**: not assigned automatically from JSON alone; this requires image review
+
+---
+
+## 6. Residual Error Structure
+
+### 6.1 Distance is good in the bulk, but has a real failure tail
+
+Distance prediction remains reasonable for most samples:
+
+- median absolute error: `0.03439 m`
+- `p95`: `0.09174 m`, just inside the `0.10 m` operational boundary
+- `47,655` samples are within `10 cm`
+
+However, the distance tail is too large to ignore:
+
+- `2,344` samples exceed `0.10 m`
+- `1,459` samples exceed `0.25 m`
+- `62` samples exceed `0.50 m`
+- maximum distance error is `3.21665 m`
+
+Most distance failures are over-predictions: `2,264 / 2,344` distance failures have positive signed error. The exception is the most catastrophic distance regime: all `62` samples above `0.50 m` are under-predictions, and all of them occur where the ROI crop extends beyond the image boundary.
+
+### 6.2 Yaw is the dominant failure surface
+
+Yaw performance is weak under the operational threshold:
+
+- only `19,210 / 49,999` samples are within `5°`
+- median yaw error is `7.26825°`, already beyond the framework failure line
+- `13,918` samples exceed `15°`
+- `4,010` samples exceed `45°`
+- `1,870` samples exceed `90°`
+- `622` samples are near-flip cases with yaw error `>= 150°`
+
+The yaw issue is therefore not merely a rare catastrophic tail. The tail is severe, but the broader distribution has shifted beyond the operational boundary.
+
+### 6.3 Near range and lower-frame position carry a large share of failures
+
+Depth is a major structural factor.
+
+- `1.5-2.5 m`: `10,467` samples, `6,560` framework failures, mean yaw error `32.71°`, `2,140` distance failures
+- `2.5-3.5 m`: `10,961` samples, `7,856` yaw failures, mean yaw error `16.75°`, only `25` distance failures
+- `3.5-4.5 m`: mean yaw error `12.74°`
+- `4.5-5.5 m`: mean yaw error `9.02°`
+- `5.5-7.5 m`: mean yaw error `9.09°`
+
+Vertical image position shows the same pattern because near objects tend to sit lower in frame:
+
+- top third: `57.87%` framework failure rate, mean yaw error `10.72°`
+- middle third: `66.03%` framework failure rate, mean yaw error `19.79°`
+- bottom third: `75.69%` framework failure rate, mean yaw error `56.61°`
+- very low band (`cy >= 880`): `80.86%` framework failure rate
+
+This suggests that the most important positional failure structure is not simply left/right edge placement. It is near-range, lower-frame pose estimation.
+
+### 6.4 Lateral edge effects exist, but are not the primary explanation
+
+The left, middle, and right thirds have broadly similar failure rates:
+
+- left third: `10,342 / 16,279` failures, mean yaw error `16.50°`
+- middle third: `10,629 / 17,339` failures, mean yaw error `17.23°`
+- right third: `9,873 / 16,381` failures, mean yaw error `15.68°`
+
+The extreme-lateral band has `10,632` failures out of `17,034` samples, which is close to the overall failure rate. Lateral extremity should still be retained as an audit tag, but it is not sufficient to explain the present run's degradation.
+
+### 6.5 ROI boundary crops explain the catastrophic distance errors
+
+The ROI request is a fixed `300 x 300` crop around the predicted centre. In `3,009` samples, that request extends outside the `1920 x 1200` source image.
+
+Those crop-boundary cases are not the majority of failures, but they explain the most severe distance errors:
+
+- `3,009` total crop-boundary samples
+- `1,827` crop-boundary samples fail under the framework
+- all `62` samples with distance error `> 0.50 m` are crop-boundary samples
+- the largest distance errors occur at the far-left boundary with predicted distance near `4.0 m` for actual distances around `7.1-7.4 m`
+
+This is a clear candidate **F5** mechanism and should be audited separately from the broad yaw failure.
+
+---
+
+## 7. Representative Failure Cases
+
+### 7.1 Severe joint failure with ROI crop boundary issue
+
+- `defender90_f002664_z05.917_j114`
+- actual distance: `7.37707 m`
+- predicted distance: `4.16042 m`
+- distance absolute error: `3.21665 m`
+- actual orientation: `155.59290°`
+- predicted orientation: `199.59972°`
+- orientation absolute error: `44.00682°`
+- ROI centre: `[64, 172]` px
+- ROI request: `[-86, 22, 214, 322]` px
+
+This is the largest distance error in the run. It is both an operational joint failure and a likely ROI/crop-boundary failure.
+
+### 7.2 Near-180° yaw-only failure with distance still passing
+
+- `defender90_f008187_z01.357_j213`
+- actual distance: `1.93574 m`
+- distance absolute error: `0.08050 m`
+- actual orientation: `187.39050°`
+- predicted orientation: `7.35518°`
+- orientation absolute error: `179.96466°`
+- ROI centre: `[424, 736]` px
+
+This is a clear **F4** near-flip case. Distance remains inside the operational threshold, so the failure is specifically orientation-related.
+
+### 7.3 Near-180° joint failure at close range
+
+- `defender90_f032432_z01.374_j412`
+- actual distance: `1.79604 m`
+- distance absolute error: `0.23955 m`
+- actual orientation: `192.35600°`
+- predicted orientation: `12.22084°`
+- orientation absolute error: `179.86484°`
+- ROI centre: `[864, 720]` px
+
+This case sits in the high-risk near-range regime. Both distance and yaw cross the operational thresholds.
+
+### 7.4 Distance-only failure at the right image boundary
+
+- `defender90_f047599_z05.827_j177`
+- actual distance: `7.28893 m`
+- distance absolute error: `0.84209 m`
+- orientation absolute error: `2.24001°`
+- ROI centre: `[1860, 176]` px
+- ROI request: `[1710, 26, 2010, 326]` px
+
+This is a rare **F1** distance-only failure. Yaw is acceptable, while distance fails in a boundary crop condition.
+
+### 7.5 Boundary-case yaw failure
+
+- `defender90_f019589_z03.270_j384`
+- actual distance: `3.49640 m`
+- distance absolute error: `0.00277 m`
+- actual orientation: `260.24820°`
+- predicted orientation: `255.24811°`
+- orientation absolute error: `5.00009°`
+- ROI centre: `[788, 352]` px
+
+This is useful as a threshold boundary case. The prediction is practically close, but it is still a failure under the formal `> 5°` yaw rule.
+
+---
+
+## 8. Interpretation
+
+This run should be regarded as a broad operational failure under the current framework.
+
+### 8.1 What the results support
+
+- the benchmark is exposing a serious yaw generalisation problem
+- distance is still usable for much of the distribution
+- distance failures are not randomly distributed; near range and crop-boundary cases are important
+- near-180° orientation confusion is present and measurable
+- the JSON output is sufficient to construct exact metric-defined failure categories
+
+### 8.2 What remains unresolved
+
+- whether the broad yaw degradation is caused by model capacity, training data, target representation, checkpoint selection, or preprocessing mismatch
+- whether close-range/lower-frame failures are primarily visual ambiguity, scale sensitivity, crop composition, or label distribution
+- whether the most severe distance failures are caused by padding/crop handling, ROI localisation, training coverage, or a model extrapolation issue at image boundaries
+- which samples should receive **F7** visually ambiguous / hard-case tags
+
+The development story for this run is therefore different from the earlier analysed report. The relevant question is not how to trim a sparse residual tail. The priority is to explain why the yaw distribution has shifted beyond the operational threshold for most samples.
+
+---
+
+## 9. Recommended Next Analysis Pass
+
+The next failure-analysis pass should focus on separating broad yaw degradation from the smaller catastrophic distance/crop mechanism.
+
+### 9.1 Review set construction
+
+Build a manual review set containing:
+
+- all samples with yaw error `>= 150°` (`622` samples)
+- all samples with yaw error `> 45°` (`4,010` samples)
+- all samples with distance error `> 0.10 m` (`2,344` samples)
+- all samples with distance error `> 0.50 m` (`62` samples)
+- all crop-boundary framework failures (`1,827` samples)
+- a stratified subset of near-range failures where actual distance `< 2.5 m` (`6,560` failures)
+
+### 9.2 Interpretive tagging
+
+For each reviewed sample, assign interpretive labels where applicable:
+
+- **F4** near-flip / orientation confusion
+- **F5** ROI / crop issue
+- **F6** edge-of-frame or lower-frame positional extremity
+- **F7** visually ambiguous / hard case
+
+### 9.3 Priority
+
+The highest immediate value lies in three checks:
+
+- verify that `260425-1025_ds-2d-cnn/run_0001` is being evaluated with the intended preprocessing contract and checkpoint
+- inspect near-range yaw failures, especially those with actual yaw around `150-210°` and predictions near `0-30°`
+- inspect the `62` distance errors above `0.50 m`, since they are all tied to out-of-frame ROI crop requests
+
+---
+
+## 10. Diagnostic Extension
+
+The original report template is sufficient for the main failure analysis, but this run exposes a few additional diagnostic facts that are worth recording explicitly.
+
+### 10.1 Sample-count check
+
+The source manifest contains `50,000` validation samples, but the inference output contains `49,999` rows.
+
+- manifest rows: `50,000`
+- inference rows: `49,999`
+- unique sample IDs in inference output: `49,999`
+- duplicate inference sample IDs: `0`
+- manifest samples missing from inference output: `1`
+- missing sample: `defender90_f000000_z04.709_j206`
+
+All rates in this report therefore use the actual inference-output denominator, `49,999`, rather than the manifest denominator.
+
+### 10.2 High-value review slices
+
+Several review sets overlap heavily, so the most efficient manual review order is:
+
+- distance error `> 0.50 m`: `62` samples; all are crop-boundary cases
+- yaw error `>= 150°`: `622` samples; `489` are near-range samples with actual distance `< 2.5 m`
+- near-range framework failures where actual distance `< 2.5 m`: `6,560` samples
+- crop-boundary framework failures: `1,827` samples
+- joint failures: `2,289` samples
+
+The first two slices are small enough to inspect directly and should give the fastest signal about whether the run has a target/preprocessing issue, a crop-boundary issue, or both.
+
+### 10.3 Operational notes for reproducing the analysis
+
+The following derived conditions were used for diagnostic tags:
+
+- **framework failure**: `distance_absolute_m > 0.10` or `orientation_absolute_deg > 5`
+- **clean success**: `distance_absolute_m <= 0.05` and `orientation_absolute_deg <= 2.5`
+- **near-flip proxy**: `orientation_absolute_deg >= 150`
+- **crop-boundary proxy**: ROI request has `x0 < 0`, `y0 < 0`, `x1 > 1920`, or `y1 > 1200`
+- **extreme lateral proxy**: ROI centre x is `< 384` or `> 1536`
+- **lower-frame proxy**: ROI centre y is `>= 800`
+
+These proxy tags are intended for triage. Final **F4-F7** labels should still be assigned by image review.
+
+---
+
+## 11. Conclusion
+
+`260425-1025_ds-2d-cnn/run_0001` should not be described as a model with only a sparse residual error tail. Its current profile is broader and less mature:
+
+- **joint success is low at `38.31%`**
+- **yaw is the dominant failure mode, with `61.58%` of samples exceeding `5°`**
+- **the median yaw error already exceeds the operational threshold**
+- **distance is acceptable in the bulk, but has `2,344` operational failures**
+- **the most severe distance failures are associated with ROI crops extending beyond the source image**
+- **near-range and lower-frame samples are the strongest structural concentration of errors**
+
+The next phase should prioritise diagnosis before refinement. In particular, the yaw target/preprocessing/checkpoint path should be sanity-checked, then the near-range yaw failures and boundary-crop distance failures should be reviewed as separate failure mechanisms.
