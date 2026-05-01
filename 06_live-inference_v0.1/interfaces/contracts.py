@@ -192,10 +192,46 @@ def _to_plain(value: Any) -> Any:
     return value
 
 
+def get_contract_version(value: Any) -> str | None:
+    """Extract a live contract version from a payload object or mapping."""
+    if isinstance(value, Mapping):
+        version = value.get("contract_version")
+        return version if isinstance(version, str) else None
+    version = getattr(value, "contract_version", None)
+    return version if isinstance(version, str) else None
+
+
+def contract_version_matches(
+    value: Any,
+    expected: str = LIVE_INFERENCE_CONTRACT_VERSION,
+) -> bool:
+    """Return whether a payload declares the expected live contract version."""
+    return get_contract_version(value) == expected
+
+
+def require_contract_version(
+    value: Any,
+    expected: str = LIVE_INFERENCE_CONTRACT_VERSION,
+) -> None:
+    """Raise if a payload is missing or mismatches the expected live contract version."""
+    actual = get_contract_version(value)
+    if actual == expected:
+        return
+    if actual is None:
+        actual_text = "missing"
+    else:
+        actual_text = repr(actual)
+    raise ValueError(
+        "Live inference contract version mismatch: "
+        f"expected {expected!r}, actual {actual_text}."
+    )
+
+
 @dataclass(frozen=True)
 class InferenceOutputContract:
     """Stable GUI-facing names for live inference result fields."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     distance_field: str = PREDICTED_DISTANCE_FIELD
     yaw_sin_field: str = PREDICTED_YAW_SIN_FIELD
     yaw_cos_field: str = PREDICTED_YAW_COS_FIELD
@@ -212,6 +248,7 @@ class InferenceOutputContract:
 class ModelContractReference:
     """Reference metadata for the repository model/preprocessing contracts."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     model_path: Path | None = None
     model_contract_version: str | None = MODEL_TOPOLOGY_CONTRACT_VERSION
     preprocessing_contract_name: str | None = PREPROCESSING_CONTRACT_NAME
@@ -236,6 +273,7 @@ class ModelContractReference:
 class FrameHandoffPaths:
     """File names and same-directory paths for atomic latest-frame handoff."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frame_dir: Path = DEFAULT_FRAME_DIR
     latest_frame_filename: str = DEFAULT_LATEST_FRAME_FILENAME
     temp_frame_filename: str = DEFAULT_TEMP_FRAME_FILENAME
@@ -258,6 +296,7 @@ class FrameHandoffPaths:
 class LiveInferenceConfig:
     """Central configuration shared by GUI, camera, and inference boundaries."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frame_dir: Path = DEFAULT_FRAME_DIR
     latest_frame_filename: str = DEFAULT_LATEST_FRAME_FILENAME
     temp_frame_filename: str = DEFAULT_TEMP_FRAME_FILENAME
@@ -293,6 +332,7 @@ class LiveInferenceConfig:
 class FrameMetadata:
     """Optional camera/source metadata for a frame handoff."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frame_id: str | None = None
     camera_index: int | None = None
     source_name: str | None = None
@@ -314,6 +354,7 @@ class FrameHash:
     """Hash of the exact image bytes accepted for frame processing."""
 
     value: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     algorithm: str = DEFAULT_FRAME_HASH_ALGORITHM
     digest_size_bytes: int = DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES
 
@@ -331,6 +372,7 @@ class FrameReference:
     """
 
     image_path: Path
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     metadata: FrameMetadata = field(default_factory=FrameMetadata)
     completed_at_utc: str | None = None
     frame_hash: FrameHash | None = None
@@ -349,6 +391,7 @@ class InferenceRequest:
     request_id: str
     frame: FrameReference
     requested_at_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     source_input_mode: InferenceInputMode = InferenceInputMode.RAW_IMAGE
     processing_policy: FrameProcessingPolicy = FrameProcessingPolicy.NEWEST_COMPLETED_SKIP_STALE
     duplicate_hash_skip_enabled: bool = True
@@ -373,6 +416,7 @@ class PreparedInferenceInputs:
     """
 
     request_id: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     input_mode: InferenceInputMode = InferenceInputMode.TRI_STREAM_V0_4
     input_keys: tuple[str, ...] = TRI_STREAM_INPUT_KEYS
     model_inputs: Mapping[str, Any] = field(default_factory=dict)
@@ -383,6 +427,7 @@ class PreparedInferenceInputs:
     def to_dict(self) -> dict[str, Any]:
         return _to_plain(
             {
+                "contract_version": self.contract_version,
                 "request_id": self.request_id,
                 "input_mode": self.input_mode,
                 "input_keys": self.input_keys,
@@ -398,6 +443,7 @@ class PreparedInferenceInputs:
 class RoiMetadata:
     """Optional ROI, crop, bbox, and geometry metadata attached to a result."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     bbox_xyxy_px: tuple[float, float, float, float] | None = None
     center_xy_px: tuple[float, float] | None = None
     source_image_wh_px: tuple[int, int] | None = None
@@ -423,6 +469,7 @@ class InferenceResult:
     predicted_yaw_cos: float
     predicted_yaw_deg: float
     inference_time_ms: float
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     preprocessing_time_ms: float | None = None
     total_time_ms: float | None = None
     model_input_mode: InferenceInputMode = InferenceInputMode.TRI_STREAM_V0_4
@@ -445,6 +492,7 @@ class DebugImageReference:
     image_kind: str
     path: Path
     created_at_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     source_frame_hash: FrameHash | None = None
     extras: Mapping[str, Any] = field(default_factory=dict)
 
@@ -456,6 +504,7 @@ class DebugImageReference:
 class CameraWorkerCounters:
     """Minimum observable camera-worker counters."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frames_captured: int = 0
     frames_written: int = 0
     frame_write_failures: int = 0
@@ -471,6 +520,7 @@ class CameraWorkerCounters:
 class InferenceWorkerCounters:
     """Minimum observable inference-worker counters."""
 
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frames_seen: int = 0
     frames_processed: int = 0
     frames_skipped_duplicate: int = 0
@@ -497,6 +547,7 @@ class WorkerStatus:
     state: WorkerState
     message: str
     timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     counters: Mapping[str, Any] = field(default_factory=dict)
     extras: Mapping[str, Any] = field(default_factory=dict)
 
@@ -512,6 +563,7 @@ class WorkerLifecycleEvent:
     event_type: WorkerEventType
     state: WorkerState
     timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     message: str = ""
     details: Mapping[str, Any] = field(default_factory=dict)
 
@@ -526,6 +578,7 @@ class FrameSkipped:
     worker_name: WorkerName
     reason: FrameSkipReason
     timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frame: FrameReference | None = None
     frame_hash: FrameHash | None = None
     message: str = ""
@@ -543,6 +596,7 @@ class WorkerWarning:
     warning_type: str
     message: str
     timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     recoverable: bool = True
     frame: FrameReference | None = None
     failure_stage: FrameFailureStage | None = None
@@ -561,6 +615,7 @@ class WorkerError:
     message: str
     recoverable: bool
     timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     frame: FrameReference | None = None
     failure_stage: FrameFailureStage | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
@@ -766,5 +821,8 @@ __all__ = [
     "WorkerState",
     "WorkerStatus",
     "WorkerWarning",
+    "contract_version_matches",
+    "get_contract_version",
     "is_allowed_worker_state_transition",
+    "require_contract_version",
 ]
