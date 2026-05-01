@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import torch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,7 @@ from inference_v0_1.brightness_analysis import (
     apply_vehicle_darkness_gain,
 )
 from inference_v0_1.external import ensure_external_paths, preprocessing_root
+from src.task_runtime import batch_to_model_inputs
 
 
 class BrightnessAnalysisTests(unittest.TestCase):
@@ -58,6 +60,42 @@ class BrightnessAnalysisTests(unittest.TestCase):
             np.array([[[1.0, 0.625], [0.25, 1.0]]], dtype=np.float32),
             atol=1e-6,
         )
+
+    def test_variant_batch_preserves_tri_stream_side_inputs(self) -> None:
+        samples = [
+            SimpleNamespace(
+                sample_row={"sample_id": f"sample-{idx}"},
+                input_mode=brightness_analysis.TRI_STREAM_INPUT_MODE,
+                orientation_image=np.full((1, 2, 2), 0.8 + idx, dtype=np.float32),
+                bbox_features=np.arange(10, dtype=np.float32) + idx,
+                actual_distance_m=float(idx + 1),
+                actual_yaw_sin=0.0,
+                actual_yaw_cos=1.0,
+            )
+            for idx in range(2)
+        ]
+        variant_images = [
+            np.full((1, 2, 2), 0.4 + idx, dtype=np.float32)
+            for idx in range(2)
+        ]
+
+        batch = brightness_analysis._build_variant_batch(
+            preprocessed_samples=samples,
+            variant_images=variant_images,
+        )
+        model_inputs = batch_to_model_inputs(
+            batch,
+            {"input_mode": brightness_analysis.TRI_STREAM_INPUT_MODE},
+            device=torch.device("cpu"),
+        )
+
+        self.assertIsNone(batch.bbox_features)
+        self.assertEqual(batch.images.shape, (2, 1, 2, 2))
+        self.assertIsNotNone(batch.geometry)
+        self.assertEqual(batch.geometry.shape, (2, 10))
+        self.assertIsNotNone(batch.extra_inputs)
+        self.assertEqual(batch.extra_inputs["x_orientation_image"].shape, (2, 1, 2, 2))
+        self.assertEqual(set(model_inputs), {"x_distance_image", "x_orientation_image", "x_geometry"})
 
     def test_summary_tables_capture_prediction_drift(self) -> None:
         predictions_df = pd.DataFrame(

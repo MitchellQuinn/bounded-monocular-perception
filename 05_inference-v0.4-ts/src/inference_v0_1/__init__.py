@@ -1,5 +1,10 @@
-"""Public exports for the v0.2 inference package."""
+"""Public exports for the v0.3 inference package."""
 
+from .brightness_normalization import (
+    BrightnessNormalizationConfigV3,
+    BrightnessNormalizationResultV3,
+    apply_brightness_normalization_v3,
+)
 from .brightness_analysis import (
     BrightnessSensitivityResult,
     apply_vehicle_darkness_gain,
@@ -21,6 +26,8 @@ from .pipeline import (
     ModelContext,
     PreprocessedSample,
     RoiFcnModelContext,
+    build_inference_startup_report,
+    format_inference_startup_log,
     load_model_context,
     load_roi_fcn_model_context,
     preprocess_single_sample,
@@ -32,16 +39,21 @@ from .pipeline import (
 
 __all__ = [
     "BrightnessSensitivityResult",
+    "BrightnessNormalizationConfigV3",
+    "BrightnessNormalizationResultV3",
     "InferenceResult",
     "ModelContext",
     "ModelRunArtifact",
     "PreprocessedSample",
     "RawCorpus",
     "RoiFcnModelContext",
+    "apply_brightness_normalization_v3",
     "apply_vehicle_darkness_gain",
+    "build_inference_startup_report",
     "default_raw_corpus_roots",
     "discover_model_runs",
     "discover_raw_corpora",
+    "format_inference_startup_log",
     "list_corpus_image_names",
     "load_corpus_samples",
     "load_model_context",

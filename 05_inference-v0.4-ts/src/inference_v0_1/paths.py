@@ -1,4 +1,4 @@
-"""Path helpers for the v0.1 inference package."""
+"""Path helpers for the v0.3 inference package."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ _SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def inference_project_root() -> Path:
-    """Return the v0.1 inference project root."""
+    """Return the v0.3 inference project root."""
     return Path(__file__).resolve().parents[2]
 
 

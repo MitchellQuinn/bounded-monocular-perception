@@ -1,10 +1,11 @@
-"""Single-sample raw-image inference pipeline for v0.2."""
+"""Single-sample raw-image inference pipeline for v0.3."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import json
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import cv2
 import numpy as np
@@ -14,6 +15,11 @@ import torch
 from .discovery import RawCorpus, load_corpus_samples
 from .external import ensure_external_paths
 from .paths import results_root, sanitize_identifier, timestamp_slug, to_repo_relative
+from .brightness_normalization import (
+    BrightnessNormalizationConfigV3,
+    BrightnessNormalizationResultV3,
+    apply_brightness_normalization_v3,
+)
 
 ensure_external_paths()
 
@@ -25,6 +31,9 @@ from rb_pipeline_v4.pack_dual_stream_stage import (
     _render_inverted_vehicle_detail_on_white,
     _silhouette_to_background_mask,
     _yaw_targets_from_row,
+)
+from rb_pipeline_v4.pack_tri_stream_stage import (
+    _render_orientation_image_scaled_by_foreground_extent,
 )
 from rb_pipeline_v4.silhouette_algorithms import (
     ContourSilhouetteGeneratorV2,
@@ -46,6 +55,20 @@ from src.task_runtime import (
 from src.utils import read_json, utc_now_iso, write_json
 
 
+INFERENCE_PIPELINE_VERSION = "v0.3"
+DEFAULT_BRIGHTNESS_MASK_SOURCE = "silhouette_background_mask < 0.5"
+IMAGE_TENSOR_INPUT_MODE = "image_tensor"
+DUAL_STREAM_INPUT_MODE = "dual_stream_image_bbox_features"
+TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
+TRI_STREAM_ORIENTATION_IMAGE_KEY = "x_orientation_image"
+_SUPPORTED_BRIGHTNESS_MASK_SOURCES = {
+    DEFAULT_BRIGHTNESS_MASK_SOURCE,
+    "silhouette_background_mask_lt_0_5",
+    "silhouette_foreground_mask",
+    "foreground_mask",
+}
+
+
 @dataclass(frozen=True)
 class ModelContext:
     """Loaded distance-orientation model metadata for one inference run."""
@@ -56,6 +79,7 @@ class ModelContext:
     device: str
     run_config: dict[str, Any]
     run_manifest: dict[str, Any]
+    dataset_summary: dict[str, Any]
     task_contract: dict[str, Any]
     preprocessing_contract: dict[str, Any]
 
@@ -97,7 +121,9 @@ class PreprocessedSample:
     source_samples_csv_path: Path
     roi_image: np.ndarray
     model_image: np.ndarray
+    orientation_image: np.ndarray | None
     bbox_features: np.ndarray
+    input_mode: str
     actual_distance_m: float
     actual_orientation_deg: float
     actual_yaw_sin: float
@@ -105,6 +131,7 @@ class PreprocessedSample:
     predicted_crop_center_x_px: float
     predicted_crop_center_y_px: float
     predicted_roi_request_xyxy_px: np.ndarray
+    brightness_normalization: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -138,6 +165,9 @@ class InferenceResult:
     source_run_json_path: Path
     source_samples_csv_path: Path
     preprocessing_contract_version: str
+    model_input_mode: str = ""
+    orientation_image_shape: tuple[int, ...] = ()
+    brightness_normalization: dict[str, Any] = field(default_factory=dict)
     saved_json_path: Path | None = None
     saved_roi_path: Path | None = None
 
@@ -196,15 +226,23 @@ class InferenceResult:
                 "orientation_absolute_deg": float(self.absolute_orientation_error_deg),
             },
             "model_input": {
+                "input_mode": self.model_input_mode,
                 "shape": list(self.roi_image.shape),
                 "dtype": str(self.roi_image.dtype),
                 "preprocessing_contract_version": self.preprocessing_contract_version,
+                "brightness_normalization": dict(self.brightness_normalization),
             },
             "runtime": {
+                "inference_pipeline_version": INFERENCE_PIPELINE_VERSION,
                 "distance_orientation_device": self.device,
                 "roi_fcn_device": self.roi_device,
             },
         }
+        if self.orientation_image_shape:
+            payload["model_input"]["stream_shapes"] = {
+                "x_distance_image": list(self.roi_image.shape),
+                "x_orientation_image": list(self.orientation_image_shape),
+            }
         if self.saved_roi_path is not None:
             payload["artifacts"] = {
                 "roi_image_path": to_repo_relative(self.saved_roi_path),
@@ -233,8 +271,11 @@ def _label_from_run_dir(run_dir: Path, *, family: str) -> str:
 def _resolve_preprocessing_contract(
     run_manifest: Mapping[str, Any],
     run_config: Mapping[str, Any],
+    dataset_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    dataset_summary = dataset_summary if isinstance(dataset_summary, Mapping) else {}
     candidates = [
+        dataset_summary.get("preprocessing_contract"),
         run_manifest.get("dataset_summary", {}).get("preprocessing_contract"),
         run_manifest.get("preprocessing_contract"),
         run_config.get("dataset_summary", {}).get("preprocessing_contract"),
@@ -255,6 +296,164 @@ def _stage_parameters(
         return {}
     stage = stages.get(stage_name)
     return dict(stage) if isinstance(stage, Mapping) else {}
+
+
+def _task_input_mode(task_contract: Mapping[str, Any]) -> str:
+    """Return the topology input mode that determines inference batch shape."""
+    return str(task_contract.get("input_mode", IMAGE_TENSOR_INPUT_MODE)).strip() or IMAGE_TENSOR_INPUT_MODE
+
+
+def _current_representation(preprocessing_contract: Mapping[str, Any]) -> dict[str, Any]:
+    current = preprocessing_contract.get("CurrentRepresentation")
+    return dict(current) if isinstance(current, Mapping) else {}
+
+
+def _pack_stage_name_for_input_mode(
+    preprocessing_contract: Mapping[str, Any],
+    input_mode: str,
+) -> str:
+    """Resolve the preprocessing pack stage that owns the model input representation."""
+    normalized = str(input_mode).strip()
+    if normalized == TRI_STREAM_INPUT_MODE:
+        return "pack_tri_stream"
+    if normalized == DUAL_STREAM_INPUT_MODE:
+        return "pack_dual_stream"
+
+    current_stage = str(preprocessing_contract.get("CurrentStage", "")).strip()
+    if current_stage in {"pack_tri_stream", "pack_dual_stream"}:
+        return current_stage
+
+    current_kind = str(_current_representation(preprocessing_contract).get("Kind", "")).strip()
+    if current_kind == "tri_stream_npz":
+        return "pack_tri_stream"
+    return "pack_dual_stream"
+
+
+def _validate_input_mode_preprocessing_contract(
+    preprocessing_contract: Mapping[str, Any],
+    input_mode: str,
+    pack_stage_name: str,
+) -> None:
+    """Fail early when the model topology and preprocessing contract disagree."""
+    if not preprocessing_contract:
+        return
+
+    current = _current_representation(preprocessing_contract)
+    current_kind = str(current.get("Kind", "")).strip()
+    raw_completed = preprocessing_contract.get("CompletedStages", [])
+    if not isinstance(raw_completed, (list, tuple, set)):
+        raw_completed = []
+    completed = {
+        str(stage).strip()
+        for stage in raw_completed
+        if str(stage).strip()
+    }
+    current_stage = str(preprocessing_contract.get("CurrentStage", "")).strip()
+    available_stage = bool(_stage_parameters(preprocessing_contract, pack_stage_name))
+    stage_present = pack_stage_name in completed or current_stage == pack_stage_name or available_stage
+
+    if input_mode == TRI_STREAM_INPUT_MODE:
+        if current_kind and current_kind != "tri_stream_npz":
+            raise ValueError(
+                "Tri-stream topology requires preprocessing CurrentRepresentation.Kind='tri_stream_npz'; "
+                f"got {current_kind!r}."
+            )
+        if not stage_present:
+            raise ValueError(
+                "Tri-stream topology requires a preprocessing contract with pack_tri_stream completed."
+            )
+        return
+
+    if input_mode == DUAL_STREAM_INPUT_MODE and current_kind and current_kind != "dual_stream_npz":
+        raise ValueError(
+            "Dual-stream topology requires preprocessing CurrentRepresentation.Kind='dual_stream_npz'; "
+            f"got {current_kind!r}."
+        )
+
+
+@dataclass(frozen=True)
+class BrightnessNormalizationRuntimeConfig:
+    """Resolved inference-time brightness normalization contract."""
+
+    config: BrightnessNormalizationConfigV3
+    contract_source: str
+    mask_source: str
+    explicit_mask_source: bool
+    raw_contract: dict[str, Any]
+
+    def active(self) -> bool:
+        return self.config.normalized_enabled() and self.config.normalized_method() != "none"
+
+    def to_log_dict(self) -> dict[str, Any]:
+        payload = self.config.to_contract_dict()
+        payload.update(
+            {
+                "Active": self.active(),
+                "ContractSource": self.contract_source,
+                "MaskSource": self.mask_source,
+                "MaskSourceExplicit": bool(self.explicit_mask_source),
+            }
+        )
+        return payload
+
+
+def _brightness_contract_from_preprocessing_contract(
+    preprocessing_contract: Mapping[str, Any],
+    *,
+    pack_stage_name: str = "pack_dual_stream",
+) -> tuple[dict[str, Any], str]:
+    stage = _stage_parameters(preprocessing_contract, pack_stage_name)
+    stage_contract = stage.get("BrightnessNormalization")
+    current = _current_representation(preprocessing_contract)
+    current_contract = current.get("BrightnessNormalization")
+
+    stage_payload = dict(stage_contract) if isinstance(stage_contract, Mapping) else {}
+    current_payload = dict(current_contract) if isinstance(current_contract, Mapping) else {}
+    if stage_payload and current_payload and stage_payload != current_payload:
+        raise ValueError(
+            "Brightness normalization contract mismatch between "
+            f"Stages.{pack_stage_name}.BrightnessNormalization and "
+            "CurrentRepresentation.BrightnessNormalization."
+        )
+    if stage_payload:
+        return stage_payload, f"Stages.{pack_stage_name}.BrightnessNormalization"
+    if current_payload:
+        return current_payload, "CurrentRepresentation.BrightnessNormalization"
+    return {}, "absent"
+
+
+def _resolve_brightness_normalization_runtime(
+    preprocessing_contract: Mapping[str, Any],
+    *,
+    pack_stage_name: str = "pack_dual_stream",
+) -> BrightnessNormalizationRuntimeConfig:
+    payload, source = _brightness_contract_from_preprocessing_contract(
+        preprocessing_contract,
+        pack_stage_name=pack_stage_name,
+    )
+    config = BrightnessNormalizationConfigV3.from_mapping(payload) if payload else BrightnessNormalizationConfigV3()
+
+    explicit_mask_source = "MaskSource" in payload or "mask_source" in payload
+    raw_mask_source = payload.get("MaskSource", payload.get("mask_source", ""))
+    mask_source = str(raw_mask_source).strip() if explicit_mask_source else DEFAULT_BRIGHTNESS_MASK_SOURCE
+    if not mask_source:
+        mask_source = DEFAULT_BRIGHTNESS_MASK_SOURCE
+
+    if config.normalized_enabled() and config.normalized_method() != "none":
+        if mask_source not in _SUPPORTED_BRIGHTNESS_MASK_SOURCES:
+            allowed = ", ".join(sorted(_SUPPORTED_BRIGHTNESS_MASK_SOURCES))
+            raise ValueError(
+                "Distance/yaw model expects brightness normalization but inference cannot produce "
+                f"the requested MaskSource={mask_source!r}. Supported mask sources: {allowed}."
+            )
+
+    return BrightnessNormalizationRuntimeConfig(
+        config=config,
+        contract_source=source,
+        mask_source=mask_source,
+        explicit_mask_source=explicit_mask_source,
+        raw_contract=payload,
+    )
 
 
 def _silhouette_config_from_contract(preprocessing_contract: Mapping[str, Any]) -> SilhouetteStageConfigV4:
@@ -284,14 +483,21 @@ def _silhouette_config_from_contract(preprocessing_contract: Mapping[str, Any]) 
     )
 
 
-def _pack_settings_from_contract(preprocessing_contract: Mapping[str, Any]) -> dict[str, Any]:
-    current_representation = preprocessing_contract.get("CurrentRepresentation")
-    current = dict(current_representation) if isinstance(current_representation, Mapping) else {}
-    stage = _stage_parameters(preprocessing_contract, "pack_dual_stream")
+def _pack_settings_from_contract(
+    preprocessing_contract: Mapping[str, Any],
+    *,
+    pack_stage_name: str = "pack_dual_stream",
+) -> dict[str, Any]:
+    current = _current_representation(preprocessing_contract)
+    stage = _stage_parameters(preprocessing_contract, pack_stage_name)
     return {
         "canvas_width_px": int(stage.get("CanvasWidth", current.get("CanvasWidth", 300))),
         "canvas_height_px": int(stage.get("CanvasHeight", current.get("CanvasHeight", 300))),
         "clip_policy": str(stage.get("ClipPolicy", "fail")).strip().lower() or "fail",
+        "pack_stage_name": pack_stage_name,
+        "orientation_context_scale": float(
+            stage.get("OrientationContextScale", current.get("OrientationContextScale", 1.25))
+        ),
     }
 
 
@@ -335,6 +541,8 @@ def load_model_context(
     run_config = read_json(run_dir / "config.json")
     run_manifest_path = run_dir / "run_manifest.json"
     run_manifest = read_json(run_manifest_path) if run_manifest_path.exists() else {}
+    dataset_summary_path = run_dir / "dataset_summary.json"
+    dataset_summary = read_json(dataset_summary_path) if dataset_summary_path.exists() else {}
 
     device_obj = resolve_inference_device(device)
 
@@ -348,8 +556,13 @@ def load_model_context(
         device=str(device_obj),
         run_config=run_config,
         run_manifest=run_manifest,
+        dataset_summary=dataset_summary,
         task_contract=dict(topology_spec.task_contract),
-        preprocessing_contract=_resolve_preprocessing_contract(run_manifest, run_config),
+        preprocessing_contract=_resolve_preprocessing_contract(
+            run_manifest,
+            run_config,
+            dataset_summary,
+        ),
     )
     return model, context
 
@@ -416,6 +629,151 @@ def load_roi_fcn_model_context(
         roi_height_px=roi_height_px,
     )
     return model, context
+
+
+def _jsonable(value: Any) -> Any:
+    return json.loads(json.dumps(value, default=str))
+
+
+def _contract_summary(contract: Mapping[str, Any]) -> dict[str, Any]:
+    if not contract:
+        return {}
+    summary: dict[str, Any] = {}
+    for key in ("ContractVersion", "CurrentStage", "CompletedStages"):
+        if key in contract:
+            summary[key] = contract[key]
+    current = contract.get("CurrentRepresentation")
+    if isinstance(current, Mapping):
+        summary["CurrentRepresentation"] = {
+            key: current[key]
+            for key in (
+                "Kind",
+                "CanvasWidth",
+                "CanvasHeight",
+                "ImagePolarity",
+                "ImageContent",
+                "SilhouetteScaling",
+                "DistanceImageKey",
+                "OrientationImageKey",
+                "GeometryKey",
+                "OrientationContextScale",
+            )
+            if key in current
+        }
+        brightness = current.get("BrightnessNormalization")
+        if isinstance(brightness, Mapping):
+            summary["CurrentRepresentation"]["BrightnessNormalization"] = dict(brightness)
+    stages = contract.get("Stages")
+    if isinstance(stages, Mapping):
+        summary["Stages"] = {
+            name: sorted(stage.keys()) if isinstance(stage, Mapping) else str(type(stage).__name__)
+            for name, stage in stages.items()
+        }
+    for split_name in ("train_split", "validation_split"):
+        split = contract.get(split_name)
+        if isinstance(split, Mapping):
+            geometry = split.get("geometry") if isinstance(split.get("geometry"), Mapping) else {}
+            split_summary: dict[str, Any] = {}
+            if geometry:
+                split_summary["geometry"] = dict(geometry)
+            for key in ("fixed_roi_width_px", "fixed_roi_height_px"):
+                if key in split:
+                    split_summary[key] = split[key]
+            if split_summary:
+                summary[split_name] = split_summary
+    return summary
+
+
+def build_inference_startup_report(
+    *,
+    model_context: ModelContext,
+    roi_model_context: RoiFcnModelContext,
+) -> dict[str, Any]:
+    """Build the structured startup report for a v0.3 inference run."""
+    input_mode = _task_input_mode(model_context.task_contract)
+    pack_stage_name = _pack_stage_name_for_input_mode(
+        model_context.preprocessing_contract,
+        input_mode,
+    )
+    brightness_runtime = _resolve_brightness_normalization_runtime(
+        model_context.preprocessing_contract,
+        pack_stage_name=pack_stage_name,
+    )
+    return {
+        "inference_pipeline_version": INFERENCE_PIPELINE_VERSION,
+        "selected_models": {
+            "roi_fcn": {
+                "label": roi_model_context.label,
+                "run_dir": to_repo_relative(roi_model_context.run_dir),
+                "checkpoint_path": to_repo_relative(roi_model_context.checkpoint_path),
+                "device": roi_model_context.device,
+                "contract_summary": _jsonable(_contract_summary(roi_model_context.dataset_contract)),
+                "contract": _jsonable(roi_model_context.dataset_contract),
+            },
+            "distance_yaw": {
+                "label": model_context.label,
+                "run_dir": to_repo_relative(model_context.run_dir),
+                "checkpoint_path": to_repo_relative(model_context.checkpoint_path),
+                "device": model_context.device,
+                "input_mode": input_mode,
+                "pack_stage_name": pack_stage_name,
+                "preprocessing_contract_summary": _jsonable(
+                    _contract_summary(model_context.preprocessing_contract)
+                ),
+                "preprocessing_contract": _jsonable(model_context.preprocessing_contract),
+            },
+        },
+        "brightness_normalization": _jsonable(brightness_runtime.to_log_dict()),
+    }
+
+
+def format_inference_startup_log(report: Mapping[str, Any]) -> list[str]:
+    """Format the v0.3 startup report as stable human-readable log lines."""
+    selected_models = report.get("selected_models")
+    selected_models = selected_models if isinstance(selected_models, Mapping) else {}
+    roi_model = selected_models.get("roi_fcn")
+    roi_model = roi_model if isinstance(roi_model, Mapping) else {}
+    distance_model = selected_models.get("distance_yaw")
+    distance_model = distance_model if isinstance(distance_model, Mapping) else {}
+    brightness = report.get("brightness_normalization")
+    brightness = brightness if isinstance(brightness, Mapping) else {}
+
+    return [
+        f"inference pipeline version: {report.get('inference_pipeline_version', INFERENCE_PIPELINE_VERSION)}",
+        f"selected ROI-FCN model: {roi_model.get('label', '')}",
+        "selected ROI-FCN contract: "
+        + json.dumps(roi_model.get("contract_summary", {}), sort_keys=True),
+        f"selected distance/yaw model: {distance_model.get('label', '')}",
+        f"distance/yaw input mode: {distance_model.get('input_mode', '')}",
+        f"distance/yaw pack stage: {distance_model.get('pack_stage_name', '')}",
+        "selected distance/yaw preprocessing contract: "
+        + json.dumps(distance_model.get("preprocessing_contract_summary", {}), sort_keys=True),
+        "brightness normalization active for distance/yaw input: "
+        + str(bool(brightness.get("Active", False))).lower(),
+        f"brightness method: {brightness.get('Method', '')}",
+        f"target median darkness: {brightness.get('TargetMedianDarkness', '')}",
+        f"min/max gain: {brightness.get('MinGain', '')}/{brightness.get('MaxGain', '')}",
+        f"epsilon: {brightness.get('Epsilon', '')}",
+        f"empty mask policy: {brightness.get('EmptyMaskPolicy', '')}",
+        f"mask source: {brightness.get('MaskSource', '')}",
+    ]
+
+
+def _emit_inference_startup_log(
+    *,
+    model_context: ModelContext,
+    roi_model_context: RoiFcnModelContext,
+    log_sink: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    if log_sink is None:
+        return {}
+    report = build_inference_startup_report(
+        model_context=model_context,
+        roi_model_context=roi_model_context,
+    )
+    for line in format_inference_startup_log(report):
+        log_sink(line)
+    return report
 
 
 def _build_roi_fcn_locator_input(
@@ -554,9 +912,9 @@ def _select_silhouette_components(
     silhouette_config: SilhouetteStageConfigV4,
 ) -> tuple[ContourSilhouetteGeneratorV2, ConvexHullFallbackV1, FilledArtifactWriterV1 | OutlineArtifactWriterV1]:
     if silhouette_config.normalized_generator_id() != "silhouette.contour_v2":
-        raise ValueError("Only generator_id='silhouette.contour_v2' is supported in v0.2 inference")
+        raise ValueError("Only generator_id='silhouette.contour_v2' is supported in v0.3 inference")
     if silhouette_config.normalized_fallback_id() != "fallback.convex_hull_v1":
-        raise ValueError("Only fallback_id='fallback.convex_hull_v1' is supported in v0.2 inference")
+        raise ValueError("Only fallback_id='fallback.convex_hull_v1' is supported in v0.3 inference")
     mode = silhouette_config.normalized_representation_mode()
     writer = FilledArtifactWriterV1() if mode == "filled" else OutlineArtifactWriterV1()
     return ContourSilhouetteGeneratorV2(), ConvexHullFallbackV1(), writer
@@ -626,9 +984,26 @@ def _validate_model_compatibility(
     *,
     model_context: ModelContext,
     roi_context: RoiFcnModelContext,
-) -> tuple[SilhouetteStageConfigV4, dict[str, Any]]:
+) -> tuple[str, SilhouetteStageConfigV4, dict[str, Any], BrightnessNormalizationRuntimeConfig]:
+    input_mode = _task_input_mode(model_context.task_contract)
+    pack_stage_name = _pack_stage_name_for_input_mode(
+        model_context.preprocessing_contract,
+        input_mode,
+    )
+    _validate_input_mode_preprocessing_contract(
+        model_context.preprocessing_contract,
+        input_mode,
+        pack_stage_name,
+    )
     silhouette_config = _silhouette_config_from_contract(model_context.preprocessing_contract)
-    pack_settings = _pack_settings_from_contract(model_context.preprocessing_contract)
+    pack_settings = _pack_settings_from_contract(
+        model_context.preprocessing_contract,
+        pack_stage_name=pack_stage_name,
+    )
+    brightness_runtime = _resolve_brightness_normalization_runtime(
+        model_context.preprocessing_contract,
+        pack_stage_name=pack_stage_name,
+    )
     if (
         int(roi_context.roi_width_px) != int(silhouette_config.normalized_roi_canvas_width_px())
         or int(roi_context.roi_height_px) != int(silhouette_config.normalized_roi_canvas_height_px())
@@ -639,7 +1014,52 @@ def _validate_model_compatibility(
             f"distance_model={silhouette_config.normalized_roi_canvas_width_px()}x"
             f"{silhouette_config.normalized_roi_canvas_height_px()}"
         )
-    return silhouette_config, pack_settings
+    if input_mode == TRI_STREAM_INPUT_MODE:
+        if (
+            int(pack_settings["canvas_width_px"]) != int(silhouette_config.normalized_roi_canvas_width_px())
+            or int(pack_settings["canvas_height_px"]) != int(silhouette_config.normalized_roi_canvas_height_px())
+        ):
+            raise ValueError(
+                "Tri-stream inference requires pack_tri_stream CanvasWidth/CanvasHeight to match "
+                "the silhouette ROI canvas exactly so x_distance_image remains unscaled: "
+                f"pack={pack_settings['canvas_width_px']}x{pack_settings['canvas_height_px']}, "
+                f"silhouette={silhouette_config.normalized_roi_canvas_width_px()}x"
+                f"{silhouette_config.normalized_roi_canvas_height_px()}."
+            )
+    return input_mode, silhouette_config, pack_settings, brightness_runtime
+
+
+def _brightness_result_payload(
+    runtime: BrightnessNormalizationRuntimeConfig,
+    result: BrightnessNormalizationResultV3,
+) -> dict[str, Any]:
+    payload = runtime.to_log_dict()
+    payload.update(
+        {
+            "Status": result.status,
+            "ForegroundPixelCount": int(result.foreground_pixel_count),
+            "CurrentMedianDarkness": float(result.current_median_darkness),
+            "EffectiveMedianDarkness": float(result.effective_median_darkness),
+            "Gain": float(result.gain),
+        }
+    )
+    return payload
+
+
+def _disabled_brightness_payload(
+    runtime: BrightnessNormalizationRuntimeConfig,
+    foreground_mask: np.ndarray,
+) -> dict[str, Any]:
+    result = BrightnessNormalizationResultV3(
+        image=np.empty((0, 0), dtype=np.float32),
+        status="disabled",
+        method=runtime.config.normalized_method(),
+        foreground_pixel_count=int(np.count_nonzero(foreground_mask)),
+        current_median_darkness=float("nan"),
+        effective_median_darkness=float("nan"),
+        gain=1.0,
+    )
+    return _brightness_result_payload(runtime, result)
 
 
 def preprocess_single_sample(
@@ -650,8 +1070,8 @@ def preprocess_single_sample(
     roi_model: torch.nn.Module,
     roi_model_context: RoiFcnModelContext,
 ) -> PreprocessedSample:
-    """Use ROI-FCN for crop placement, then render the dual-stream ROI input."""
-    silhouette_config, pack_settings = _validate_model_compatibility(
+    """Use ROI-FCN crop placement, then render the model's declared raw-image input streams."""
+    input_mode, silhouette_config, pack_settings, brightness_runtime = _validate_model_compatibility(
         model_context=model_context,
         roi_context=roi_model_context,
     )
@@ -754,12 +1174,65 @@ def preprocess_single_sample(
         roi_source_gray,
         background_mask,
     )
+    foreground_mask = background_mask < 0.5
+    if brightness_runtime.active():
+        expected_canvas_shape = (
+            int(pack_settings["canvas_height_px"]),
+            int(pack_settings["canvas_width_px"]),
+        )
+        if tuple(roi_repr.shape) != expected_canvas_shape or tuple(foreground_mask.shape) != expected_canvas_shape:
+            raise ValueError(
+                "Distance/yaw model expects brightness normalization, but the reconstructed "
+                "foreground mask is not aligned with the regressor canvas: "
+                f"image={roi_repr.shape}, mask={foreground_mask.shape}, "
+                f"expected_canvas={expected_canvas_shape}."
+            )
+        brightness_result = apply_brightness_normalization_v3(
+            roi_repr,
+            foreground_mask,
+            brightness_runtime.config,
+        )
+        roi_repr = brightness_result.image
+        brightness_payload = _brightness_result_payload(brightness_runtime, brightness_result)
+    else:
+        brightness_payload = _disabled_brightness_payload(brightness_runtime, foreground_mask)
+
     canvas, _ = _place_image_on_canvas(
         roi_repr,
         canvas_height=int(pack_settings["canvas_height_px"]),
         canvas_width=int(pack_settings["canvas_width_px"]),
         clip_policy=str(pack_settings["clip_policy"]),
     )
+    orientation_image: np.ndarray | None = None
+    orientation_payload: dict[str, Any] = {}
+    if input_mode == TRI_STREAM_INPUT_MODE:
+        (
+            x_orientation_image,
+            orientation_source_extent_xyxy,
+            orientation_crop_source_xyxy,
+            orientation_crop_size_px,
+        ) = _render_orientation_image_scaled_by_foreground_extent(
+            roi_source_gray,
+            foreground_mask.astype(np.float32, copy=False),
+            canvas_height=int(pack_settings["canvas_height_px"]),
+            canvas_width=int(pack_settings["canvas_width_px"]),
+            context_scale=float(pack_settings["orientation_context_scale"]),
+        )
+        orientation_image = x_orientation_image[None, ...].astype(np.float32, copy=False)
+        orientation_payload.update(
+            {
+                "tri_stream_orientation_context_scale": float(pack_settings["orientation_context_scale"]),
+                "tri_stream_orientation_source_extent_x1_px": float(orientation_source_extent_xyxy[0]),
+                "tri_stream_orientation_source_extent_y1_px": float(orientation_source_extent_xyxy[1]),
+                "tri_stream_orientation_source_extent_x2_px": float(orientation_source_extent_xyxy[2]),
+                "tri_stream_orientation_source_extent_y2_px": float(orientation_source_extent_xyxy[3]),
+                "tri_stream_orientation_crop_source_x1_px": float(orientation_crop_source_xyxy[0]),
+                "tri_stream_orientation_crop_source_y1_px": float(orientation_crop_source_xyxy[1]),
+                "tri_stream_orientation_crop_source_x2_px": float(orientation_crop_source_xyxy[2]),
+                "tri_stream_orientation_crop_source_y2_px": float(orientation_crop_source_xyxy[3]),
+                "tri_stream_orientation_crop_size_px": float(orientation_crop_size_px),
+            }
+        )
 
     bbox_features = _bbox_features_from_xyxy(
         feature_bbox_xyxy,
@@ -797,8 +1270,14 @@ def preprocess_single_sample(
             "silhouette_roi_canvas_y1_px": float(roi_bounds[1]),
             "silhouette_roi_canvas_x2_px": float(roi_bounds[2]),
             "silhouette_roi_canvas_y2_px": float(roi_bounds[3]),
+            "brightness_normalization_status": str(brightness_payload["Status"]),
+            "brightness_normalization_gain": float(brightness_payload["Gain"]),
+            "brightness_normalization_foreground_px": int(brightness_payload["ForegroundPixelCount"]),
+            "model_input_mode": input_mode,
+            "model_input_pack_stage": str(pack_settings["pack_stage_name"]),
         }
     )
+    row_payload.update(orientation_payload)
 
     return PreprocessedSample(
         sample_row=row_payload,
@@ -807,7 +1286,9 @@ def preprocess_single_sample(
         source_samples_csv_path=corpus.samples_csv_path,
         roi_image=canvas.astype(np.float32),
         model_image=canvas[None, ...].astype(np.float32),
+        orientation_image=orientation_image,
         bbox_features=bbox_features.astype(np.float32),
+        input_mode=input_mode,
         actual_distance_m=float(sample_row["distance_m"]),
         actual_orientation_deg=float(yaw_deg),
         actual_yaw_sin=float(yaw_sin),
@@ -815,6 +1296,7 @@ def preprocess_single_sample(
         predicted_crop_center_x_px=float(predicted_center_x_px),
         predicted_crop_center_y_px=float(predicted_center_y_px),
         predicted_roi_request_xyxy_px=np.asarray(request_bounds, dtype=np.float32),
+        brightness_normalization=brightness_payload,
     )
 
 
@@ -833,6 +1315,23 @@ def _build_single_sample_batch(preprocessed: PreprocessedSample) -> Batch:
         ],
         dtype=np.float32,
     )
+    input_mode = str(getattr(preprocessed, "input_mode", DUAL_STREAM_INPUT_MODE)).strip()
+    if input_mode == TRI_STREAM_INPUT_MODE:
+        if preprocessed.orientation_image is None:
+            raise ValueError("Tri-stream preprocessed sample is missing orientation_image.")
+        return Batch(
+            images=np.expand_dims(preprocessed.model_image, axis=0).astype(np.float32),
+            targets=targets,
+            rows=[dict(preprocessed.sample_row)],
+            geometry=np.expand_dims(preprocessed.bbox_features, axis=0).astype(np.float32),
+            extra_inputs={
+                TRI_STREAM_ORIENTATION_IMAGE_KEY: np.expand_dims(
+                    preprocessed.orientation_image,
+                    axis=0,
+                ).astype(np.float32),
+            },
+        )
+
     return Batch(
         images=np.expand_dims(preprocessed.model_image, axis=0).astype(np.float32),
         targets=targets,
@@ -845,6 +1344,14 @@ def _build_multi_sample_batch(preprocessed_samples: list[PreprocessedSample]) ->
     if not preprocessed_samples:
         raise ValueError("At least one preprocessed sample is required.")
 
+    input_mode = str(getattr(preprocessed_samples[0], "input_mode", DUAL_STREAM_INPUT_MODE)).strip()
+    for sample in preprocessed_samples[1:]:
+        sample_input_mode = str(getattr(sample, "input_mode", DUAL_STREAM_INPUT_MODE)).strip()
+        if sample_input_mode != input_mode:
+            raise ValueError(
+                "Cannot batch preprocessed samples with mixed model input modes: "
+                f"{input_mode!r} and {sample_input_mode!r}."
+            )
     return Batch(
         images=np.stack(
             [sample.model_image for sample in preprocessed_samples],
@@ -862,21 +1369,66 @@ def _build_multi_sample_batch(preprocessed_samples: list[PreprocessedSample]) ->
             dtype=np.float32,
         ),
         rows=[dict(sample.sample_row) for sample in preprocessed_samples],
-        bbox_features=np.stack(
-            [sample.bbox_features for sample in preprocessed_samples],
-            axis=0,
-        ).astype(np.float32),
+        bbox_features=(
+            None
+            if input_mode == TRI_STREAM_INPUT_MODE
+            else np.stack(
+                [sample.bbox_features for sample in preprocessed_samples],
+                axis=0,
+            ).astype(np.float32)
+        ),
+        geometry=(
+            np.stack(
+                [sample.bbox_features for sample in preprocessed_samples],
+                axis=0,
+            ).astype(np.float32)
+            if input_mode == TRI_STREAM_INPUT_MODE
+            else None
+        ),
+        extra_inputs=(
+            {
+                TRI_STREAM_ORIENTATION_IMAGE_KEY: np.stack(
+                    [
+                        _require_orientation_image(sample)
+                        for sample in preprocessed_samples
+                    ],
+                    axis=0,
+                ).astype(np.float32)
+            }
+            if input_mode == TRI_STREAM_INPUT_MODE
+            else None
+        ),
     )
+
+
+def _require_orientation_image(sample: PreprocessedSample) -> np.ndarray:
+    if sample.orientation_image is None:
+        raise ValueError("Tri-stream preprocessed sample is missing orientation_image.")
+    return np.asarray(sample.orientation_image, dtype=np.float32)
 
 
 def _resolve_raw_corpus(corpus_dir: str | Path) -> RawCorpus:
     corpus_root = Path(corpus_dir).expanduser().resolve()
+    images_dir = (corpus_root / "images").resolve()
+    run_json_path = (corpus_root / "manifests" / "run.json").resolve()
+    samples_csv_path = (corpus_root / "manifests" / "samples.csv").resolve()
+    missing = [
+        str(path)
+        for path in (images_dir, run_json_path, samples_csv_path)
+        if not path.exists()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "Inference only supports raw-image corpora with images/ plus "
+            "manifests/run.json and manifests/samples.csv. Missing:\n  - "
+            + "\n  - ".join(missing)
+        )
     return RawCorpus(
         name=corpus_root.name,
         root=corpus_root,
-        images_dir=(corpus_root / "images").resolve(),
-        run_json_path=(corpus_root / "manifests" / "run.json").resolve(),
-        samples_csv_path=(corpus_root / "manifests" / "samples.csv").resolve(),
+        images_dir=images_dir,
+        run_json_path=run_json_path,
+        samples_csv_path=samples_csv_path,
     )
 
 
@@ -961,6 +1513,13 @@ def _build_inference_result(
         preprocessing_contract_version=str(
             model_context.preprocessing_contract.get("ContractVersion", "")
         ).strip(),
+        model_input_mode=str(getattr(preprocessed, "input_mode", "")),
+        orientation_image_shape=(
+            tuple(int(value) for value in preprocessed.orientation_image.shape)
+            if preprocessed.orientation_image is not None
+            else ()
+        ),
+        brightness_normalization=dict(preprocessed.brightness_normalization),
     )
 
 
@@ -976,6 +1535,145 @@ def _model_output_name(run_dir: str | Path) -> str:
     return sanitize_identifier(resolved_run_dir.name)
 
 
+def _result_artifact_paths(
+    result: InferenceResult,
+    *,
+    target_root: Path,
+) -> tuple[Path, Path]:
+    model_output_name = _model_output_name(result.run_dir)
+    stem = "__".join(
+        [
+            timestamp_slug(),
+            sanitize_identifier(result.selected_corpus_name),
+            sanitize_identifier(result.sample_id),
+        ]
+    )
+    return (
+        target_root / f"inference-output_{model_output_name}.json",
+        target_root / f"{stem}.roi.png",
+    )
+
+
+def _payload_for_saved_result(
+    result: InferenceResult,
+    *,
+    json_path: Path,
+    roi_path: Path | None,
+) -> dict[str, Any]:
+    payload = result.to_json_payload()
+    artifacts_payload = {
+        "json_path": to_repo_relative(json_path),
+    }
+    if roi_path is not None:
+        artifacts_payload["roi_image_path"] = to_repo_relative(roi_path)
+    payload["artifacts"] = artifacts_payload
+    return payload
+
+
+def _json_array_bounds(content: str) -> tuple[int, int, bool]:
+    first_index = next((index for index, char in enumerate(content) if not char.isspace()), -1)
+    last_index = next(
+        (
+            len(content) - 1 - index
+            for index, char in enumerate(reversed(content))
+            if not char.isspace()
+        ),
+        -1,
+    )
+    if first_index < 0 or last_index < 0:
+        return -1, -1, False
+    if content[first_index] != "[" or content[last_index] != "]":
+        raise ValueError("JSON output must be an array before batched append.")
+    has_items = bool(content[first_index + 1 : last_index].strip())
+    return first_index, last_index, has_items
+
+
+class _JsonArrayBatchAppender:
+    """Append JSON records in batches while keeping the target file valid."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.has_items = self._prepare_file()
+
+    def _prepare_file(self) -> bool:
+        if not self.path.exists() or self.path.stat().st_size == 0:
+            self.path.write_text("[\n]\n", encoding="utf-8")
+            return False
+
+        content = self.path.read_text(encoding="utf-8")
+        try:
+            _, _, has_items = _json_array_bounds(content)
+        except ValueError:
+            existing_content = read_json(self.path)
+            if isinstance(existing_content, dict):
+                existing_payloads = [existing_content]
+            elif isinstance(existing_content, list):
+                existing_payloads = existing_content
+            else:
+                raise ValueError(f"Unsupported JSON payload in existing inference output: {self.path}")
+            write_json(self.path, existing_payloads)
+            content = self.path.read_text(encoding="utf-8")
+            _, _, has_items = _json_array_bounds(content)
+        return has_items
+
+    def append(self, payloads: list[dict[str, Any]]) -> None:
+        if not payloads:
+            return
+
+        content = self.path.read_text(encoding="utf-8")
+        _, closing_index, has_items = _json_array_bounds(content)
+        with self.path.open("r+", encoding="utf-8") as handle:
+            handle.truncate(closing_index)
+            handle.seek(closing_index)
+            if has_items:
+                handle.write(",\n")
+            for index, payload in enumerate(payloads):
+                if index > 0:
+                    handle.write(",\n")
+                serialized = json.dumps(payload, indent=2, sort_keys=True)
+                handle.write("\n".join(f"  {line}" for line in serialized.splitlines()))
+            handle.write("\n]\n")
+            handle.flush()
+        self.has_items = True
+
+
+def _save_inference_result_batch(
+    results: list[InferenceResult],
+    *,
+    json_appender: _JsonArrayBatchAppender,
+    target_root: Path,
+    save_roi_images: bool,
+) -> list[InferenceResult]:
+    updated_results: list[InferenceResult] = []
+    payloads: list[dict[str, Any]] = []
+    for result in results:
+        json_path, candidate_roi_path = _result_artifact_paths(result, target_root=target_root)
+        if json_path != json_appender.path:
+            raise ValueError(
+                "Batched inference save expected one JSON target per run, got "
+                f"{json_path} and {json_appender.path}."
+            )
+        roi_path: Path | None = candidate_roi_path if save_roi_images else None
+        if roi_path is not None:
+            write_grayscale_png(roi_path, np.clip(result.roi_image * 255.0, 0, 255).astype(np.uint8))
+        payloads.append(_payload_for_saved_result(result, json_path=json_path, roi_path=roi_path))
+        updated_results.append(
+            replace(
+                result,
+                saved_json_path=json_path,
+                saved_roi_path=roi_path,
+            )
+        )
+
+    json_appender.append(payloads)
+    return updated_results
+
+
+def _release_result_image(result: InferenceResult) -> InferenceResult:
+    return replace(result, roi_image=np.empty((0, 0), dtype=np.float32))
+
+
 def save_inference_result(
     result: InferenceResult,
     *,
@@ -986,26 +1684,12 @@ def save_inference_result(
     target_root = Path(root).expanduser().resolve() if root is not None else results_root()
     target_root.mkdir(parents=True, exist_ok=True)
 
-    model_output_name = _model_output_name(result.run_dir)
-    stem = "__".join(
-        [
-            timestamp_slug(),
-            sanitize_identifier(result.selected_corpus_name),
-            sanitize_identifier(result.sample_id),
-        ]
-    )
-    json_path = target_root / f"inference-output_{model_output_name}.json"
+    json_path, candidate_roi_path = _result_artifact_paths(result, target_root=target_root)
     roi_path: Path | None = None
     if save_roi_image:
-        roi_path = target_root / f"{stem}.roi.png"
+        roi_path = candidate_roi_path
         write_grayscale_png(roi_path, np.clip(result.roi_image * 255.0, 0, 255).astype(np.uint8))
-    payload = result.to_json_payload()
-    artifacts_payload = {
-        "json_path": to_repo_relative(json_path),
-    }
-    if roi_path is not None:
-        artifacts_payload["roi_image_path"] = to_repo_relative(roi_path)
-    payload["artifacts"] = artifacts_payload
+    payload = _payload_for_saved_result(result, json_path=json_path, roi_path=roi_path)
     existing_payloads: list[dict[str, Any]] = []
     if json_path.exists():
         existing_content = read_json(json_path)
@@ -1030,10 +1714,11 @@ def run_single_sample_inference(
     save_roi_images: bool = True,
     results_root_path: str | Path | None = None,
     device: str | None = None,
+    log_sink: Callable[[str], None] | None = None,
 ) -> InferenceResult:
     """Run one end-to-end raw-image inference pass using ROI-FCN crop placement."""
     if roi_model_run_dir is None:
-        raise ValueError("roi_model_run_dir is required for v0.2 inference.")
+        raise ValueError("roi_model_run_dir is required for v0.3 inference.")
 
     corpus = _resolve_raw_corpus(corpus_dir)
 
@@ -1042,6 +1727,11 @@ def run_single_sample_inference(
     sample_row = select_sample_row(corpus, image_name)
     model, model_context = load_model_context(model_run_dir, device=device)
     roi_model, roi_model_context = load_roi_fcn_model_context(roi_model_run_dir, device=device)
+    _emit_inference_startup_log(
+        model_context=model_context,
+        roi_model_context=roi_model_context,
+        log_sink=log_sink,
+    )
     preprocessed = preprocess_single_sample(
         corpus=corpus,
         sample_row=sample_row,
@@ -1086,10 +1776,14 @@ def run_multi_sample_inference(
     save_roi_images: bool = True,
     results_root_path: str | Path | None = None,
     device: str | None = None,
+    log_sink: Callable[[str], None] | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
+    batch_size: int = 250,
+    retain_result_images: bool = True,
 ) -> list[InferenceResult]:
     """Run one corpus slice without reloading the models for each sample."""
     if roi_model_run_dir is None:
-        raise ValueError("roi_model_run_dir is required for v0.2 inference.")
+        raise ValueError("roi_model_run_dir is required for v0.3 inference.")
 
     offset_value = int(offset)
     num_samples_value = int(num_samples)
@@ -1097,6 +1791,9 @@ def run_multi_sample_inference(
         raise ValueError(f"offset must be >= 0, got {offset_value}")
     if num_samples_value <= 0:
         raise ValueError(f"num_samples must be > 0, got {num_samples_value}")
+    batch_size_value = int(batch_size)
+    if batch_size_value <= 0:
+        raise ValueError(f"batch_size must be > 0, got {batch_size_value}")
 
     corpus = _resolve_raw_corpus(corpus_dir)
     samples_df = load_corpus_samples(corpus)
@@ -1115,46 +1812,72 @@ def run_multi_sample_inference(
 
     model, model_context = load_model_context(model_run_dir, device=device)
     roi_model, roi_model_context = load_roi_fcn_model_context(roi_model_run_dir, device=device)
-
-    preprocessed_samples = [
-        preprocess_single_sample(
-            corpus=corpus,
-            sample_row=sample_row,
-            model_context=model_context,
-            roi_model=roi_model,
-            roi_model_context=roi_model_context,
-        )
-        for _, sample_row in selected_df.iterrows()
-    ]
-    prediction_rows = _run_prediction_batch(
-        model=model,
-        batch=_build_multi_sample_batch(preprocessed_samples),
+    _emit_inference_startup_log(
         model_context=model_context,
+        roi_model_context=roi_model_context,
+        log_sink=log_sink,
     )
-    if len(prediction_rows) != len(preprocessed_samples):
-        raise RuntimeError(
-            "Prediction row count did not match the requested sample slice: "
-            f"predictions={len(prediction_rows)}, samples={len(preprocessed_samples)}"
-        )
+
+    total_selected = int(len(selected_df))
+    target_root = Path(results_root_path).expanduser().resolve() if results_root_path is not None else results_root()
+    json_appender: _JsonArrayBatchAppender | None = None
+    if save_result:
+        target_root.mkdir(parents=True, exist_ok=True)
+        json_path = target_root / f"inference-output_{_model_output_name(model_context.run_dir)}.json"
+        json_appender = _JsonArrayBatchAppender(json_path)
 
     results: list[InferenceResult] = []
-    for index, preprocessed in enumerate(preprocessed_samples):
-        result = _build_inference_result(
-            preprocessed=preprocessed,
-            prediction_row=prediction_rows.iloc[index],
+    processed_total = 0
+    for chunk_start in range(0, total_selected, batch_size_value):
+        chunk_df = selected_df.iloc[chunk_start : chunk_start + batch_size_value]
+        preprocessed_samples: list[PreprocessedSample] = []
+        for _, sample_row in chunk_df.iterrows():
+            preprocessed_samples.append(
+                preprocess_single_sample(
+                    corpus=corpus,
+                    sample_row=sample_row,
+                    model_context=model_context,
+                    roi_model=roi_model,
+                    roi_model_context=roi_model_context,
+                )
+            )
+
+        prediction_rows = _run_prediction_batch(
+            model=model,
+            batch=_build_multi_sample_batch(preprocessed_samples),
             model_context=model_context,
-            roi_model_context=roi_model_context,
         )
+        if len(prediction_rows) != len(preprocessed_samples):
+            raise RuntimeError(
+                "Prediction row count did not match the requested sample slice: "
+                f"predictions={len(prediction_rows)}, samples={len(preprocessed_samples)}"
+            )
+
+        chunk_results: list[InferenceResult] = []
+        for index, preprocessed in enumerate(preprocessed_samples):
+            chunk_results.append(
+                _build_inference_result(
+                    preprocessed=preprocessed,
+                    prediction_row=prediction_rows.iloc[index],
+                    model_context=model_context,
+                    roi_model_context=roi_model_context,
+                )
+            )
+
         if save_result:
-            json_path, roi_path = save_inference_result(
-                result,
-                root=results_root_path,
-                save_roi_image=save_roi_images,
+            if json_appender is None:
+                raise RuntimeError("JSON appender was not initialized for saved inference output.")
+            chunk_results = _save_inference_result_batch(
+                chunk_results,
+                json_appender=json_appender,
+                target_root=target_root,
+                save_roi_images=save_roi_images,
             )
-            result = replace(
-                result,
-                saved_json_path=json_path,
-                saved_roi_path=roi_path,
-            )
-        results.append(result)
+
+        if not retain_result_images:
+            chunk_results = [_release_result_image(result) for result in chunk_results]
+        results.extend(chunk_results)
+        processed_total += len(chunk_results)
+        if progress_callback is not None:
+            progress_callback(int(processed_total), total_selected)
     return results

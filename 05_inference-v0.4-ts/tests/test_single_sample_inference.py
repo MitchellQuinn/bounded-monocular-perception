@@ -1,12 +1,14 @@
-"""End-to-end smoke tests for the v0.2 raw-image inference pipeline."""
+"""End-to-end smoke tests for the v0.3 raw-image inference pipeline."""
 
 from __future__ import annotations
 
 import json
 import numpy as np
+import pandas as pd
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -32,13 +34,15 @@ from inference_v0_1.pipeline import (
     run_single_sample_inference,
     save_inference_result,
 )
+import inference_v0_1.pipeline as pipeline
+from src.task_runtime import batch_to_model_inputs
 
 
 class SingleSampleInferenceTests(unittest.TestCase):
     def _select_raw_corpus(self):
         corpora = discover_raw_corpora()
         if not corpora:
-            self.skipTest("No local raw-image corpora available under 05_inference-v0.2/input.")
+            self.skipTest("No local raw-image corpora available under 05_inference-v0.4/input.")
         return corpora[0]
 
     def test_discover_model_runs_includes_both_runtime_families(self) -> None:
@@ -62,6 +66,91 @@ class SingleSampleInferenceTests(unittest.TestCase):
         corpus_names = [corpus.name for corpus in explicit_local]
         self.assertNotIn("26-04-11_v021-validate-shuffled-images", corpus_names)
         self.assertTrue(all(PROJECT_ROOT / "input" in corpus.root.parents for corpus in explicit_local))
+
+    def test_run_functions_reject_non_raw_corpus_paths(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            corpus_root = Path(tmp_dir) / "npz-only-corpus"
+            corpus_root.mkdir()
+
+            with self.assertRaisesRegex(FileNotFoundError, "only supports raw-image corpora"):
+                pipeline._resolve_raw_corpus(corpus_root)
+
+    def test_load_model_context_reads_dataset_summary_preprocessing_contract(self) -> None:
+        preprocessing_contract = {
+            "ContractVersion": "rb-preprocess-v4-tri-stream-orientation-v1",
+            "CurrentStage": "pack_tri_stream",
+            "CompletedStages": ["detect", "silhouette", "pack_tri_stream"],
+            "CurrentRepresentation": {"Kind": "tri_stream_npz"},
+            "Stages": {"pack_tri_stream": {"CanvasWidth": 300, "CanvasHeight": 300}},
+        }
+
+        with TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir) / "model" / "runs" / "run_0001"
+            run_dir.mkdir(parents=True)
+            (run_dir / "config.json").write_text("{}", encoding="utf-8")
+            (run_dir / "dataset_summary.json").write_text(
+                json.dumps({"preprocessing_contract": preprocessing_contract}),
+                encoding="utf-8",
+            )
+            (run_dir / "best.pt").touch()
+
+            with (
+                patch("inference_v0_1.pipeline.torch.cuda.is_available", return_value=True),
+                patch.object(
+                    pipeline,
+                    "_load_model_from_run",
+                    return_value=(
+                        torch.nn.Identity(),
+                        SimpleNamespace(
+                            task_contract={"input_mode": pipeline.TRI_STREAM_INPUT_MODE}
+                        ),
+                    ),
+                ),
+            ):
+                _, context = load_model_context(run_dir, device="cuda")
+
+        self.assertEqual(
+            context.preprocessing_contract["ContractVersion"],
+            "rb-preprocess-v4-tri-stream-orientation-v1",
+        )
+        self.assertEqual(context.preprocessing_contract["CurrentStage"], "pack_tri_stream")
+        self.assertEqual(context.dataset_summary["preprocessing_contract"], preprocessing_contract)
+
+    def test_tri_stream_batch_includes_orientation_and_geometry_inputs(self) -> None:
+        samples = [
+            SimpleNamespace(
+                sample_row={"sample_id": f"sample-{idx}"},
+                model_image=np.full((1, 4, 4), 0.25 + idx, dtype=np.float32),
+                orientation_image=np.full((1, 4, 4), 0.75 + idx, dtype=np.float32),
+                bbox_features=np.arange(10, dtype=np.float32) + idx,
+                input_mode=pipeline.TRI_STREAM_INPUT_MODE,
+                actual_distance_m=float(idx + 1),
+                actual_yaw_sin=0.0,
+                actual_yaw_cos=1.0,
+            )
+            for idx in range(2)
+        ]
+
+        batch = pipeline._build_multi_sample_batch(samples)
+        model_inputs = batch_to_model_inputs(
+            batch,
+            {"input_mode": pipeline.TRI_STREAM_INPUT_MODE},
+            device=torch.device("cpu"),
+        )
+
+        self.assertIsNone(batch.bbox_features)
+        self.assertEqual(batch.images.shape, (2, 1, 4, 4))
+        self.assertIsNotNone(batch.geometry)
+        self.assertEqual(batch.geometry.shape, (2, 10))
+        self.assertIsNotNone(batch.extra_inputs)
+        self.assertEqual(
+            batch.extra_inputs[pipeline.TRI_STREAM_ORIENTATION_IMAGE_KEY].shape,
+            (2, 1, 4, 4),
+        )
+        self.assertEqual(
+            set(model_inputs),
+            {"x_distance_image", "x_orientation_image", "x_geometry"},
+        )
 
     def test_save_inference_result_can_skip_roi_image_output(self) -> None:
         run_dir = PROJECT_ROOT / "models" / "distance-orientation" / "demo-model" / "runs" / "run_demo"
@@ -119,6 +208,69 @@ class SingleSampleInferenceTests(unittest.TestCase):
             self.assertEqual(payload[0]["artifacts"]["json_path"], str(json_path.resolve()))
             self.assertNotIn("roi_image_path", payload[0]["artifacts"])
 
+    def test_batched_json_appender_keeps_output_valid_after_each_batch(self) -> None:
+        run_dir = PROJECT_ROOT / "models" / "distance-orientation" / "demo-model" / "runs" / "run_demo"
+        checkpoint_path = run_dir / "best.pt"
+        roi_run_dir = PROJECT_ROOT / "models" / "roi-fcn" / "demo-roi" / "runs" / "run_demo"
+        roi_checkpoint_path = roi_run_dir / "best.pt"
+
+        def make_result(sample_id: str) -> InferenceResult:
+            return InferenceResult(
+                selected_model_label="distance-orientation / demo-model / run_demo",
+                selected_roi_model_label="roi-fcn / demo-roi / run_demo",
+                selected_corpus_name="demo-corpus",
+                selected_image_name=f"{sample_id}.png",
+                sample_id=sample_id,
+                roi_image=np.ones((2, 2), dtype=np.float32),
+                predicted_crop_center_x_px=1.0,
+                predicted_crop_center_y_px=1.0,
+                predicted_roi_request_xyxy_px=np.array([0.0, 0.0, 2.0, 2.0], dtype=np.float32),
+                predicted_distance_m=4.0,
+                actual_distance_m=4.0,
+                distance_delta_m=0.0,
+                absolute_distance_error_m=0.0,
+                predicted_orientation_deg=90.0,
+                actual_orientation_deg=90.0,
+                orientation_delta_deg=0.0,
+                absolute_orientation_error_deg=0.0,
+                device="cuda",
+                roi_device="cuda",
+                run_dir=run_dir,
+                checkpoint_path=checkpoint_path,
+                roi_run_dir=roi_run_dir,
+                roi_checkpoint_path=roi_checkpoint_path,
+                source_image_path=PROJECT_ROOT / "tests" / "fixtures" / f"{sample_id}.png",
+                source_run_json_path=PROJECT_ROOT / "tests" / "fixtures" / "run.json",
+                source_samples_csv_path=PROJECT_ROOT / "tests" / "fixtures" / "samples.csv",
+                preprocessing_contract_version="v-test",
+            )
+
+        with TemporaryDirectory() as tmp_dir:
+            target_root = Path(tmp_dir)
+            json_path = target_root / "inference-output_demo-model.json"
+            appender = pipeline._JsonArrayBatchAppender(json_path)
+
+            first_batch = pipeline._save_inference_result_batch(
+                [make_result("sample-001"), make_result("sample-002")],
+                json_appender=appender,
+                target_root=target_root,
+                save_roi_images=False,
+            )
+            first_payload = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(first_payload), 2)
+            self.assertTrue(all(result.saved_json_path == json_path for result in first_batch))
+
+            second_batch = pipeline._save_inference_result_batch(
+                [make_result("sample-003")],
+                json_appender=appender,
+                target_root=target_root,
+                save_roi_images=False,
+            )
+            second_payload = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(second_payload), 3)
+            self.assertEqual(second_payload[-1]["selected_image"]["sample_id"], "sample-003")
+            self.assertTrue(all(result.saved_json_path == json_path for result in second_batch))
+
     def test_distance_model_loading_requires_cuda(self) -> None:
         distance_model = discover_model_runs(
             PROJECT_ROOT / "models",
@@ -138,6 +290,82 @@ class SingleSampleInferenceTests(unittest.TestCase):
         with patch("inference_v0_1.pipeline.torch.cuda.is_available", return_value=True):
             with self.assertRaisesRegex(ValueError, "Requested device 'cpu' cannot be used for inference"):
                 load_roi_fcn_model_context(roi_model.run_dir, device="cpu")
+
+    def test_multi_sample_inference_reports_preprocessing_progress(self) -> None:
+        selected_rows = pd.DataFrame(
+            [
+                {"sample_id": "sample-001"},
+                {"sample_id": "sample-002"},
+                {"sample_id": "sample-003"},
+            ]
+        )
+        observed_progress: list[tuple[int, int]] = []
+        observed_batch_sizes: list[int] = []
+
+        def fake_preprocess_single_sample(*, sample_row, **_kwargs):
+            return SimpleNamespace(
+                sample_row={"sample_id": str(sample_row["sample_id"])},
+                model_image=np.zeros((1, 2, 2), dtype=np.float32),
+                bbox_features=np.zeros((2,), dtype=np.float32),
+                actual_distance_m=1.0,
+                actual_yaw_sin=0.0,
+                actual_yaw_cos=1.0,
+            )
+
+        def fake_build_inference_result(*, preprocessed, **_kwargs):
+            return preprocessed.sample_row["sample_id"]
+
+        def fake_run_prediction_batch(*, batch, **_kwargs):
+            observed_batch_sizes.append(int(batch.images.shape[0]))
+            return pd.DataFrame([{} for _ in range(int(batch.images.shape[0]))])
+
+        with (
+            patch.object(
+                pipeline,
+                "_resolve_raw_corpus",
+                return_value=SimpleNamespace(name="demo-corpus"),
+            ),
+            patch.object(pipeline, "load_corpus_samples", return_value=selected_rows),
+            patch.object(
+                pipeline,
+                "load_model_context",
+                return_value=(object(), SimpleNamespace(device="cuda")),
+            ),
+            patch.object(
+                pipeline,
+                "load_roi_fcn_model_context",
+                return_value=(object(), SimpleNamespace(device="cuda")),
+            ),
+            patch.object(
+                pipeline,
+                "preprocess_single_sample",
+                side_effect=fake_preprocess_single_sample,
+            ),
+            patch.object(
+                pipeline,
+                "_run_prediction_batch",
+                side_effect=fake_run_prediction_batch,
+            ),
+            patch.object(
+                pipeline,
+                "_build_inference_result",
+                side_effect=fake_build_inference_result,
+            ),
+        ):
+            results = run_multi_sample_inference(
+                "distance-run",
+                "corpus-root",
+                roi_model_run_dir="roi-run",
+                num_samples=3,
+                batch_size=2,
+                progress_callback=lambda processed, total: observed_progress.append(
+                    (processed, total)
+                ),
+            )
+
+        self.assertEqual(observed_progress, [(2, 3), (3, 3)])
+        self.assertEqual(observed_batch_sizes, [2, 1])
+        self.assertEqual(results, ["sample-001", "sample-002", "sample-003"])
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA required for inference smoke tests.")
     def test_single_sample_inference_runs_end_to_end(self) -> None:

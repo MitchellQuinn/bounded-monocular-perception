@@ -1,4 +1,4 @@
-"""Brightness-sensitivity diagnostics for the v0.2 distance-orientation regressor."""
+"""Brightness-sensitivity diagnostics for the v0.3 distance-orientation regressor."""
 
 from __future__ import annotations
 
@@ -17,7 +17,10 @@ from src.data import Batch
 
 from .discovery import RawCorpus, load_corpus_samples
 from .pipeline import (
+    TRI_STREAM_INPUT_MODE,
+    TRI_STREAM_ORIENTATION_IMAGE_KEY,
     _resolve_raw_corpus,
+    _emit_inference_startup_log,
     _run_prediction_batch,
     _signed_orientation_delta_deg,
     load_model_context,
@@ -80,6 +83,7 @@ def run_brightness_sensitivity_analysis(
     progress_callback: Callable[[int, int], None] | None = None,
     vehicle_threshold: float = 0.999,
     device: str | None = None,
+    log_sink: Callable[[str], None] | None = None,
 ) -> BrightnessSensitivityResult:
     """Measure how prediction quality and stability change under controlled intensity shifts.
 
@@ -90,7 +94,7 @@ def run_brightness_sensitivity_analysis(
     need to fit on the GPU at once.
     """
     if roi_model_run_dir is None:
-        raise ValueError("roi_model_run_dir is required for v0.2 brightness analysis.")
+        raise ValueError("roi_model_run_dir is required for v0.3 brightness analysis.")
 
     corpus = _resolve_analysis_corpus(corpus_dir)
     selected_rows = _select_analysis_rows(
@@ -107,6 +111,11 @@ def run_brightness_sensitivity_analysis(
     normalized_gains = _normalize_darkness_gains(darkness_gains)
     model, model_context = load_model_context(model_run_dir, device=device)
     roi_model, roi_model_context = load_roi_fcn_model_context(roi_model_run_dir, device=device)
+    _emit_inference_startup_log(
+        model_context=model_context,
+        roi_model_context=roi_model_context,
+        log_sink=log_sink,
+    )
 
     prediction_records: list[dict[str, object]] = []
     for start_index, chunk_rows in _iter_selected_row_chunks(selected_rows, chunk_size=batch_size_value):
@@ -318,11 +327,38 @@ def _build_variant_batch(
     preprocessed_samples: Sequence,
     variant_images: Sequence[np.ndarray],
 ) -> Batch:
+    if not preprocessed_samples:
+        raise ValueError("At least one preprocessed sample is required.")
     if len(preprocessed_samples) != len(variant_images):
         raise ValueError(
             "Variant image count must match preprocessed sample count; "
             f"got {len(variant_images)} and {len(preprocessed_samples)}"
         )
+    input_mode = str(getattr(preprocessed_samples[0], "input_mode", "")).strip()
+    is_tri_stream = input_mode == TRI_STREAM_INPUT_MODE
+    extra_inputs = None
+    geometry = None
+    bbox_features = None
+    if is_tri_stream:
+        orientation_images = []
+        for sample in preprocessed_samples:
+            orientation_image = getattr(sample, "orientation_image", None)
+            if orientation_image is None:
+                raise ValueError("Tri-stream brightness analysis sample is missing orientation_image.")
+            orientation_images.append(np.asarray(orientation_image, dtype=np.float32))
+        extra_inputs = {
+            TRI_STREAM_ORIENTATION_IMAGE_KEY: np.stack(orientation_images, axis=0).astype(np.float32)
+        }
+        geometry = np.stack(
+            [np.asarray(sample.bbox_features, dtype=np.float32) for sample in preprocessed_samples],
+            axis=0,
+        ).astype(np.float32)
+    else:
+        bbox_features = np.stack(
+            [np.asarray(sample.bbox_features, dtype=np.float32) for sample in preprocessed_samples],
+            axis=0,
+        ).astype(np.float32)
+
     return Batch(
         images=np.stack(variant_images, axis=0).astype(np.float32),
         targets=np.asarray(
@@ -337,10 +373,9 @@ def _build_variant_batch(
             dtype=np.float32,
         ),
         rows=[dict(sample.sample_row) for sample in preprocessed_samples],
-        bbox_features=np.stack(
-            [np.asarray(sample.bbox_features, dtype=np.float32) for sample in preprocessed_samples],
-            axis=0,
-        ).astype(np.float32),
+        bbox_features=bbox_features,
+        geometry=geometry,
+        extra_inputs=extra_inputs,
     )
 
 
