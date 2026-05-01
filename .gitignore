@@ -54,6 +54,10 @@ pip-wheel-metadata/
 05_inference-v0.2/output/**/brightness-analysis_*.json
 05_inference-v0.3/output/**/inference-output_*.json
 05_inference-v0.3/output/**/brightness-analysis_*.json
+05_inference-v0.3-ds/output/**/inference-output_*.json
+05_inference-v0.3-ds/output/**/brightness-analysis_*.json
+05_inference-v0.4-ts/output/**/inference-output_*.json
+05_inference-v0.4-ts/output/**/brightness-analysis_*.json
 
 
 # ------------------------------
