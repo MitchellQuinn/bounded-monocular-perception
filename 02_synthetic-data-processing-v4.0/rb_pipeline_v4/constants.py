@@ -7,13 +7,17 @@ DETECT_ROOT_NAME = "detect-images-v4"
 SILHOUETTE_ROOT_NAME = "silhouette-images-v4"
 TRAINING_ROOT_NAME = "training-data-v4"
 TRAINING_SHUFFLED_ROOT_NAME = "training-data-v4-shuffled"
+TRI_STREAM_TRAINING_ROOT_NAME = "training-data-v4-tri-stream"
+TRI_STREAM_TRAINING_SHUFFLED_ROOT_NAME = "training-data-v4-tri-stream-shuffled"
 
 RUN_JSON_FILENAME = "run.json"
 SAMPLES_FILENAME = "samples.csv"
 
 PREPROCESSING_CONTRACT_KEY = "PreprocessingContract"
 PREPROCESSING_CONTRACT_VERSION_V4 = "rb-preprocess-v4-dual-stream-orientation-brightness-v1"
+PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1 = "rb-preprocess-v4-tri-stream-orientation-v1"
 PREPROCESSING_STAGE_ORDER_V4 = ("detect", "silhouette", "pack_dual_stream")
+TRI_STREAM_STAGE_ORDER_V1 = ("detect", "silhouette", "pack_tri_stream")
 
 KNOWN_STAGE_SUBDIRS = {"images", "arrays", "manifests"}
 
@@ -97,6 +101,25 @@ PACK_STAGE_COLUMNS = [
     "bbox_feat_area_norm",
 ]
 
+TRI_STREAM_PACK_STAGE_COLUMNS = [
+    "pack_tri_stream_stage_status",
+    "pack_tri_stream_stage_error",
+    "npz_filename",
+    "npz_row_index",
+    "tri_stream_canvas_width_px",
+    "tri_stream_canvas_height_px",
+    "bbox_feat_cx_px",
+    "bbox_feat_cy_px",
+    "bbox_feat_w_px",
+    "bbox_feat_h_px",
+    "bbox_feat_cx_norm",
+    "bbox_feat_cy_norm",
+    "bbox_feat_w_norm",
+    "bbox_feat_h_norm",
+    "bbox_feat_aspect_ratio",
+    "bbox_feat_area_norm",
+]
+
 BRIGHTNESS_NORMALIZATION_COLUMNS = [
     "brightness_normalization_enabled",
     "brightness_normalization_method",
@@ -120,10 +143,28 @@ BBOX_FEATURE_SCHEMA = (
     "area_norm",
 )
 
+TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY = "x_distance_image"
+TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY = "x_orientation_image"
+TRI_STREAM_GEOMETRY_ARRAY_KEY = "x_geometry"
+
 REQUIRED_DUAL_STREAM_NPZ_KEYS = {
     "silhouette_crop",
     "bbox_features",
     "y_position_3d",
+    "y_distance_m",
+    "y_yaw_deg",
+    "y_yaw_sin",
+    "y_yaw_cos",
+    "sample_id",
+    "image_filename",
+    "npz_row_index",
+}
+
+REQUIRED_TRI_STREAM_NPZ_KEYS = {
+    TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
+    TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
+    TRI_STREAM_GEOMETRY_ARRAY_KEY,
+    "x_geometry_schema",
     "y_distance_m",
     "y_yaw_deg",
     "y_yaw_sin",

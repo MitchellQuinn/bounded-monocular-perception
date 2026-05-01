@@ -11,10 +11,12 @@ import pandas as pd
 
 from .constants import (
     PREPROCESSING_CONTRACT_KEY,
+    PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1,
     PREPROCESSING_CONTRACT_VERSION_V4,
     PREPROCESSING_STAGE_ORDER_V4,
     RUN_JSON_FILENAME,
     SAMPLES_FILENAME,
+    TRI_STREAM_STAGE_ORDER_V1,
 )
 
 
@@ -73,17 +75,19 @@ def write_run_json(manifest_dir: Path, payload: dict[str, Any], *, dry_run: bool
     return path
 
 
-def upsert_preprocessing_contract_v4(
+def _upsert_preprocessing_contract(
     manifest_dir: Path,
     *,
     stage_name: str,
     stage_parameters: dict[str, Any],
     current_representation: dict[str, Any],
+    contract_version: str,
+    stage_order: tuple[str, ...],
     dry_run: bool = False,
 ) -> Path:
     normalized_stage = str(stage_name).strip().lower()
-    if normalized_stage not in PREPROCESSING_STAGE_ORDER_V4:
-        allowed = ", ".join(PREPROCESSING_STAGE_ORDER_V4)
+    if normalized_stage not in stage_order:
+        allowed = ", ".join(stage_order)
         raise ValueError(f"Unsupported v4 stage '{stage_name}'. Allowed: {allowed}.")
 
     payload = load_run_json(manifest_dir)
@@ -95,20 +99,20 @@ def upsert_preprocessing_contract_v4(
         [
             str(value).strip().lower()
             for value in completed_raw
-            if str(value).strip().lower() in PREPROCESSING_STAGE_ORDER_V4
+            if str(value).strip().lower() in stage_order
         ]
         if isinstance(completed_raw, list)
         else []
     )
     if normalized_stage not in completed:
         completed.append(normalized_stage)
-    completed = [stage for stage in PREPROCESSING_STAGE_ORDER_V4 if stage in completed]
+    completed = [stage for stage in stage_order if stage in completed]
 
     stages_raw = contract.get("Stages")
     stages = stages_raw.copy() if isinstance(stages_raw, dict) else {}
     stages[normalized_stage] = dict(stage_parameters)
 
-    contract["ContractVersion"] = PREPROCESSING_CONTRACT_VERSION_V4
+    contract["ContractVersion"] = str(contract_version)
     contract["CurrentStage"] = normalized_stage
     contract["CompletedStages"] = completed
     contract["CurrentRepresentation"] = dict(current_representation)
@@ -116,3 +120,41 @@ def upsert_preprocessing_contract_v4(
 
     payload[PREPROCESSING_CONTRACT_KEY] = contract
     return write_run_json(manifest_dir, payload, dry_run=dry_run)
+
+
+def upsert_preprocessing_contract_v4(
+    manifest_dir: Path,
+    *,
+    stage_name: str,
+    stage_parameters: dict[str, Any],
+    current_representation: dict[str, Any],
+    dry_run: bool = False,
+) -> Path:
+    return _upsert_preprocessing_contract(
+        manifest_dir,
+        stage_name=stage_name,
+        stage_parameters=stage_parameters,
+        current_representation=current_representation,
+        contract_version=PREPROCESSING_CONTRACT_VERSION_V4,
+        stage_order=PREPROCESSING_STAGE_ORDER_V4,
+        dry_run=dry_run,
+    )
+
+
+def upsert_preprocessing_contract_v4_tri_stream(
+    manifest_dir: Path,
+    *,
+    stage_name: str,
+    stage_parameters: dict[str, Any],
+    current_representation: dict[str, Any],
+    dry_run: bool = False,
+) -> Path:
+    return _upsert_preprocessing_contract(
+        manifest_dir,
+        stage_name=stage_name,
+        stage_parameters=stage_parameters,
+        current_representation=current_representation,
+        contract_version=PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1,
+        stage_order=TRI_STREAM_STAGE_ORDER_V1,
+        dry_run=dry_run,
+    )

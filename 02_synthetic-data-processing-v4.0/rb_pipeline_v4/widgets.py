@@ -1136,6 +1136,27 @@ class PipelineLauncherV4:
             sample_limit=self._sample_limit(),
         )
 
+    def _reset_extra_preview_outputs(self) -> None:
+        """Hook for launcher variants with additional preview streams."""
+
+    def _render_extra_pack_preview(
+        self,
+        *,
+        extracted_roi_gray: np.ndarray,
+        background_mask: np.ndarray,
+        pack_config: PackDualStreamStageConfigV4,
+    ) -> None:
+        """Hook for launcher variants with additional pack outputs."""
+        del extracted_roi_gray, background_mask, pack_config
+
+    def _saved_path_preview_text(self, pack_config: PackDualStreamStageConfigV4) -> str:
+        return (
+            "<b>Saved Path:</b> fixed ROI canvas -> silhouette mask isolation -> invert grayscale inside mask "
+            "-> white outside mask -> optional foreground brightness normalization -> centered canvas "
+            f"({pack_config.normalized_canvas_height_px()}x{pack_config.normalized_canvas_width_px()})"
+            " -> npz['silhouette_crop']"
+        )
+
     def _get_preview_detector(self, config: DetectStageConfigV4):
         backend = config.normalized_detector_backend()
         edge_ids = config.normalized_defender_class_ids()
@@ -1287,6 +1308,7 @@ class PipelineLauncherV4:
         self.preview_packed_canvas.value = b""
         self.preview_silhouette_full.value = b""
         self.preview_status_html.value = ""
+        self._reset_extra_preview_outputs()
 
         if not run_name:
             self.preview_status_html.value = "Select a run first."
@@ -1643,6 +1665,11 @@ class PipelineLauncherV4:
 
                 self.preview_silhouette_roi.value = _to_png_bytes(_preview_float_image_to_uint8(roi_repr))
                 self.preview_packed_canvas.value = _to_png_bytes(_preview_float_image_to_uint8(roi_canvas))
+                self._render_extra_pack_preview(
+                    extracted_roi_gray=extracted_roi_gray,
+                    background_mask=background_mask,
+                    pack_config=pack_config,
+                )
 
                 if roi_source_bounds is not None and roi_canvas_bounds is not None:
                     src_x1, src_y1, src_x2, src_y2 = roi_source_bounds
@@ -1695,12 +1722,7 @@ class PipelineLauncherV4:
             f"<b>Detect:</b> {detect_status} [source={detection_source}]" + (f" ({detect_error})" if detect_error else ""),
             f"<b>Silhouette:</b> {silhouette_status}" + (f" ({silhouette_error})" if silhouette_error else ""),
             f"<b>ROI Canvas (from Pack):</b> {pack_config.normalized_canvas_width_px()}x{pack_config.normalized_canvas_height_px()}",
-            (
-                "<b>Saved Path:</b> fixed ROI canvas -> silhouette mask isolation -> invert grayscale inside mask "
-                "-> white outside mask -> optional foreground brightness normalization -> centered canvas "
-                f"({pack_config.normalized_canvas_height_px()}x{pack_config.normalized_canvas_width_px()})"
-                " -> npz['silhouette_crop']"
-            ),
+            self._saved_path_preview_text(pack_config),
         ]
         if brightness_note:
             notes.append(brightness_note)

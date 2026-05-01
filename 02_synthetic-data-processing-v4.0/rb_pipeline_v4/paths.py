@@ -13,6 +13,7 @@ from .constants import (
     SAMPLES_FILENAME,
     SILHOUETTE_ROOT_NAME,
     TRAINING_ROOT_NAME,
+    TRI_STREAM_TRAINING_ROOT_NAME,
 )
 
 
@@ -57,6 +58,10 @@ def get_silhouette_root(project_root: Path) -> Path:
 
 def get_training_root(project_root: Path) -> Path:
     return project_root / TRAINING_ROOT_NAME
+
+
+def get_tri_stream_training_root(project_root: Path) -> Path:
+    return project_root / TRI_STREAM_TRAINING_ROOT_NAME
 
 
 def list_input_runs(project_root: Path) -> list[str]:
@@ -109,6 +114,16 @@ def silhouette_run_paths(project_root: Path, run_name: str) -> RunPathsV4:
 
 def training_run_paths(project_root: Path, run_name: str) -> RunPathsV4:
     run_root = get_training_root(project_root) / run_name
+    return RunPathsV4(
+        run_name=run_name,
+        root=run_root,
+        manifests_dir=run_root / "manifests",
+        arrays_dir=run_root / "arrays",
+    )
+
+
+def tri_stream_training_run_paths(project_root: Path, run_name: str) -> RunPathsV4:
+    run_root = get_tri_stream_training_root(project_root) / run_name
     return RunPathsV4(
         run_name=run_name,
         root=run_root,

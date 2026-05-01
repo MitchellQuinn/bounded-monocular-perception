@@ -7,7 +7,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .constants import REQUIRED_DUAL_STREAM_NPZ_KEYS
+from .constants import (
+    BBOX_FEATURE_SCHEMA,
+    REQUIRED_DUAL_STREAM_NPZ_KEYS,
+    REQUIRED_TRI_STREAM_NPZ_KEYS,
+    TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
+    TRI_STREAM_GEOMETRY_ARRAY_KEY,
+    TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
+)
 from .paths import RunPathsV4, resolve_manifest_path
 
 
@@ -164,6 +171,127 @@ def validate_dual_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: b
 
         if np.isnan(bbox_features).any() or np.isinf(bbox_features).any():
             raise ValueError("bbox_features contains NaN or Inf")
+
+        if np.isnan(y_yaw_deg).any() or np.isinf(y_yaw_deg).any():
+            raise ValueError("y_yaw_deg contains NaN or Inf")
+        if np.isnan(y_yaw_sin).any() or np.isinf(y_yaw_sin).any():
+            raise ValueError("y_yaw_sin contains NaN or Inf")
+        if np.isnan(y_yaw_cos).any() or np.isinf(y_yaw_cos).any():
+            raise ValueError("y_yaw_cos contains NaN or Inf")
+
+        yaw_rad = np.deg2rad(y_yaw_deg.astype(np.float64))
+        expected_sin = np.sin(yaw_rad)
+        expected_cos = np.cos(yaw_rad)
+        if not np.allclose(y_yaw_sin.astype(np.float64), expected_sin, atol=1e-5, rtol=1e-5):
+            raise ValueError("y_yaw_sin is inconsistent with y_yaw_deg")
+        if not np.allclose(y_yaw_cos.astype(np.float64), expected_cos, atol=1e-5, rtol=1e-5):
+            raise ValueError("y_yaw_cos is inconsistent with y_yaw_deg")
+
+        if require_v1_compat_arrays:
+            if "X" not in data or "y" not in data:
+                raise ValueError("NPZ is missing required v1 compatibility arrays X/y")
+            x = data["X"]
+            y = data["y"]
+            if x.shape[0] != n or y.shape[0] != n:
+                raise ValueError("Compatibility arrays X/y do not align with primary arrays")
+
+
+def validate_tri_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: bool = False) -> None:
+    """Validate semantic tri-stream distance/orientation/geometry NPZ shards."""
+    with np.load(npz_path, allow_pickle=False) as data:
+        keys = set(data.files)
+        missing = sorted(REQUIRED_TRI_STREAM_NPZ_KEYS - keys)
+        if missing:
+            raise ValueError(f"NPZ missing required key(s): {missing}")
+
+        distance_image = data[TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY]
+        orientation_image = data[TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY]
+        geometry = data[TRI_STREAM_GEOMETRY_ARRAY_KEY]
+        y_distance_m = data["y_distance_m"]
+        y_yaw_deg = data["y_yaw_deg"]
+        y_yaw_sin = data["y_yaw_sin"]
+        y_yaw_cos = data["y_yaw_cos"]
+        sample_id = data["sample_id"]
+        image_filename = data["image_filename"]
+        row_index = data["npz_row_index"]
+
+        _assert_numeric(TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY, distance_image)
+        _assert_numeric(TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY, orientation_image)
+        _assert_numeric(TRI_STREAM_GEOMETRY_ARRAY_KEY, geometry)
+        _assert_numeric("y_distance_m", y_distance_m)
+        _assert_numeric("y_yaw_deg", y_yaw_deg)
+        _assert_numeric("y_yaw_sin", y_yaw_sin)
+        _assert_numeric("y_yaw_cos", y_yaw_cos)
+
+        if str(distance_image.dtype) != "float32":
+            raise ValueError(f"{TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY} must be float32, got {distance_image.dtype}")
+        if str(orientation_image.dtype) != "float32":
+            raise ValueError(f"{TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} must be float32, got {orientation_image.dtype}")
+        if distance_image.ndim != 4 or int(distance_image.shape[1]) != 1:
+            raise ValueError(
+                f"{TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY} must have shape (N, 1, H, W), "
+                f"got {distance_image.shape}"
+            )
+        if orientation_image.ndim != 4 or int(orientation_image.shape[1]) != 1:
+            raise ValueError(
+                f"{TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} must have shape (N, 1, H, W), "
+                f"got {orientation_image.shape}"
+            )
+        if tuple(orientation_image.shape) != tuple(distance_image.shape):
+            raise ValueError(
+                f"{TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} shape must match "
+                f"{TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY}; "
+                f"distance={distance_image.shape}, orientation={orientation_image.shape}"
+            )
+        if geometry.ndim != 2 or geometry.shape[1] != 10:
+            raise ValueError(f"{TRI_STREAM_GEOMETRY_ARRAY_KEY} must have shape (N, 10), got {geometry.shape}")
+        if str(geometry.dtype) != "float32":
+            raise ValueError(f"{TRI_STREAM_GEOMETRY_ARRAY_KEY} must be float32, got {geometry.dtype}")
+        if y_distance_m.ndim != 1:
+            raise ValueError(f"y_distance_m must have shape (N,), got {y_distance_m.shape}")
+        if y_yaw_deg.ndim != 1:
+            raise ValueError(f"y_yaw_deg must have shape (N,), got {y_yaw_deg.shape}")
+        if y_yaw_sin.ndim != 1:
+            raise ValueError(f"y_yaw_sin must have shape (N,), got {y_yaw_sin.shape}")
+        if y_yaw_cos.ndim != 1:
+            raise ValueError(f"y_yaw_cos must have shape (N,), got {y_yaw_cos.shape}")
+
+        n = int(distance_image.shape[0])
+        lengths = {
+            TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY: int(orientation_image.shape[0]),
+            TRI_STREAM_GEOMETRY_ARRAY_KEY: int(geometry.shape[0]),
+            "y_distance_m": int(y_distance_m.shape[0]),
+            "y_yaw_deg": int(y_yaw_deg.shape[0]),
+            "y_yaw_sin": int(y_yaw_sin.shape[0]),
+            "y_yaw_cos": int(y_yaw_cos.shape[0]),
+            "sample_id": int(sample_id.shape[0]),
+            "image_filename": int(image_filename.shape[0]),
+            "npz_row_index": int(row_index.shape[0]),
+        }
+        bad = {name: length for name, length in lengths.items() if length != n}
+        if bad:
+            raise ValueError(f"NPZ first-dimension mismatch against {TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY} N={n}: {bad}")
+
+        if not np.array_equal(row_index.astype(np.int64), np.arange(n, dtype=np.int64)):
+            raise ValueError("npz_row_index must be contiguous 0..N-1")
+
+        for name, image in (
+            (TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY, distance_image),
+            (TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY, orientation_image),
+        ):
+            if not np.isfinite(image).all():
+                raise ValueError(f"{name} contains NaN or Inf")
+            if image.size and (float(image.min()) < -1e-6 or float(image.max()) > 1.0 + 1e-6):
+                raise ValueError(f"{name} values must be in [0, 1]")
+
+        if np.isnan(geometry).any() or np.isinf(geometry).any():
+            raise ValueError(f"{TRI_STREAM_GEOMETRY_ARRAY_KEY} contains NaN or Inf")
+        if "x_geometry_schema" in data:
+            raw_schema = np.asarray(data["x_geometry_schema"]).astype(str).tolist()
+            if tuple(raw_schema) != tuple(BBOX_FEATURE_SCHEMA):
+                raise ValueError(
+                    f"x_geometry_schema mismatch; expected {list(BBOX_FEATURE_SCHEMA)}, got {raw_schema}"
+                )
 
         if np.isnan(y_yaw_deg).any() or np.isinf(y_yaw_deg).any():
             raise ValueError("y_yaw_deg contains NaN or Inf")

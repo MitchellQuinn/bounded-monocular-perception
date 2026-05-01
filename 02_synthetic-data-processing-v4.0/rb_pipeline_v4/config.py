@@ -405,6 +405,84 @@ class PackDualStreamStageConfigV4:
 
 
 @dataclass(frozen=True)
+class PackTriStreamStageConfigV4:
+    """Config for assembling tri-stream training shards."""
+
+    canvas_width_px: int = 300
+    canvas_height_px: int = 300
+    clip_policy: str = "fail"
+    include_v1_compat_arrays: bool = False
+    include_optional_metadata_arrays: bool = True
+    use_intermediate_npy: bool = True
+    delete_source_npy_after_pack: bool = True
+    orientation_context_scale: float = 1.25
+    brightness_normalization: BrightnessNormalizationConfigV4 | Mapping[str, object] | None = field(
+        default_factory=BrightnessNormalizationConfigV4
+    )
+
+    shard_size: int = 8192
+    compress: bool = True
+    overwrite: bool = False
+    dry_run: bool = False
+    continue_on_error: bool = True
+
+    sample_offset: int = 0
+    sample_limit: int = 0
+
+    def normalized_canvas_width_px(self) -> int:
+        return max(32, int(self.canvas_width_px))
+
+    def normalized_canvas_height_px(self) -> int:
+        return max(32, int(self.canvas_height_px))
+
+    def normalized_clip_policy(self) -> str:
+        value = str(self.clip_policy).strip().lower()
+        if value not in _VALID_CLIP_POLICIES:
+            allowed = ", ".join(sorted(_VALID_CLIP_POLICIES))
+            raise ValueError(f"Unsupported clip_policy '{self.clip_policy}'. Allowed: {allowed}.")
+        return value
+
+    def normalized_shard_size(self) -> int:
+        size = int(self.shard_size)
+        if size < 0:
+            raise ValueError("shard_size must be >= 0")
+        return size
+
+    def normalized_orientation_context_scale(self) -> float:
+        value = float(self.orientation_context_scale)
+        if not math.isfinite(value) or value < 1.0:
+            raise ValueError("orientation_context_scale must be finite and >= 1.0")
+        return value
+
+    def normalized_brightness_normalization(self) -> BrightnessNormalizationConfigV4:
+        config = self.brightness_normalization
+        if config is None:
+            return BrightnessNormalizationConfigV4()
+        if isinstance(config, BrightnessNormalizationConfigV4):
+            return config
+        if isinstance(config, Mapping):
+            return BrightnessNormalizationConfigV4.from_mapping(config)
+        raise TypeError(
+            "brightness_normalization must be a BrightnessNormalizationConfigV4, mapping, or None"
+        )
+
+    def normalized_sample_offset(self) -> int:
+        return max(0, int(self.sample_offset))
+
+    def normalized_sample_limit(self) -> int:
+        return max(0, int(self.sample_limit))
+
+    def to_log_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload["clip_policy"] = self.normalized_clip_policy()
+        payload["canvas_width_px"] = self.normalized_canvas_width_px()
+        payload["canvas_height_px"] = self.normalized_canvas_height_px()
+        payload["orientation_context_scale"] = self.normalized_orientation_context_scale()
+        payload["brightness_normalization"] = self.normalized_brightness_normalization().to_log_dict()
+        return payload
+
+
+@dataclass(frozen=True)
 class ShuffleStageConfigV4:
     """Config for optional post-pack corpus shuffling."""
 

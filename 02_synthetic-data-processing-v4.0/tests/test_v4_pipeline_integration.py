@@ -15,14 +15,25 @@ from rb_pipeline_v4.config import (
     BrightnessNormalizationConfigV4,
     DetectStageConfigV4,
     PackDualStreamStageConfigV4,
+    PackTriStreamStageConfigV4,
     SilhouetteStageConfigV4,
 )
 from rb_pipeline_v4.contracts import Detection
 from rb_pipeline_v4.detect_stage import run_detect_stage_v4
 from rb_pipeline_v4.manifest import load_samples_csv, samples_csv_path
 from rb_pipeline_v4.pack_dual_stream_stage import run_pack_dual_stream_stage_v4
+from rb_pipeline_v4.pack_tri_stream_stage import run_pack_tri_stream_stage_v4
 from rb_pipeline_v4.silhouette_stage import run_silhouette_stage_v4
-from rb_pipeline_v4.validation import validate_dual_stream_npz_file
+from rb_pipeline_v4.tri_stream_control import (
+    build_pack_tri_stream_config,
+    infer_tri_stream_run_canvas_size,
+    preview_tri_stream_sample,
+)
+from rb_pipeline_v4.validation import (
+    PipelineValidationError,
+    validate_dual_stream_npz_file,
+    validate_tri_stream_npz_file,
+)
 
 
 class _FakeDetector:
@@ -249,6 +260,222 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             self.assertAlmostEqual(median_darkness, target_darkness, places=5)
             np.testing.assert_array_equal(packed[~foreground], np.ones_like(packed[~foreground]))
 
+    def test_pack_tri_stream_writes_distance_orientation_geometry_and_contract(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri"
+            self._make_fixture(project_root, run_name)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=1,
+                ),
+            )
+
+            self.assertEqual(summary.successful_rows, 2)
+            self.assertEqual(summary.failed_rows, 0)
+            output_root = project_root / "training-data-v4-tri-stream" / run_name
+            output_samples = load_samples_csv(samples_csv_path(output_root / "manifests"))
+            self.assertIn("pack_tri_stream_stage_status", output_samples.columns)
+            self.assertNotIn("pack_dual_stream_stage_status", output_samples.columns)
+            self.assertTrue((output_samples["pack_tri_stream_stage_status"] == "success").all())
+            self.assertEqual(
+                output_samples["npz_filename"].astype(str).tolist(),
+                [f"{run_name}_shard_00000.npz", f"{run_name}_shard_00001.npz"],
+            )
+
+            run_manifest = json.loads((output_root / "manifests" / "run.json").read_text(encoding="utf-8"))
+            contract = run_manifest["PreprocessingContract"]
+            self.assertEqual(contract["ContractVersion"], "rb-preprocess-v4-tri-stream-orientation-v1")
+            self.assertEqual(contract["CurrentStage"], "pack_tri_stream")
+            self.assertEqual(contract["CurrentRepresentation"]["Kind"], "tri_stream_npz")
+            self.assertIn("x_distance_image", contract["CurrentRepresentation"]["ArrayKeys"])
+            self.assertIn("x_orientation_image", contract["CurrentRepresentation"]["ArrayKeys"])
+            self.assertIn("x_geometry", contract["CurrentRepresentation"]["ArrayKeys"])
+            self.assertEqual(
+                contract["CurrentRepresentation"]["DistanceImageGeometry"],
+                "fixed_unscaled_roi_canvas",
+            )
+            self.assertEqual(
+                contract["CurrentRepresentation"]["OrientationImageGeometry"],
+                "target_centered_scaled_by_silhouette_extent",
+            )
+
+            npz_path = output_root / f"{run_name}_shard_00000.npz"
+            validate_tri_stream_npz_file(npz_path)
+            with np.load(npz_path, allow_pickle=False) as payload:
+                distance = payload["x_distance_image"]
+                orientation = payload["x_orientation_image"]
+                geometry = payload["x_geometry"]
+                self.assertEqual(distance.shape, orientation.shape)
+                self.assertEqual(distance.shape[1:], (1, 64, 64))
+                self.assertEqual(str(distance.dtype), "float32")
+                self.assertEqual(str(orientation.dtype), "float32")
+                self.assertEqual(str(geometry.dtype), "float32")
+                self.assertEqual(geometry.shape[1], 10)
+                self.assertIn("x_geometry_schema", payload)
+                self.assertFalse(np.allclose(distance, orientation))
+
+                distance_extent = self._nonwhite_extent(distance[0, 0])
+                orientation_extent = self._nonwhite_extent(orientation[0, 0])
+                self.assertGreater(orientation_extent[2] - orientation_extent[0], distance_extent[2] - distance_extent[0])
+                self.assertGreater(orientation_extent[3] - orientation_extent[1], distance_extent[3] - distance_extent[1])
+
+    def test_pack_tri_stream_brightness_changes_distance_not_orientation(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_brightness"
+            self._make_fixture(project_root, run_name)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            base_summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=0,
+                    overwrite=True,
+                ),
+            )
+            self.assertEqual(base_summary.successful_rows, 2)
+            output_root = project_root / "training-data-v4-tri-stream" / run_name
+            with np.load(output_root / f"{run_name}.npz", allow_pickle=False) as payload:
+                base_distance = payload["x_distance_image"].copy()
+                base_orientation = payload["x_orientation_image"].copy()
+
+            norm_summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=0,
+                    overwrite=True,
+                    brightness_normalization=BrightnessNormalizationConfigV4(
+                        enabled=True,
+                        method="masked_median_darkness_gain",
+                        target_median_darkness=0.65,
+                        min_gain=0.1,
+                        max_gain=10.0,
+                    ),
+                ),
+            )
+            self.assertEqual(norm_summary.successful_rows, 2)
+            output_samples = load_samples_csv(samples_csv_path(output_root / "manifests"))
+            self.assertTrue((output_samples["brightness_normalization_status"] == "success").all())
+            with np.load(output_root / f"{run_name}.npz", allow_pickle=False) as payload:
+                norm_distance = payload["x_distance_image"]
+                norm_orientation = payload["x_orientation_image"]
+
+            self.assertFalse(np.allclose(base_distance, norm_distance))
+            np.testing.assert_array_equal(base_orientation, norm_orientation)
+
+    def test_tri_stream_preview_uses_run_canvas_and_rejects_mismatch(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_canvas"
+            self._make_fixture(project_root, run_name)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            self.assertEqual(infer_tri_stream_run_canvas_size(project_root, run_name), (64, 64))
+            preview = preview_tri_stream_sample(
+                project_root,
+                run_name,
+                build_pack_tri_stream_config(canvas_width_px=64, canvas_height_px=64),
+                row_index=0,
+            )
+            self.assertEqual(preview.arrays["x_distance_image"].shape, (64, 64))
+
+            mismatch_config = PackTriStreamStageConfigV4(
+                canvas_width_px=96,
+                canvas_height_px=96,
+                shard_size=0,
+            )
+            with self.assertRaisesRegex(ValueError, "must match silhouette ROI canvas"):
+                preview_tri_stream_sample(
+                    project_root,
+                    run_name,
+                    mismatch_config,
+                    row_index=0,
+                )
+            with self.assertRaisesRegex(PipelineValidationError, "must match silhouette ROI canvas"):
+                run_pack_tri_stream_stage_v4(
+                    project_root,
+                    run_name,
+                    mismatch_config,
+                )
+
+    def test_validate_tri_stream_rejects_missing_orientation_key(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            npz_path = Path(tmpdir) / "missing_orientation.npz"
+            yaw_deg = np.asarray([15.0], dtype=np.float32)
+            np.savez(
+                npz_path,
+                x_distance_image=np.ones((1, 1, 8, 8), dtype=np.float32),
+                x_geometry=np.ones((1, 10), dtype=np.float32),
+                y_distance_m=np.asarray([1.0], dtype=np.float32),
+                y_yaw_deg=yaw_deg,
+                y_yaw_sin=np.sin(np.deg2rad(yaw_deg)).astype(np.float32),
+                y_yaw_cos=np.cos(np.deg2rad(yaw_deg)).astype(np.float32),
+                sample_id=np.asarray(["s0"]),
+                image_filename=np.asarray(["frame.png"]),
+                npz_row_index=np.asarray([0], dtype=np.int64),
+            )
+
+            with self.assertRaisesRegex(ValueError, "x_orientation_image"):
+                validate_tri_stream_npz_file(npz_path)
+
     def test_pack_fails_when_canvas_too_small_with_fail_policy(self) -> None:
         with TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -288,6 +515,13 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 samples_csv_path(project_root / "training-data-v4" / run_name / "manifests")
             )
             self.assertTrue((output_samples["pack_dual_stream_stage_status"] == "failed").all())
+
+    def _nonwhite_extent(self, image: np.ndarray) -> tuple[int, int, int, int]:
+        mask = np.asarray(image) < 0.999
+        ys, xs = np.nonzero(mask)
+        if xs.size == 0:
+            return (0, 0, 0, 0)
+        return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
     def _make_fixture(self, project_root: Path, run_name: str) -> None:
         (project_root / "rb_pipeline_v4").mkdir(parents=True, exist_ok=True)
