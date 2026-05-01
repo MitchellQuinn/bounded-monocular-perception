@@ -14,6 +14,7 @@ from . import (
     topology_dual_stream_v0_2,
     topology_dual_stream_yaw,
     topology_global_pool_cnn,
+    topology_tri_stream_yaw,
 )
 from .contracts import (
     canonicalize_task_contract as canonicalize_runtime_task_contract,
@@ -115,6 +116,7 @@ _REGISTRY: dict[str, TopologyDefinition] = {
         topology_global_pool_cnn,
         topology_dual_stream_v0_2,
         topology_dual_stream_yaw,
+        topology_tri_stream_yaw,
     )
 }
 

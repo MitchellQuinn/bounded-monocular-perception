@@ -28,9 +28,15 @@ LEGACY_IMAGE_ARRAY_KEY = "X"
 LEGACY_TARGET_ARRAY_KEY = "y"
 DUAL_STREAM_IMAGE_ARRAY_KEY = "silhouette_crop"
 DUAL_STREAM_TARGET_ARRAY_KEY = "y_distance_m"
+TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY = "x_distance_image"
+TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY = "x_orientation_image"
+TRI_STREAM_GEOMETRY_ARRAY_KEY = "x_geometry"
+DUAL_STREAM_INPUT_MODE = "dual_stream_image_bbox_features"
+TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
 SUPPORTED_NPZ_LAYOUTS: tuple[tuple[str, str], ...] = (
     (LEGACY_IMAGE_ARRAY_KEY, LEGACY_TARGET_ARRAY_KEY),
     (DUAL_STREAM_IMAGE_ARRAY_KEY, DUAL_STREAM_TARGET_ARRAY_KEY),
+    (TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY, DUAL_STREAM_TARGET_ARRAY_KEY),
 )
 BBOX_FEATURE_COLUMNS = (
     "bbox_feat_cx_px",
@@ -93,6 +99,8 @@ class Batch:
     targets: np.ndarray
     rows: list[dict[str, Any]]
     bbox_features: np.ndarray | None = None
+    geometry: np.ndarray | None = None
+    extra_inputs: dict[str, np.ndarray] | None = None
 
 
 def discover_corpus_infos(data_root: Path, source_root: str) -> list[CorpusInfo]:
@@ -610,18 +618,25 @@ def validate_task_contract_schema(
     if not target_columns:
         raise ValueError(f"{root_name}: task_contract is missing target_columns.")
     required_columns = set(target_columns) | set(debug_target_columns)
-    if input_mode == "dual_stream_image_bbox_features":
+    uses_bbox_features = input_mode == DUAL_STREAM_INPUT_MODE
+    uses_geometry = input_mode == TRI_STREAM_INPUT_MODE
+    if uses_bbox_features or uses_geometry:
         required_columns.update(BBOX_FEATURE_COLUMNS)
+        expected_image_key = (
+            TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY
+            if uses_geometry
+            else DUAL_STREAM_IMAGE_ARRAY_KEY
+        )
         image_keys = set(schema_df["image_array_key"].astype(str))
-        if image_keys != {DUAL_STREAM_IMAGE_ARRAY_KEY}:
+        if image_keys != {expected_image_key}:
             raise ValueError(
                 f"{root_name}: {prediction_mode} requires NPZ image key "
-                f"{DUAL_STREAM_IMAGE_ARRAY_KEY!r}; found {sorted(image_keys)}."
+                f"{expected_image_key!r}; found {sorted(image_keys)}."
             )
         if not schema_df["x_dtype"].astype(str).eq("float32").all():
             bad = schema_df.loc[~schema_df["x_dtype"].astype(str).eq("float32"), ["npz_filename", "x_dtype"]]
             raise ValueError(
-                f"{root_name}: {prediction_mode} requires float32 silhouette crops.\n"
+                f"{root_name}: {prediction_mode} requires float32 image streams.\n"
                 + bad.to_string(index=False)
             )
         if not schema_df["channels"].astype(int).eq(1).all():
@@ -678,8 +693,16 @@ def validate_task_contract_schema(
         for npz_key, _ in (*head_target_bindings, *head_debug_bindings):
             required_npz_keys.add(npz_key)
 
-        if input_mode == "dual_stream_image_bbox_features":
+        if uses_bbox_features:
             required_npz_keys.update({"bbox_features", "bbox_features_schema"})
+        if uses_geometry:
+            required_npz_keys.update(
+                {
+                    TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
+                    TRI_STREAM_GEOMETRY_ARRAY_KEY,
+                    "x_geometry_schema",
+                }
+            )
 
         missing_npz_keys = sorted(required_npz_keys - shard_keys)
         if missing_npz_keys:
@@ -714,7 +737,7 @@ def validate_task_contract_schema(
                         f"{npz_path.name}; max abs diff={diff}."
                     )
 
-            if input_mode == "dual_stream_image_bbox_features":
+            if uses_bbox_features:
                 bbox_features = np.asarray(payload["bbox_features"], dtype=np.float32)
                 if bbox_features.shape != (n_rows, len(BBOX_FEATURE_COLUMNS)):
                     raise ValueError(
@@ -741,6 +764,54 @@ def validate_task_contract_schema(
                         f"{root_name}: bbox_features_schema mismatch in {npz_path.name}; "
                         f"expected {list(BBOX_FEATURE_SCHEMA)}, got {raw_schema}."
                     )
+
+            if uses_geometry:
+                geometry = np.asarray(payload[TRI_STREAM_GEOMETRY_ARRAY_KEY], dtype=np.float32)
+                if geometry.shape != (n_rows, len(BBOX_FEATURE_COLUMNS)):
+                    raise ValueError(
+                        f"{root_name}: {TRI_STREAM_GEOMETRY_ARRAY_KEY} shape mismatch in {npz_path.name}; "
+                        f"expected {(n_rows, len(BBOX_FEATURE_COLUMNS))}, got {geometry.shape}."
+                    )
+                if str(geometry.dtype) != "float32":
+                    raise ValueError(
+                        f"{root_name}: {TRI_STREAM_GEOMETRY_ARRAY_KEY} dtype must be float32 in "
+                        f"{npz_path.name}; got {geometry.dtype}."
+                    )
+                csv_geometry = shard_rows[list(BBOX_FEATURE_COLUMNS)].to_numpy(dtype=np.float32)
+                geometry_diff = _max_abs_diff(csv_geometry, geometry)
+                if geometry_diff > 1e-5:
+                    raise ValueError(
+                        f"{root_name}: bbox feature columns do not match {TRI_STREAM_GEOMETRY_ARRAY_KEY} in "
+                        f"{npz_path.name}; max abs diff={geometry_diff}."
+                    )
+
+                raw_schema = np.asarray(payload["x_geometry_schema"]).astype(str).tolist()
+                schema_tuple = tuple(raw_schema)
+                if schema_tuple != BBOX_FEATURE_SCHEMA:
+                    raise ValueError(
+                        f"{root_name}: x_geometry_schema mismatch in {npz_path.name}; "
+                        f"expected {list(BBOX_FEATURE_SCHEMA)}, got {raw_schema}."
+                    )
+
+                orientation_image = payload[TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY]
+                expected_shape = tuple(int(value) for value in record["x_shape"])
+                if tuple(orientation_image.shape) != expected_shape:
+                    raise ValueError(
+                        f"{root_name}: {TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} shape mismatch in {npz_path.name}; "
+                        f"expected {expected_shape}, got {orientation_image.shape}."
+                    )
+                if str(orientation_image.dtype) != "float32":
+                    raise ValueError(
+                        f"{root_name}: {TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} dtype must be float32 in "
+                        f"{npz_path.name}; got {orientation_image.dtype}."
+                    )
+                if not np.isfinite(orientation_image).all():
+                    raise ValueError(f"{root_name}: {TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} contains NaN or Inf.")
+                if orientation_image.size and (
+                    float(orientation_image.min()) < -1e-6
+                    or float(orientation_image.max()) > 1.0 + 1e-6
+                ):
+                    raise ValueError(f"{root_name}: {TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY} values must be in [0, 1].")
 
 
 def determine_target_hw(schema_df: pd.DataFrame, padding_mode: str = "disabled") -> tuple[int, int]:
@@ -894,7 +965,7 @@ class ShardArrayCache:
     def __init__(self, max_bytes: int, name: str) -> None:
         self.max_bytes = int(max(0, max_bytes))
         self.name = str(name)
-        self._entries: OrderedDict[str, np.ndarray] = OrderedDict()
+        self._entries: OrderedDict[tuple[str, str], np.ndarray] = OrderedDict()
         self._bytes_used = 0
         self.hits = 0
         self.misses = 0
@@ -906,11 +977,14 @@ class ShardArrayCache:
     def bytes_used(self) -> int:
         return int(self._bytes_used)
 
-    def _key(self, npz_path: Path) -> str:
+    def _path_key(self, npz_path: Path) -> str:
         return str(npz_path.resolve())
 
+    def _entry_key(self, npz_path: Path, array_key: str) -> tuple[str, str]:
+        return (self._path_key(npz_path), str(array_key))
+
     def _resolve_image_array_key(self, npz_path: Path) -> str:
-        key = self._key(npz_path)
+        key = self._path_key(npz_path)
         cached = self._array_key_cache.get(key)
         if cached is not None:
             return cached
@@ -919,15 +993,13 @@ class ShardArrayCache:
         self._array_key_cache[key] = image_array_key
         return image_array_key
 
-    def _required_x_bytes(self, npz_path: Path) -> int:
-        image_array_key = self._resolve_image_array_key(npz_path)
-        dtype, shape, _ = _read_npy_header_from_npz_member(npz_path, f"{image_array_key}.npy")
+    def _required_array_bytes(self, npz_path: Path, array_key: str) -> int:
+        dtype, shape, _ = _read_npy_header_from_npz_member(npz_path, f"{array_key}.npy")
         return int(np.prod(shape)) * int(dtype.itemsize)
 
-    def _load_x_array(self, npz_path: Path) -> np.ndarray:
-        image_array_key = self._resolve_image_array_key(npz_path)
+    def _load_array(self, npz_path: Path, array_key: str) -> np.ndarray:
         with np.load(npz_path, allow_pickle=False) as payload:
-            return np.asarray(payload[image_array_key])
+            return np.asarray(payload[array_key])
 
     def _evict_until_fits(self, required_bytes: int) -> None:
         while self._entries and (self._bytes_used + required_bytes) > self.max_bytes:
@@ -935,13 +1007,14 @@ class ShardArrayCache:
             self._bytes_used -= int(evicted.nbytes)
             self.evictions += 1
 
-    def get_or_load_x(
+    def get_or_load_array(
         self,
         npz_path: Path,
+        array_key: str,
         allow_temporary_load: bool = False,
     ) -> np.ndarray | None:
-        """Return cached shard X array, or load it if policy allows."""
-        key = self._key(npz_path)
+        """Return one cached shard array, or load it if policy allows."""
+        key = self._entry_key(npz_path, array_key)
         cached = self._entries.get(key)
         if cached is not None:
             self._entries.move_to_end(key, last=True)
@@ -949,19 +1022,32 @@ class ShardArrayCache:
             return cached
 
         if self.max_bytes <= 0:
-            return self._load_x_array(npz_path) if allow_temporary_load else None
+            return self._load_array(npz_path, array_key) if allow_temporary_load else None
 
-        required_bytes = self._required_x_bytes(npz_path)
+        required_bytes = self._required_array_bytes(npz_path, array_key)
         if required_bytes > self.max_bytes:
             self.skipped_too_large += 1
-            return self._load_x_array(npz_path) if allow_temporary_load else None
+            return self._load_array(npz_path, array_key) if allow_temporary_load else None
 
         self.misses += 1
-        loaded = self._load_x_array(npz_path)
+        loaded = self._load_array(npz_path, array_key)
         self._evict_until_fits(required_bytes=int(loaded.nbytes))
         self._entries[key] = loaded
         self._bytes_used += int(loaded.nbytes)
         return loaded
+
+    def get_or_load_x(
+        self,
+        npz_path: Path,
+        allow_temporary_load: bool = False,
+    ) -> np.ndarray | None:
+        """Return cached shard primary image array, or load it if policy allows."""
+        image_array_key = self._resolve_image_array_key(npz_path)
+        return self.get_or_load_array(
+            npz_path,
+            image_array_key,
+            allow_temporary_load=allow_temporary_load,
+        )
 
     def preload(self, shard_paths: list[Path] | tuple[Path, ...]) -> None:
         for shard_path in shard_paths:
@@ -1073,6 +1159,8 @@ def iter_batches(
     active_shard_count: int = 3,
     target_columns: tuple[str, ...] = ("distance_m",),
     include_bbox_features: bool = False,
+    include_geometry: bool = False,
+    extra_input_array_keys: tuple[str, ...] = (),
 ) -> Iterator[Batch]:
     """Stream mini-batches from shard-backed metadata.
 
@@ -1105,6 +1193,9 @@ def iter_batches(
     target_buffer: list[np.ndarray | float] = []
     row_buffer: list[dict[str, Any]] = []
     bbox_feature_buffer: list[np.ndarray] = []
+    extra_input_buffers: dict[str, list[np.ndarray]] = {
+        str(key): [] for key in extra_input_array_keys if str(key).strip()
+    }
     image_array_key_by_shard: dict[str, str] = {}
 
     resolved_target_columns = tuple(str(column).strip() for column in target_columns if str(column).strip())
@@ -1159,13 +1250,32 @@ def iter_batches(
                     if include_bbox_features
                     else None
                 ),
+                geometry=(
+                    np.stack(bbox_feature_buffer).astype(np.float32)
+                    if include_geometry
+                    else None
+                ),
+                extra_inputs=(
+                    {
+                        key: np.stack(values).astype(np.float32)
+                        for key, values in extra_input_buffers.items()
+                    }
+                    if extra_input_buffers
+                    else None
+                ),
             )
             image_buffer.clear()
             target_buffer.clear()
             row_buffer.clear()
             bbox_feature_buffer.clear()
+            for values in extra_input_buffers.values():
+                values.clear()
 
-    def _append_sample(image: np.ndarray, row_record: dict[str, Any]) -> Iterator[Batch]:
+    def _append_sample(
+        image: np.ndarray,
+        row_record: dict[str, Any],
+        extra_images: Mapping[str, np.ndarray] | None = None,
+    ) -> Iterator[Batch]:
         model_image = prepare_image_for_model(
             image=image,
             target_hw=target_hw,
@@ -1174,9 +1284,40 @@ def iter_batches(
         image_buffer.append(model_image)
         target_buffer.append(_extract_target_value(row_record))
         row_buffer.append(row_record)
-        if include_bbox_features:
+        if include_bbox_features or include_geometry:
             bbox_feature_buffer.append(_extract_bbox_feature_value(row_record))
+        for key in extra_input_buffers:
+            if extra_images is None or key not in extra_images:
+                raise KeyError(f"Batch extra input array {key!r} is missing for shard row.")
+            extra_input_buffers[key].append(
+                prepare_image_for_model(
+                    image=extra_images[key],
+                    target_hw=target_hw,
+                    padding_mode=padding_mode,
+                )
+            )
         yield from _emit_if_ready()
+
+    def _load_extra_arrays_for_shard(shard_path: str, *, allow_cached_only: bool) -> dict[str, np.ndarray] | None:
+        if not extra_input_buffers:
+            return {}
+        path = Path(shard_path)
+        if shard_cache is not None:
+            arrays: dict[str, np.ndarray] = {}
+            for key in extra_input_buffers:
+                loaded = shard_cache.get_or_load_array(
+                    path,
+                    key,
+                    allow_temporary_load=not allow_cached_only,
+                )
+                if loaded is None:
+                    return None
+                arrays[key] = loaded
+            return arrays
+        if allow_cached_only:
+            return None
+        with np.load(path, allow_pickle=False) as payload:
+            return {key: np.asarray(payload[key]) for key in extra_input_buffers}
 
     if shuffle_mode == "active_shard_reservoir":
         if shard_cache is None:
@@ -1201,12 +1342,31 @@ def iter_batches(
                 )
                 if shard_x is None:
                     raise RuntimeError(f"Failed to load shard array for {shard_path}")
+                extra_arrays = {
+                    key: shard_cache.get_or_load_array(
+                        Path(shard_path),
+                        key,
+                        allow_temporary_load=True,
+                    )
+                    for key in extra_input_buffers
+                }
+                missing_extra = [key for key, value in extra_arrays.items() if value is None]
+                if missing_extra:
+                    raise RuntimeError(
+                        f"Failed to load extra shard arrays {missing_extra} for {shard_path}"
+                    )
                 max_required = int(shard_rows["npz_row_index"].max())
                 if int(shard_x.shape[0]) <= max_required:
                     raise ValueError(
                         f"Requested row {max_required} exceeds shard rows "
                         f"{int(shard_x.shape[0])} for {shard_path}."
                     )
+                for key, array in extra_arrays.items():
+                    if array is not None and int(array.shape[0]) <= max_required:
+                        raise ValueError(
+                            f"Requested row {max_required} exceeds extra shard array {key!r} rows "
+                            f"{int(array.shape[0])} for {shard_path}."
+                        )
                 row_positions = rng.permutation(len(shard_rows))
                 active_states.append(
                     {
@@ -1215,6 +1375,7 @@ def iter_batches(
                         "row_positions": row_positions,
                         "pointer": 0,
                         "x": shard_x,
+                        "extra": extra_arrays,
                     }
                 )
 
@@ -1232,7 +1393,16 @@ def iter_batches(
             row_record = rows_df.iloc[row_pos].to_dict()
             row_index = int(row_record["npz_row_index"])
             image = state["x"][row_index]
-            yield from _append_sample(image=image, row_record=row_record)
+            extra_images = {
+                key: array[row_index]
+                for key, array in dict(state.get("extra", {})).items()
+                if array is not None
+            }
+            yield from _append_sample(
+                image=image,
+                row_record=row_record,
+                extra_images=extra_images,
+            )
 
             if int(state["pointer"]) >= len(row_positions):
                 active_states.pop(state_index)
@@ -1246,6 +1416,19 @@ def iter_batches(
                 bbox_features=(
                     np.stack(bbox_feature_buffer).astype(np.float32)
                     if include_bbox_features
+                    else None
+                ),
+                geometry=(
+                    np.stack(bbox_feature_buffer).astype(np.float32)
+                    if include_geometry
+                    else None
+                ),
+                extra_inputs=(
+                    {
+                        key: np.stack(values).astype(np.float32)
+                        for key, values in extra_input_buffers.items()
+                    }
+                    if extra_input_buffers
                     else None
                 ),
             )
@@ -1267,6 +1450,11 @@ def iter_batches(
             cached_x = shard_cache.get_or_load_x(
                 Path(shard_path), allow_temporary_load=False
             )
+        cached_extra: dict[str, np.ndarray] | None = None
+        if cached_x is not None:
+            cached_extra = _load_extra_arrays_for_shard(shard_path, allow_cached_only=True)
+            if extra_input_buffers and cached_extra is None:
+                cached_x = None
 
         if cached_x is not None:
             if int(cached_x.shape[0]) <= last_required_index:
@@ -1274,13 +1462,34 @@ def iter_batches(
                     f"Requested row {last_required_index} exceeds cached shard rows "
                     f"{int(cached_x.shape[0])} for {shard_path}."
                 )
+            for key, array in (cached_extra or {}).items():
+                if int(array.shape[0]) <= last_required_index:
+                    raise ValueError(
+                        f"Requested row {last_required_index} exceeds cached extra shard array {key!r} rows "
+                        f"{int(array.shape[0])} for {shard_path}."
+                    )
             while request_pointer < requested.size:
                 row_index = int(requested[request_pointer])
                 image = cached_x[row_index]
+                extra_images = {
+                    key: array[row_index]
+                    for key, array in (cached_extra or {}).items()
+                }
                 row_record = shard_rows.iloc[request_pointer].to_dict()
-                yield from _append_sample(image=image, row_record=row_record)
+                yield from _append_sample(
+                    image=image,
+                    row_record=row_record,
+                    extra_images=extra_images,
+                )
                 request_pointer += 1
         else:
+            extra_arrays = _load_extra_arrays_for_shard(shard_path, allow_cached_only=False)
+            for key, array in (extra_arrays or {}).items():
+                if int(array.shape[0]) <= last_required_index:
+                    raise ValueError(
+                        f"Requested row {last_required_index} exceeds extra shard array {key!r} rows "
+                        f"{int(array.shape[0])} for {shard_path}."
+                    )
             image_array_key = _resolve_image_array_key_for_shard(shard_path)
             with NpyRowStream(Path(shard_path), array_key=image_array_key) as stream:
                 for row_index, image in stream.iter_rows():
@@ -1290,7 +1499,15 @@ def iter_batches(
                         continue
 
                     row_record = shard_rows.iloc[request_pointer].to_dict()
-                    yield from _append_sample(image=image, row_record=row_record)
+                    extra_images = {
+                        key: array[row_index]
+                        for key, array in (extra_arrays or {}).items()
+                    }
+                    yield from _append_sample(
+                        image=image,
+                        row_record=row_record,
+                        extra_images=extra_images,
+                    )
                     request_pointer += 1
 
                     if request_pointer >= requested.size:
@@ -1312,6 +1529,19 @@ def iter_batches(
             bbox_features=(
                 np.stack(bbox_feature_buffer).astype(np.float32)
                 if include_bbox_features
+                else None
+            ),
+            geometry=(
+                np.stack(bbox_feature_buffer).astype(np.float32)
+                if include_geometry
+                else None
+            ),
+            extra_inputs=(
+                {
+                    key: np.stack(values).astype(np.float32)
+                    for key, values in extra_input_buffers.items()
+                }
+                if extra_input_buffers
                 else None
             ),
         )

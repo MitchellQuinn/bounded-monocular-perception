@@ -186,6 +186,16 @@ def evaluate_split(
                     str(task_contract.get("input_mode", "")).strip()
                     == "dual_stream_image_bbox_features"
                 ),
+                include_geometry=(
+                    str(task_contract.get("input_mode", "")).strip()
+                    == "tri_stream_distance_orientation_geometry"
+                ),
+                extra_input_array_keys=(
+                    ("x_orientation_image",)
+                    if str(task_contract.get("input_mode", "")).strip()
+                    == "tri_stream_distance_orientation_geometry"
+                    else ()
+                ),
             ),
             start=1,
         ):

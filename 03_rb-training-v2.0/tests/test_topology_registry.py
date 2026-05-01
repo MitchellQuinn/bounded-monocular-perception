@@ -28,6 +28,7 @@ class TopologyRegistryTests(unittest.TestCase):
         self.assertIn("distance_regressor_2d_cnn", topology_ids)
         self.assertIn("distance_regressor_dual_stream", topology_ids)
         self.assertIn("distance_regressor_dual_stream_yaw", topology_ids)
+        self.assertIn("distance_regressor_tri_stream_yaw", topology_ids)
         self.assertIn("distance_regressor_global_pool_cnn", topology_ids)
 
     def test_registry_can_exclude_deprecated_topologies(self) -> None:
@@ -35,6 +36,7 @@ class TopologyRegistryTests(unittest.TestCase):
 
         self.assertIn("distance_regressor_dual_stream", topology_ids)
         self.assertIn("distance_regressor_dual_stream_yaw", topology_ids)
+        self.assertIn("distance_regressor_tri_stream_yaw", topology_ids)
         self.assertNotIn("distance_regressor_2d_cnn", topology_ids)
         self.assertNotIn("distance_regressor_global_pool_cnn", topology_ids)
 

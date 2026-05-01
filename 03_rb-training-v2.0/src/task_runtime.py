@@ -63,6 +63,26 @@ def batch_to_model_inputs(
             "silhouette_crop": images,
             "bbox_features": bbox_features,
         }
+    if input_mode == "tri_stream_distance_orientation_geometry":
+        if batch.geometry is None:
+            raise ValueError(
+                "Topology input_mode='tri_stream_distance_orientation_geometry' requires geometry in the batch."
+            )
+        if batch.extra_inputs is None or "x_orientation_image" not in batch.extra_inputs:
+            raise ValueError(
+                "Topology input_mode='tri_stream_distance_orientation_geometry' requires "
+                "extra input 'x_orientation_image' in the batch."
+            )
+        x_geometry = torch.from_numpy(batch.geometry).to(device=device, dtype=torch.float32)
+        x_orientation_image = torch.from_numpy(batch.extra_inputs["x_orientation_image"]).to(
+            device=device,
+            dtype=torch.float32,
+        )
+        return {
+            "x_distance_image": images,
+            "x_orientation_image": x_orientation_image,
+            "x_geometry": x_geometry,
+        }
     raise ValueError(f"Unsupported task_contract input_mode={input_mode!r}")
 
 

@@ -327,6 +327,7 @@ def _train_one_epoch(
     )
 
     for batch_index, batch in enumerate(
+        # Keep input-mode fanout explicit so unsupported modes fail in the loader/runtime path.
         iter_batches(
             metadata_df=split_df,
             batch_size=batch_size,
@@ -341,6 +342,16 @@ def _train_one_epoch(
             include_bbox_features=(
                 str(task_contract.get("input_mode", "")).strip()
                 == "dual_stream_image_bbox_features"
+            ),
+            include_geometry=(
+                str(task_contract.get("input_mode", "")).strip()
+                == "tri_stream_distance_orientation_geometry"
+            ),
+            extra_input_array_keys=(
+                ("x_orientation_image",)
+                if str(task_contract.get("input_mode", "")).strip()
+                == "tri_stream_distance_orientation_geometry"
+                else ()
             ),
         ),
         start=1,
@@ -623,6 +634,8 @@ def _write_model_card(
     declared_component_losses = set(_declared_component_loss_names(topology_spec.task_contract))
     if input_mode == "dual_stream_image_bbox_features":
         input_text = "grayscale crop tensor plus bbox feature vector"
+    elif input_mode == "tri_stream_distance_orientation_geometry":
+        input_text = "distance image tensor plus orientation image tensor plus geometry vector"
     else:
         input_text = "grayscale full-frame tensor normalized to [0, 1]"
     if {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
