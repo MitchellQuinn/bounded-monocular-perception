@@ -14,6 +14,7 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 
 
 LIVE_INFERENCE_CONTRACT_VERSION = "rb-live-inference-v0_1"
+MODEL_TOPOLOGY_CONTRACT_VERSION = "rb-topology-output-reporting-v1"
 
 DEFAULT_FRAME_DIR = Path("./live_frames")
 DEFAULT_LATEST_FRAME_FILENAME = "latest_frame.png"
@@ -21,6 +22,9 @@ DEFAULT_TEMP_FRAME_FILENAME = "latest_frame.tmp.png"
 DEFAULT_DEBUG_OUTPUT_DIR = Path("./live_debug")
 
 DEFAULT_FRAME_HASH_ALGORITHM = "blake2b-128"
+DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES = 16
+RAW_IMAGE_INPUT_MODE = "raw_image"
+TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
 TRI_STREAM_DISTANCE_IMAGE_KEY = "x_distance_image"
 TRI_STREAM_ORIENTATION_IMAGE_KEY = "x_orientation_image"
 TRI_STREAM_GEOMETRY_KEY = "x_geometry"
@@ -28,6 +32,42 @@ TRI_STREAM_INPUT_KEYS = (
     TRI_STREAM_DISTANCE_IMAGE_KEY,
     TRI_STREAM_ORIENTATION_IMAGE_KEY,
     TRI_STREAM_GEOMETRY_KEY,
+)
+PREPROCESSING_CONTRACT_KEY = "PreprocessingContract"
+PREPROCESSING_CONTRACT_NAME = "rb-preprocess-v4-tri-stream-orientation-v1"
+TRI_STREAM_PREPROCESSING_CONTRACT_VERSION = PREPROCESSING_CONTRACT_NAME
+TRI_STREAM_REPRESENTATION_KIND = "tri_stream_npz"
+TRI_STREAM_STORAGE_FORMAT = "npz"
+DISTANCE_IMAGE_CONTRACT_NAME = "fixed_unscaled_roi_canvas"
+ORIENTATION_IMAGE_CONTRACT_NAME = "target_centered_scaled_by_silhouette_extent"
+GEOMETRY_SCHEMA_NAME = "x_geometry_schema"
+TRI_STREAM_GEOMETRY_SCHEMA = (
+    "cx_px",
+    "cy_px",
+    "w_px",
+    "h_px",
+    "cx_norm",
+    "cy_norm",
+    "w_norm",
+    "h_norm",
+    "aspect_ratio",
+    "area_norm",
+)
+DISTANCE_TARGET_COLUMN = "distance_m"
+YAW_DEG_TARGET_COLUMN = "yaw_deg"
+YAW_SIN_TARGET_COLUMN = "yaw_sin"
+YAW_COS_TARGET_COLUMN = "yaw_cos"
+MODEL_OUTPUT_DISTANCE_KEY = "distance_m"
+MODEL_OUTPUT_YAW_SIN_COS_KEY = "yaw_sin_cos"
+PREDICTED_DISTANCE_FIELD = "predicted_distance_m"
+PREDICTED_YAW_SIN_FIELD = "predicted_yaw_sin"
+PREDICTED_YAW_COS_FIELD = "predicted_yaw_cos"
+PREDICTED_YAW_DEG_FIELD = "predicted_yaw_deg"
+LIVE_INFERENCE_OUTPUT_FIELDS = (
+    PREDICTED_DISTANCE_FIELD,
+    PREDICTED_YAW_SIN_FIELD,
+    PREDICTED_YAW_COS_FIELD,
+    PREDICTED_YAW_DEG_FIELD,
 )
 
 
@@ -86,16 +126,24 @@ class FrameSkipReason(str, Enum):
     DUPLICATE_HASH = "duplicate_hash"
     MISSING_FILE = "missing_file"
     UNREADABLE_FILE = "unreadable_file"
-    DECODE_FAILED = "decode_failed"
-    PREPROCESS_FAILED = "preprocess_failed"
-    INFERENCE_FAILED = "inference_failed"
+    STALE_FRAME = "stale_frame"
+
+
+class FrameFailureStage(str, Enum):
+    """Processing stages where an attempted frame can fail."""
+
+    READ = "read"
+    DECODE = "decode"
+    PREPROCESS = "preprocess"
+    INFERENCE = "inference"
+    OUTPUT = "output"
 
 
 class InferenceInputMode(str, Enum):
     """Input contract labels used across preprocessing and inference."""
 
-    RAW_IMAGE = "raw_image"
-    TRI_STREAM_V0_4 = "tri_stream_distance_orientation_geometry"
+    RAW_IMAGE = RAW_IMAGE_INPUT_MODE
+    TRI_STREAM_V0_4 = TRI_STREAM_INPUT_MODE
 
 
 ALLOWED_WORKER_STATE_TRANSITIONS: Mapping[WorkerState, tuple[WorkerState, ...]] = {
@@ -105,6 +153,26 @@ ALLOWED_WORKER_STATE_TRANSITIONS: Mapping[WorkerState, tuple[WorkerState, ...]] 
     WorkerState.STOPPING: (WorkerState.STOPPED, WorkerState.ERROR),
     WorkerState.ERROR: (WorkerState.STOPPED,),
 }
+
+
+def is_allowed_worker_state_transition(
+    current: WorkerState,
+    next_state: WorkerState,
+    *,
+    allow_idempotent: bool = True,
+) -> bool:
+    """Return whether a worker state transition is allowed by the shared contract.
+
+    Idempotent status emissions are allowed by default. Repeated
+    ``request_stop()`` calls while a worker is already ``STOPPING`` should be
+    safe, ``request_stop()`` while ``STOPPED`` should be a no-op, and
+    ``request_stop()`` while ``ERROR`` should still allow cleanup toward
+    ``STOPPED``. This helper is contract vocabulary only; it is not a worker
+    state machine implementation.
+    """
+    if allow_idempotent and current == next_state:
+        return True
+    return next_state in ALLOWED_WORKER_STATE_TRANSITIONS.get(current, ())
 
 
 def _to_plain(value: Any) -> Any:
@@ -125,8 +193,48 @@ def _to_plain(value: Any) -> Any:
 
 
 @dataclass(frozen=True)
+class InferenceOutputContract:
+    """Stable GUI-facing names for live inference result fields."""
+
+    distance_field: str = PREDICTED_DISTANCE_FIELD
+    yaw_sin_field: str = PREDICTED_YAW_SIN_FIELD
+    yaw_cos_field: str = PREDICTED_YAW_COS_FIELD
+    yaw_deg_field: str = PREDICTED_YAW_DEG_FIELD
+    model_distance_output_key: str = MODEL_OUTPUT_DISTANCE_KEY
+    model_yaw_output_key: str = MODEL_OUTPUT_YAW_SIN_COS_KEY
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
+class ModelContractReference:
+    """Reference metadata for the repository model/preprocessing contracts."""
+
+    model_path: Path | None = None
+    model_contract_version: str | None = MODEL_TOPOLOGY_CONTRACT_VERSION
+    preprocessing_contract_name: str | None = PREPROCESSING_CONTRACT_NAME
+    input_mode: InferenceInputMode = InferenceInputMode.TRI_STREAM_V0_4
+    input_keys: tuple[str, ...] = TRI_STREAM_INPUT_KEYS
+    representation_kind: str = TRI_STREAM_REPRESENTATION_KIND
+    storage_format: str = TRI_STREAM_STORAGE_FORMAT
+    geometry_schema_name: str = GEOMETRY_SCHEMA_NAME
+    geometry_schema: tuple[str, ...] = TRI_STREAM_GEOMETRY_SCHEMA
+    output_fields: tuple[str, ...] = LIVE_INFERENCE_OUTPUT_FIELDS
+    model_output_keys: tuple[str, ...] = (
+        MODEL_OUTPUT_DISTANCE_KEY,
+        MODEL_OUTPUT_YAW_SIN_COS_KEY,
+    )
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
 class FrameHandoffPaths:
-    """File names and paths for atomic latest-frame handoff."""
+    """File names and same-directory paths for atomic latest-frame handoff."""
 
     frame_dir: Path = DEFAULT_FRAME_DIR
     latest_frame_filename: str = DEFAULT_LATEST_FRAME_FILENAME
@@ -153,6 +261,8 @@ class LiveInferenceConfig:
     frame_dir: Path = DEFAULT_FRAME_DIR
     latest_frame_filename: str = DEFAULT_LATEST_FRAME_FILENAME
     temp_frame_filename: str = DEFAULT_TEMP_FRAME_FILENAME
+    frame_hash_algorithm: str = DEFAULT_FRAME_HASH_ALGORITHM
+    frame_hash_digest_size_bytes: int = DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES
     camera_index: int = 0
     camera_width_px: int | None = None
     camera_height_px: int | None = None
@@ -160,6 +270,7 @@ class LiveInferenceConfig:
     inference_poll_interval_ms: int = 10
     duplicate_hash_skip_enabled: bool = True
     model_path: Path | None = None
+    model_contract: ModelContractReference | None = None
     device: str = "cuda"
     save_debug_images: bool = False
     debug_output_dir: Path | None = DEFAULT_DEBUG_OUTPUT_DIR
@@ -199,14 +310,30 @@ class FrameMetadata:
 
 
 @dataclass(frozen=True)
+class FrameHash:
+    """Hash of the exact image bytes accepted for frame processing."""
+
+    value: str
+    algorithm: str = DEFAULT_FRAME_HASH_ALGORITHM
+    digest_size_bytes: int = DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
 class FrameReference:
-    """Reference to a completed raw image frame visible to inference."""
+    """Reference to a completed raw image frame visible to inference.
+
+    The referenced path must identify a completed frame, not a temporary or
+    partially written file. With latest-frame handoff this is normally the
+    configured latest path after an atomic replace operation.
+    """
 
     image_path: Path
     metadata: FrameMetadata = field(default_factory=FrameMetadata)
     completed_at_utc: str | None = None
-    frame_hash: str | None = None
-    hash_algorithm: str | None = None
+    frame_hash: FrameHash | None = None
     byte_size: int | None = None
     handoff_paths: FrameHandoffPaths | None = None
     extras: Mapping[str, Any] = field(default_factory=dict)
@@ -226,6 +353,7 @@ class InferenceRequest:
     processing_policy: FrameProcessingPolicy = FrameProcessingPolicy.NEWEST_COMPLETED_SKIP_STALE
     duplicate_hash_skip_enabled: bool = True
     model_path: Path | None = None
+    model_contract: ModelContractReference | None = None
     device: str | None = None
     save_debug_images: bool = False
     debug_output_dir: Path | None = None
@@ -237,17 +365,33 @@ class InferenceRequest:
 
 @dataclass(frozen=True)
 class PreparedInferenceInputs:
-    """Dependency-free reference to the model inputs prepared from a raw image."""
+    """Dependency-free prepared model input payload for the inference engine.
+
+    ``model_inputs`` may contain runtime arrays or tensors. This contract
+    intentionally types those values as ``Any`` so this module does not import
+    NumPy, PyTorch, or image/runtime implementation modules.
+    """
 
     request_id: str
     input_mode: InferenceInputMode = InferenceInputMode.TRI_STREAM_V0_4
     input_keys: tuple[str, ...] = TRI_STREAM_INPUT_KEYS
+    model_inputs: Mapping[str, Any] = field(default_factory=dict)
     source_frame: FrameReference | None = None
     preprocessing_metadata: Mapping[str, Any] = field(default_factory=dict)
     extras: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return _to_plain(asdict(self))
+        return _to_plain(
+            {
+                "request_id": self.request_id,
+                "input_mode": self.input_mode,
+                "input_keys": self.input_keys,
+                "model_input_keys": tuple(str(key) for key in self.model_inputs.keys()),
+                "source_frame": self.source_frame,
+                "preprocessing_metadata": self.preprocessing_metadata,
+                "extras": self.extras,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -272,17 +416,17 @@ class InferenceResult:
 
     request_id: str
     input_image_path: Path
-    input_image_hash: str
+    input_image_hash: FrameHash
     timestamp_utc: str
     predicted_distance_m: float
     predicted_yaw_sin: float
     predicted_yaw_cos: float
     predicted_yaw_deg: float
     inference_time_ms: float
-    hash_algorithm: str = DEFAULT_FRAME_HASH_ALGORITHM
     preprocessing_time_ms: float | None = None
     total_time_ms: float | None = None
     model_input_mode: InferenceInputMode = InferenceInputMode.TRI_STREAM_V0_4
+    output_contract: InferenceOutputContract = field(default_factory=InferenceOutputContract)
     roi_metadata: RoiMetadata | None = None
     debug_paths: Mapping[str, Path] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
@@ -301,7 +445,7 @@ class DebugImageReference:
     image_kind: str
     path: Path
     created_at_utc: str
-    source_frame_hash: str | None = None
+    source_frame_hash: FrameHash | None = None
     extras: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -334,7 +478,7 @@ class InferenceWorkerCounters:
     frames_failed_decode: int = 0
     frames_failed_preprocess: int = 0
     frames_failed_inference: int = 0
-    last_input_hash: str | None = None
+    last_input_hash: FrameHash | None = None
     last_inference_time_ms: float | None = None
     last_preprocessing_time_ms: float | None = None
     last_total_time_ms: float | None = None
@@ -376,6 +520,22 @@ class WorkerLifecycleEvent:
 
 
 @dataclass(frozen=True)
+class FrameSkipped:
+    """Structured event for a candidate frame that was intentionally skipped."""
+
+    worker_name: WorkerName
+    reason: FrameSkipReason
+    timestamp_utc: str
+    frame: FrameReference | None = None
+    frame_hash: FrameHash | None = None
+    message: str = ""
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
 class WorkerWarning:
     """Recoverable warning emitted by a worker."""
 
@@ -385,6 +545,7 @@ class WorkerWarning:
     timestamp_utc: str
     recoverable: bool = True
     frame: FrameReference | None = None
+    failure_stage: FrameFailureStage | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -401,6 +562,7 @@ class WorkerError:
     recoverable: bool
     timestamp_utc: str
     frame: FrameReference | None = None
+    failure_stage: FrameFailureStage | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -409,13 +571,19 @@ class WorkerError:
 
 @runtime_checkable
 class WorkerControl(Protocol):
-    """Minimal control surface shared by camera and inference workers."""
+    """Minimal control surface shared by camera and inference workers.
+
+    ``start_work`` names the worker entrypoint without colliding with
+    ``QThread.start``. Implementations should make repeated ``request_stop``
+    calls safe, including while already stopping, stopped, or cleaning up after
+    an error.
+    """
 
     @property
     def worker_name(self) -> WorkerName:
         ...
 
-    def start(self) -> None:
+    def start_work(self) -> None:
         ...
 
     def request_stop(self) -> None:
@@ -473,13 +641,22 @@ class InferenceWorkerEventSink(WorkerEventSink, Protocol):
     def result_ready(self, result: InferenceResult) -> None:
         ...
 
+    def frame_skipped(self, skipped: FrameSkipped) -> None:
+        ...
+
     def debug_image_ready(self, image: DebugImageReference) -> None:
         ...
 
 
 @runtime_checkable
 class FrameHandoffWriter(Protocol):
-    """Service boundary for publishing completed latest-frame files."""
+    """Service boundary for publishing completed latest-frame files.
+
+    Implementations must write image bytes to the configured temporary path
+    first, then atomically replace the configured latest-frame path. The
+    temporary and latest paths must be on the same filesystem. Implementations
+    must not delete the current valid latest-frame file before replacement.
+    """
 
     def publish_frame(self, image_bytes: bytes, metadata: FrameMetadata) -> FrameReference:
         ...
@@ -521,26 +698,54 @@ __all__ = [
     "DEFAULT_DEBUG_OUTPUT_DIR",
     "DEFAULT_FRAME_DIR",
     "DEFAULT_FRAME_HASH_ALGORITHM",
+    "DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES",
     "DEFAULT_LATEST_FRAME_FILENAME",
     "DEFAULT_TEMP_FRAME_FILENAME",
+    "DISTANCE_IMAGE_CONTRACT_NAME",
+    "DISTANCE_TARGET_COLUMN",
+    "GEOMETRY_SCHEMA_NAME",
     "LIVE_INFERENCE_CONTRACT_VERSION",
+    "LIVE_INFERENCE_OUTPUT_FIELDS",
+    "MODEL_OUTPUT_DISTANCE_KEY",
+    "MODEL_OUTPUT_YAW_SIN_COS_KEY",
+    "MODEL_TOPOLOGY_CONTRACT_VERSION",
+    "ORIENTATION_IMAGE_CONTRACT_NAME",
+    "PREDICTED_DISTANCE_FIELD",
+    "PREDICTED_YAW_COS_FIELD",
+    "PREDICTED_YAW_DEG_FIELD",
+    "PREDICTED_YAW_SIN_FIELD",
+    "PREPROCESSING_CONTRACT_KEY",
+    "PREPROCESSING_CONTRACT_NAME",
+    "RAW_IMAGE_INPUT_MODE",
     "TRI_STREAM_DISTANCE_IMAGE_KEY",
     "TRI_STREAM_GEOMETRY_KEY",
+    "TRI_STREAM_GEOMETRY_SCHEMA",
     "TRI_STREAM_INPUT_KEYS",
+    "TRI_STREAM_INPUT_MODE",
     "TRI_STREAM_ORIENTATION_IMAGE_KEY",
+    "TRI_STREAM_PREPROCESSING_CONTRACT_VERSION",
+    "TRI_STREAM_REPRESENTATION_KIND",
+    "TRI_STREAM_STORAGE_FORMAT",
+    "YAW_COS_TARGET_COLUMN",
+    "YAW_DEG_TARGET_COLUMN",
+    "YAW_SIN_TARGET_COLUMN",
     "CameraWorkerCounters",
     "CameraWorkerEventSink",
     "CameraWorkerProtocol",
     "DebugImageReference",
+    "FrameFailureStage",
+    "FrameHash",
     "FrameHandoffPaths",
     "FrameHandoffReader",
     "FrameHandoffWriter",
     "FrameMetadata",
     "FrameProcessingPolicy",
     "FrameReference",
+    "FrameSkipped",
     "FrameSkipReason",
     "InferenceEngine",
     "InferenceInputMode",
+    "InferenceOutputContract",
     "InferenceRequest",
     "InferenceResult",
     "InferenceWorkerCounters",
@@ -548,6 +753,7 @@ __all__ = [
     "InferenceWorkerProtocol",
     "IssueSeverity",
     "LiveInferenceConfig",
+    "ModelContractReference",
     "PreparedInferenceInputs",
     "RawImagePreprocessor",
     "RoiMetadata",
@@ -560,4 +766,5 @@ __all__ = [
     "WorkerState",
     "WorkerStatus",
     "WorkerWarning",
+    "is_allowed_worker_state_transition",
 ]
