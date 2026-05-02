@@ -139,7 +139,7 @@ def run_pack_tri_stream_stage_v4(
         "ClipPolicy": clip_policy,
         "ImageRepresentationMode": "roi_grayscale_inverted_vehicle_on_white",
         "DistanceImageRepresentation": "fixed_unscaled_roi_brightness_normalized_when_enabled",
-        "OrientationImageRepresentation": "target_centered_raw_grayscale_scaled_by_silhouette_extent",
+        "OrientationImageRepresentation": "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent",
         "OrientationExtentSource": "silhouette_foreground_mask",
         "OrientationContextScale": float(orientation_context_scale),
         "IncludeV1CompatArrays": bool(config.include_v1_compat_arrays),
@@ -173,7 +173,8 @@ def run_pack_tri_stream_stage_v4(
         "OrientationImageKey": TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
         "OrientationImageLayout": "N,C,H,W",
         "OrientationImageGeometry": "target_centered_scaled_by_silhouette_extent",
-        "OrientationImageContent": "raw_grayscale_detail_preserving_no_brightness_normalization",
+        "OrientationImageContent": "inverted_vehicle_detail_on_white_no_brightness_normalization",
+        "OrientationImagePolarity": "dark_vehicle_detail_on_white_background",
         "OrientationExtentSource": "silhouette_foreground_mask",
         "OrientationContextScale": float(orientation_context_scale),
         "GeometryKey": TRI_STREAM_GEOMETRY_ARRAY_KEY,
@@ -858,6 +859,7 @@ def _build_tri_stream_row_payload(
         roi_source_gray,
         silhouette_background_mask,
     )
+    orientation_repr = roi_repr
     brightness_result = None
     if brightness_active:
         brightness_result = apply_brightness_normalization_v4(
@@ -879,7 +881,7 @@ def _build_tri_stream_row_payload(
         orientation_crop_source_xyxy,
         orientation_crop_size_px,
     ) = _render_orientation_image_scaled_by_foreground_extent(
-        roi_source_gray,
+        orientation_repr,
         foreground_mask,
         canvas_height=canvas_h,
         canvas_width=canvas_w,
@@ -936,23 +938,24 @@ def _build_tri_stream_row_payload(
 
 
 def _render_orientation_image_scaled_by_foreground_extent(
-    raw_roi_gray: np.ndarray,
+    orientation_source_image: np.ndarray,
     foreground_mask: np.ndarray,
     *,
     canvas_height: int,
     canvas_width: int,
     context_scale: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
-    """Render a raw target-centred crop with apparent target size normalised."""
-    if raw_roi_gray.ndim != 2:
-        raise ValueError(f"raw_roi_gray must be 2D, got {raw_roi_gray.shape}")
+    """Render a target-centred crop with apparent target size normalised."""
+    if orientation_source_image.ndim != 2:
+        raise ValueError(f"orientation_source_image must be 2D, got {orientation_source_image.shape}")
     if foreground_mask.ndim != 2:
         raise ValueError(f"foreground_mask must be 2D, got {foreground_mask.shape}")
-    if raw_roi_gray.shape != foreground_mask.shape:
+    if orientation_source_image.shape != foreground_mask.shape:
         raise ValueError(
-            "raw ROI and foreground mask shape mismatch: "
-            f"raw={raw_roi_gray.shape}, mask={foreground_mask.shape}"
+            "orientation source and foreground mask shape mismatch: "
+            f"source={orientation_source_image.shape}, mask={foreground_mask.shape}"
         )
+    source_u8 = _orientation_source_to_uint8(orientation_source_image)
 
     extent = _foreground_extent_xyxy(foreground_mask)
     x1, y1, x2, y2 = [float(value) for value in extent]
@@ -967,7 +970,7 @@ def _render_orientation_image_scaled_by_foreground_extent(
     crop_x2 = crop_x1 + crop_size
     crop_y2 = crop_y1 + crop_size
     patch = _extract_square_patch_with_padding(
-        raw_roi_gray,
+        source_u8,
         crop_x1=crop_x1,
         crop_y1=crop_y1,
         crop_size=crop_size,
@@ -986,6 +989,14 @@ def _render_orientation_image_scaled_by_foreground_extent(
         np.asarray([crop_x1, crop_y1, crop_x2, crop_y2], dtype=np.float32),
         float(crop_size),
     )
+
+
+def _orientation_source_to_uint8(image: np.ndarray) -> np.ndarray:
+    source = np.asarray(image)
+    if np.issubdtype(source.dtype, np.floating):
+        finite_source = np.nan_to_num(source.astype(np.float32), nan=1.0, posinf=1.0, neginf=0.0)
+        return np.clip(np.rint(finite_source * 255.0), 0, 255).astype(np.uint8)
+    return np.clip(source, 0, 255).astype(np.uint8)
 
 
 def _foreground_extent_xyxy(foreground_mask: np.ndarray) -> np.ndarray:

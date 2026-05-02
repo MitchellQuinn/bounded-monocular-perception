@@ -12,7 +12,11 @@ from .config import BrightnessNormalizationConfigV4, PackTriStreamStageConfigV4
 from .paths import find_project_root
 from .pack_tri_stream_stage import _render_orientation_image_scaled_by_foreground_extent
 from .pipeline import TRI_STREAM_STAGE_ORDER, run_tri_stream_stage_sequence_for_run
-from .widgets import _preview_float_image_to_uint8, _to_png_bytes
+from .widgets import (
+    _preview_float_image_to_uint8,
+    _render_inverted_vehicle_detail_on_white_for_preview,
+    _to_png_bytes,
+)
 from .widgets_v05 import PipelineLauncherV5
 
 WIDGETS_UI_BUILD_V06 = "2026-04-29-tri-stream-v06-distance-orientation-geometry"
@@ -132,8 +136,12 @@ class PipelineLauncherV6(PipelineLauncherV5):
         pack_config: PackTriStreamStageConfigV4,
     ) -> None:
         foreground_mask = (np.asarray(background_mask, dtype=np.float32) < 0.5).astype(np.float32)
-        orientation_image, _, _, _ = _render_orientation_image_scaled_by_foreground_extent(
+        orientation_source = _render_inverted_vehicle_detail_on_white_for_preview(
             extracted_roi_gray,
+            background_mask,
+        )
+        orientation_image, _, _, _ = _render_orientation_image_scaled_by_foreground_extent(
+            orientation_source,
             foreground_mask,
             canvas_height=pack_config.normalized_canvas_height_px(),
             canvas_width=pack_config.normalized_canvas_width_px(),
@@ -144,7 +152,7 @@ class PipelineLauncherV6(PipelineLauncherV5):
     def _saved_path_preview_text(self, pack_config: PackTriStreamStageConfigV4) -> str:
         return (
             "<b>Saved Path:</b> fixed ROI canvas -> x_distance_image; "
-            "raw ROI + silhouette foreground extent -> target-centred scaled x_orientation_image; "
+            "inverted ROI + silhouette foreground extent -> target-centred scaled x_orientation_image; "
             "bbox/ROI context -> x_geometry; "
             f"canvas={pack_config.normalized_canvas_width_px()}x{pack_config.normalized_canvas_height_px()}"
         )

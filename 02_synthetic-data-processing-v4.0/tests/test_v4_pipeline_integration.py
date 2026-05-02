@@ -406,6 +406,54 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             self.assertFalse(np.allclose(base_distance, norm_distance))
             np.testing.assert_array_equal(base_orientation, norm_orientation)
 
+    def test_pack_tri_stream_orientation_uses_inverted_white_background(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_black_background"
+            self._make_fixture(
+                project_root,
+                run_name,
+                background_value=0,
+                rectangle_value=85,
+                circle_value=165,
+                line_value=225,
+            )
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=0,
+                ),
+            )
+
+            self.assertEqual(summary.successful_rows, 2)
+            output_root = project_root / "training-data-v4-tri-stream" / run_name
+            with np.load(output_root / f"{run_name}.npz", allow_pickle=False) as payload:
+                orientation = payload["x_orientation_image"][0, 0]
+
+            self.assertGreater(float(np.mean(orientation[:4, :4])), 0.99)
+            self.assertGreater(float(np.mean(orientation[-4:, -4:])), 0.99)
+            self.assertTrue(bool(np.any(orientation < 0.99)))
+
     def test_tri_stream_preview_uses_run_canvas_and_rejects_mismatch(self) -> None:
         with TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -523,7 +571,16 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             return (0, 0, 0, 0)
         return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
-    def _make_fixture(self, project_root: Path, run_name: str) -> None:
+    def _make_fixture(
+        self,
+        project_root: Path,
+        run_name: str,
+        *,
+        background_value: int = 255,
+        rectangle_value: int = 170,
+        circle_value: int = 90,
+        line_value: int = 30,
+    ) -> None:
         (project_root / "rb_pipeline_v4").mkdir(parents=True, exist_ok=True)
         (project_root / "rb_ui_v4").mkdir(parents=True, exist_ok=True)
 
@@ -535,10 +592,10 @@ class V4PipelineIntegrationTests(unittest.TestCase):
 
         rows: list[dict[str, object]] = []
         for idx in range(2):
-            image = np.full((64, 64), 255, dtype=np.uint8)
-            cv2.rectangle(image, (18, 18), (46, 46), color=170, thickness=-1)
-            cv2.circle(image, (32, 32), 9, color=90, thickness=-1)
-            cv2.line(image, (20, 44), (44, 20), color=30, thickness=2)
+            image = np.full((64, 64), int(background_value), dtype=np.uint8)
+            cv2.rectangle(image, (18, 18), (46, 46), color=int(rectangle_value), thickness=-1)
+            cv2.circle(image, (32, 32), 9, color=int(circle_value), thickness=-1)
+            cv2.line(image, (20, 44), (44, 20), color=int(line_value), thickness=2)
 
             filename = f"frame_{idx:03d}.png"
             path = images_dir / filename

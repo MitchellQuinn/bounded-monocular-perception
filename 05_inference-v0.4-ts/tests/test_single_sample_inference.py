@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+import cv2
 import torch
 
 
@@ -21,6 +22,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from inference_v0_1.discovery import (
+    RawCorpus,
     default_raw_corpus_roots,
     discover_model_runs,
     discover_raw_corpora,
@@ -151,6 +153,107 @@ class SingleSampleInferenceTests(unittest.TestCase):
             set(model_inputs),
             {"x_distance_image", "x_orientation_image", "x_geometry"},
         )
+
+    def test_tri_stream_preprocess_orientation_uses_inverted_white_background(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            corpus_root = Path(tmp_dir) / "demo-corpus"
+            images_dir = corpus_root / "images"
+            manifests_dir = corpus_root / "manifests"
+            images_dir.mkdir(parents=True)
+            manifests_dir.mkdir(parents=True)
+
+            image = np.zeros((64, 64), dtype=np.uint8)
+            cv2.rectangle(image, (18, 18), (46, 46), color=85, thickness=-1)
+            cv2.circle(image, (32, 32), 9, color=165, thickness=-1)
+            cv2.line(image, (20, 44), (44, 20), color=225, thickness=2)
+            image_path = images_dir / "frame.png"
+            self.assertTrue(cv2.imwrite(str(image_path), image))
+            run_json_path = manifests_dir / "run.json"
+            samples_csv_path = manifests_dir / "samples.csv"
+            run_json_path.write_text("{}", encoding="utf-8")
+            samples_csv_path.write_text("", encoding="utf-8")
+
+            sample_row = pd.Series(
+                {
+                    "__image_path__": str(image_path),
+                    "image_filename": "frame.png",
+                    "sample_id": "sample-001",
+                    "distance_m": 4.0,
+                    "final_rot_y_deg": 90.0,
+                }
+            )
+            preprocessing_contract = {
+                "ContractVersion": "rb-preprocess-v4-tri-stream-orientation-v1",
+                "CurrentStage": "pack_tri_stream",
+                "CompletedStages": ["detect", "silhouette", "pack_tri_stream"],
+                "CurrentRepresentation": {
+                    "Kind": "tri_stream_npz",
+                    "CanvasWidth": 64,
+                    "CanvasHeight": 64,
+                    "OrientationContextScale": 1.25,
+                },
+                "Stages": {
+                    "silhouette": {
+                        "RepresentationMode": "filled",
+                        "ROICanvasWidthPx": 64,
+                        "ROICanvasHeightPx": 64,
+                    },
+                    "pack_tri_stream": {
+                        "CanvasWidth": 64,
+                        "CanvasHeight": 64,
+                        "ClipPolicy": "fail",
+                        "OrientationContextScale": 1.25,
+                    },
+                },
+            }
+            model_context = pipeline.ModelContext(
+                label="distance-orientation / demo / run",
+                run_dir=Path(tmp_dir) / "distance-run",
+                checkpoint_path=Path(tmp_dir) / "distance-run" / "best.pt",
+                device="cpu",
+                run_config={},
+                run_manifest={},
+                dataset_summary={},
+                task_contract={"input_mode": pipeline.TRI_STREAM_INPUT_MODE},
+                preprocessing_contract=preprocessing_contract,
+            )
+            roi_model_context = pipeline.RoiFcnModelContext(
+                label="roi-fcn / demo / run",
+                run_dir=Path(tmp_dir) / "roi-run",
+                checkpoint_path=Path(tmp_dir) / "roi-run" / "best.pt",
+                device="cpu",
+                run_config={},
+                dataset_contract={},
+                canvas_width_px=64,
+                canvas_height_px=64,
+                roi_width_px=64,
+                roi_height_px=64,
+            )
+
+            with patch.object(
+                pipeline,
+                "_predict_roi_center",
+                return_value=(32.0, 32.0, np.asarray([0.0, 0.0, 64.0, 64.0], dtype=np.float32)),
+            ):
+                preprocessed = pipeline.preprocess_single_sample(
+                    corpus=RawCorpus(
+                        name="demo-corpus",
+                        root=corpus_root,
+                        images_dir=images_dir,
+                        run_json_path=run_json_path,
+                        samples_csv_path=samples_csv_path,
+                    ),
+                    sample_row=sample_row,
+                    model_context=model_context,
+                    roi_model=object(),
+                    roi_model_context=roi_model_context,
+                )
+
+            self.assertIsNotNone(preprocessed.orientation_image)
+            orientation = preprocessed.orientation_image[0]
+            self.assertGreater(float(np.mean(orientation[:4, :4])), 0.99)
+            self.assertGreater(float(np.mean(orientation[-4:, -4:])), 0.99)
+            self.assertTrue(bool(np.any(orientation < 0.99)))
 
     def test_save_inference_result_can_skip_roi_image_output(self) -> None:
         run_dir = PROJECT_ROOT / "models" / "distance-orientation" / "demo-model" / "runs" / "run_demo"

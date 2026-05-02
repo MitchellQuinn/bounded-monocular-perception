@@ -1174,6 +1174,7 @@ def preprocess_single_sample(
         roi_source_gray,
         background_mask,
     )
+    orientation_repr = roi_repr
     foreground_mask = background_mask < 0.5
     if brightness_runtime.active():
         expected_canvas_shape = (
@@ -1212,7 +1213,7 @@ def preprocess_single_sample(
             orientation_crop_source_xyxy,
             orientation_crop_size_px,
         ) = _render_orientation_image_scaled_by_foreground_extent(
-            roi_source_gray,
+            orientation_repr,
             foreground_mask.astype(np.float32, copy=False),
             canvas_height=int(pack_settings["canvas_height_px"]),
             canvas_width=int(pack_settings["canvas_width_px"]),
