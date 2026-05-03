@@ -28,6 +28,10 @@ TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
 TRI_STREAM_DISTANCE_IMAGE_KEY = "x_distance_image"
 TRI_STREAM_ORIENTATION_IMAGE_KEY = "x_orientation_image"
 TRI_STREAM_GEOMETRY_KEY = "x_geometry"
+DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME = "accepted_raw_frame"
+DISPLAY_ARTIFACT_DISTANCE_IMAGE = TRI_STREAM_DISTANCE_IMAGE_KEY
+DISPLAY_ARTIFACT_ORIENTATION_IMAGE = TRI_STREAM_ORIENTATION_IMAGE_KEY
+DISPLAY_ARTIFACT_ROI_OVERLAY = "roi_overlay"
 TRI_STREAM_INPUT_KEYS = (
     TRI_STREAM_DISTANCE_IMAGE_KEY,
     TRI_STREAM_ORIENTATION_IMAGE_KEY,
@@ -144,6 +148,27 @@ class InferenceInputMode(str, Enum):
 
     RAW_IMAGE = RAW_IMAGE_INPUT_MODE
     TRI_STREAM_V0_4 = TRI_STREAM_INPUT_MODE
+
+
+class RuntimeParameterValueType(str, Enum):
+    """Serializable value types for GUI-discoverable runtime parameters."""
+
+    BOOL = "bool"
+    INT = "int"
+    FLOAT = "float"
+    STRING = "string"
+    ENUM = "enum"
+
+
+class RuntimeParameterWidgetHint(str, Enum):
+    """Optional GUI widget hints for runtime parameter controls."""
+
+    CHECKBOX = "checkbox"
+    INT_INPUT = "int_input"
+    FLOAT_INPUT = "float_input"
+    SLIDER = "slider"
+    DROPDOWN = "dropdown"
+    TEXT_INPUT = "text_input"
 
 
 ALLOWED_WORKER_STATE_TRANSITIONS: Mapping[WorkerState, tuple[WorkerState, ...]] = {
@@ -445,6 +470,7 @@ class RoiMetadata:
 
     contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     bbox_xyxy_px: tuple[float, float, float, float] | None = None
+    bbox_coordinate_space: str = "source_image_px"
     center_xy_px: tuple[float, float] | None = None
     source_image_wh_px: tuple[int, int] | None = None
     distance_canvas_wh_px: tuple[int, int] | None = None
@@ -471,6 +497,7 @@ class InferenceResult:
     inference_time_ms: float
     contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     preprocessing_time_ms: float | None = None
+    preprocessing_parameter_revision: int | None = None
     total_time_ms: float | None = None
     model_input_mode: InferenceInputMode = InferenceInputMode.TRI_STREAM_V0_4
     output_contract: InferenceOutputContract = field(default_factory=InferenceOutputContract)
@@ -494,6 +521,85 @@ class DebugImageReference:
     created_at_utc: str
     contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
     source_frame_hash: FrameHash | None = None
+    model_input_key: str | None = None
+    parameter_revision: int | None = None
+    label: str = ""
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
+class RuntimeParameterSpec:
+    """GUI-discoverable metadata for one runtime-tunable parameter."""
+
+    name: str
+    label: str
+    value_type: RuntimeParameterValueType
+    default_value: Any
+    current_value: Any
+    widget_hint: RuntimeParameterWidgetHint
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
+    group: str = "default"
+    description: str = ""
+    minimum: float | int | None = None
+    maximum: float | int | None = None
+    step: float | int | None = None
+    choices: tuple[Any, ...] = ()
+    read_only: bool = False
+    requires_restart: bool = False
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
+class RuntimeParameterSetSpec:
+    """Versioned set of runtime parameters exposed by a worker namespace."""
+
+    owner: WorkerName
+    namespace: str
+    revision: int
+    parameters: tuple[RuntimeParameterSpec, ...]
+    timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
+class RuntimeParameterUpdate:
+    """Request to update one or more runtime-tunable parameters."""
+
+    owner: WorkerName
+    namespace: str
+    updates: Mapping[str, Any]
+    requested_at_utc: str
+    base_revision: int | None = None
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
+class RuntimeParameterUpdateResult:
+    """Worker response to a runtime parameter update request."""
+
+    owner: WorkerName
+    namespace: str
+    accepted: bool
+    revision: int
+    timestamp_utc: str
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
+    applied_updates: Mapping[str, Any] = field(default_factory=dict)
+    rejected_updates: Mapping[str, str] = field(default_factory=dict)
+    message: str = ""
     extras: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -663,6 +769,9 @@ class InferenceWorkerProtocol(WorkerControl, Protocol):
     def configure(self, config: LiveInferenceConfig) -> None:
         ...
 
+    def update_runtime_parameters(self, update: RuntimeParameterUpdate) -> None:
+        ...
+
 
 @runtime_checkable
 class WorkerEventSink(Protocol):
@@ -700,6 +809,12 @@ class InferenceWorkerEventSink(WorkerEventSink, Protocol):
         ...
 
     def debug_image_ready(self, image: DebugImageReference) -> None:
+        ...
+
+    def runtime_parameters_available(self, spec: RuntimeParameterSetSpec) -> None:
+        ...
+
+    def runtime_parameter_update_result(self, result: RuntimeParameterUpdateResult) -> None:
         ...
 
 
@@ -756,6 +871,10 @@ __all__ = [
     "DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES",
     "DEFAULT_LATEST_FRAME_FILENAME",
     "DEFAULT_TEMP_FRAME_FILENAME",
+    "DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME",
+    "DISPLAY_ARTIFACT_DISTANCE_IMAGE",
+    "DISPLAY_ARTIFACT_ORIENTATION_IMAGE",
+    "DISPLAY_ARTIFACT_ROI_OVERLAY",
     "DISTANCE_IMAGE_CONTRACT_NAME",
     "DISTANCE_TARGET_COLUMN",
     "GEOMETRY_SCHEMA_NAME",
@@ -812,6 +931,12 @@ __all__ = [
     "PreparedInferenceInputs",
     "RawImagePreprocessor",
     "RoiMetadata",
+    "RuntimeParameterSetSpec",
+    "RuntimeParameterSpec",
+    "RuntimeParameterUpdate",
+    "RuntimeParameterUpdateResult",
+    "RuntimeParameterValueType",
+    "RuntimeParameterWidgetHint",
     "WorkerControl",
     "WorkerError",
     "WorkerEventSink",

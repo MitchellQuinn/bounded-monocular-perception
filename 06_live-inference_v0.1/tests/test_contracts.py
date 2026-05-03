@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 import sys
@@ -15,6 +16,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from interfaces import (  # noqa: E402
     DEFAULT_FRAME_HASH_ALGORITHM,
     DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES,
+    DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME,
+    DISPLAY_ARTIFACT_DISTANCE_IMAGE,
+    DISPLAY_ARTIFACT_ORIENTATION_IMAGE,
+    DISPLAY_ARTIFACT_ROI_OVERLAY,
     LIVE_INFERENCE_CONTRACT_VERSION,
     TRI_STREAM_DISTANCE_IMAGE_KEY,
     TRI_STREAM_GEOMETRY_KEY,
@@ -29,6 +34,12 @@ from interfaces import (  # noqa: E402
     InferenceResult,
     LiveInferenceConfig,
     PreparedInferenceInputs,
+    RuntimeParameterSetSpec,
+    RuntimeParameterSpec,
+    RuntimeParameterUpdate,
+    RuntimeParameterUpdateResult,
+    RuntimeParameterValueType,
+    RuntimeParameterWidgetHint,
     WorkerName,
     WorkerState,
     WorkerStatus,
@@ -46,6 +57,14 @@ class LiveInferenceContractTests(unittest.TestCase):
         frame = contracts.FrameReference(
             image_path=Path("live_frames/latest_frame.png"),
             frame_hash=frame_hash,
+        )
+        parameter_spec = contracts.RuntimeParameterSpec(
+            name="threshold",
+            label="Threshold",
+            value_type=contracts.RuntimeParameterValueType.FLOAT,
+            default_value=0.5,
+            current_value=0.75,
+            widget_hint=contracts.RuntimeParameterWidgetHint.SLIDER,
         )
         return {
             "InferenceOutputContract": contracts.InferenceOutputContract(),
@@ -80,6 +99,27 @@ class LiveInferenceContractTests(unittest.TestCase):
                 image_kind="distance",
                 path=Path("live_debug/distance.png"),
                 created_at_utc="2026-05-01T10:00:00Z",
+            ),
+            "RuntimeParameterSpec": parameter_spec,
+            "RuntimeParameterSetSpec": contracts.RuntimeParameterSetSpec(
+                owner=contracts.WorkerName.INFERENCE,
+                namespace="preprocessing",
+                revision=3,
+                parameters=(parameter_spec,),
+                timestamp_utc="2026-05-01T10:00:00Z",
+            ),
+            "RuntimeParameterUpdate": contracts.RuntimeParameterUpdate(
+                owner=contracts.WorkerName.INFERENCE,
+                namespace="preprocessing",
+                updates={"threshold": 0.8},
+                requested_at_utc="2026-05-01T10:00:00Z",
+            ),
+            "RuntimeParameterUpdateResult": contracts.RuntimeParameterUpdateResult(
+                owner=contracts.WorkerName.INFERENCE,
+                namespace="preprocessing",
+                accepted=True,
+                revision=4,
+                timestamp_utc="2026-05-01T10:00:00Z",
             ),
             "CameraWorkerCounters": contracts.CameraWorkerCounters(),
             "InferenceWorkerCounters": contracts.InferenceWorkerCounters(),
@@ -197,6 +237,17 @@ class LiveInferenceContractTests(unittest.TestCase):
         self.assertEqual(FrameFailureStage.PREPROCESS.value, "preprocess")
         self.assertEqual(FrameFailureStage.INFERENCE.value, "inference")
 
+    def test_display_artifact_kind_constants(self) -> None:
+        self.assertEqual(DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME, "accepted_raw_frame")
+        self.assertEqual(DISPLAY_ARTIFACT_DISTANCE_IMAGE, "x_distance_image")
+        self.assertEqual(DISPLAY_ARTIFACT_ORIENTATION_IMAGE, "x_orientation_image")
+        self.assertEqual(DISPLAY_ARTIFACT_ROI_OVERLAY, "roi_overlay")
+
+    def test_inference_protocols_include_runtime_parameter_hooks(self) -> None:
+        self.assertTrue(hasattr(contracts.InferenceWorkerProtocol, "update_runtime_parameters"))
+        self.assertTrue(hasattr(contracts.InferenceWorkerEventSink, "runtime_parameters_available"))
+        self.assertTrue(hasattr(contracts.InferenceWorkerEventSink, "runtime_parameter_update_result"))
+
     def test_worker_state_transition_helper(self) -> None:
         self.assertTrue(
             is_allowed_worker_state_transition(WorkerState.STOPPED, WorkerState.STARTING)
@@ -277,6 +328,159 @@ class LiveInferenceContractTests(unittest.TestCase):
         self.assertEqual(payload["contract_version"], LIVE_INFERENCE_CONTRACT_VERSION)
         self.assertEqual(payload["input_image_hash"]["value"], "abc123")
         self.assertEqual(payload["model_input_mode"], "tri_stream_distance_orientation_geometry")
+
+    def test_runtime_parameter_spec_to_dict_converts_enums_to_strings(self) -> None:
+        spec = RuntimeParameterSpec(
+            name="edge_threshold",
+            label="Edge threshold",
+            value_type=RuntimeParameterValueType.FLOAT,
+            default_value=0.4,
+            current_value=0.55,
+            widget_hint=RuntimeParameterWidgetHint.SLIDER,
+            group="preprocessing",
+            description="Synthetic threshold exposed for runtime tuning.",
+            minimum=0.0,
+            maximum=1.0,
+            step=0.05,
+            choices=(0.25, 0.5, 0.75),
+        )
+
+        payload = spec.to_dict()
+
+        self.assertEqual(payload["name"], "edge_threshold")
+        self.assertEqual(payload["value_type"], "float")
+        self.assertEqual(payload["widget_hint"], "slider")
+        self.assertEqual(payload["choices"], [0.25, 0.5, 0.75])
+        self.assertEqual(payload["contract_version"], LIVE_INFERENCE_CONTRACT_VERSION)
+
+    def test_runtime_parameter_set_spec_to_dict(self) -> None:
+        spec = RuntimeParameterSpec(
+            name="mode",
+            label="Mode",
+            value_type=RuntimeParameterValueType.ENUM,
+            default_value="fast",
+            current_value="fast",
+            widget_hint=RuntimeParameterWidgetHint.DROPDOWN,
+            choices=("fast", "accurate"),
+        )
+        parameter_set = RuntimeParameterSetSpec(
+            owner=WorkerName.INFERENCE,
+            namespace="preprocessing",
+            revision=7,
+            parameters=(spec,),
+            timestamp_utc="2026-05-01T10:00:00Z",
+        )
+
+        payload = parameter_set.to_dict()
+
+        self.assertEqual(payload["owner"], "inference")
+        self.assertEqual(payload["namespace"], "preprocessing")
+        self.assertEqual(payload["revision"], 7)
+        self.assertEqual(payload["parameters"][0]["value_type"], "enum")
+        self.assertEqual(payload["parameters"][0]["widget_hint"], "dropdown")
+        self.assertEqual(payload["timestamp_utc"], "2026-05-01T10:00:00Z")
+
+    def test_runtime_parameter_update_to_dict(self) -> None:
+        update = RuntimeParameterUpdate(
+            owner=WorkerName.INFERENCE,
+            namespace="preprocessing",
+            updates={"edge_threshold": 0.65, "enabled": True},
+            requested_at_utc="2026-05-01T10:00:00Z",
+            base_revision=7,
+        )
+
+        payload = update.to_dict()
+
+        self.assertEqual(payload["owner"], "inference")
+        self.assertEqual(payload["namespace"], "preprocessing")
+        self.assertEqual(payload["updates"], {"edge_threshold": 0.65, "enabled": True})
+        self.assertEqual(payload["requested_at_utc"], "2026-05-01T10:00:00Z")
+        self.assertEqual(payload["base_revision"], 7)
+
+    def test_runtime_parameter_update_result_to_dict(self) -> None:
+        result = RuntimeParameterUpdateResult(
+            owner=WorkerName.INFERENCE,
+            namespace="preprocessing",
+            accepted=False,
+            revision=7,
+            applied_updates={"edge_threshold": 0.65},
+            rejected_updates={"mode": "unsupported choice"},
+            message="partial update",
+            timestamp_utc="2026-05-01T10:00:00Z",
+        )
+
+        payload = result.to_dict()
+
+        self.assertEqual(payload["owner"], "inference")
+        self.assertFalse(payload["accepted"])
+        self.assertEqual(payload["revision"], 7)
+        self.assertEqual(payload["applied_updates"], {"edge_threshold": 0.65})
+        self.assertEqual(payload["rejected_updates"], {"mode": "unsupported choice"})
+        self.assertEqual(payload["message"], "partial update")
+        self.assertEqual(payload["timestamp_utc"], "2026-05-01T10:00:00Z")
+        self.assertEqual(payload["contract_version"], LIVE_INFERENCE_CONTRACT_VERSION)
+
+    def test_inference_result_can_carry_preprocessing_parameter_revision(self) -> None:
+        result = InferenceResult(
+            request_id="request-1",
+            input_image_path=Path("live_frames/latest_frame.png"),
+            input_image_hash=FrameHash("abc123"),
+            timestamp_utc="2026-05-01T10:00:00Z",
+            predicted_distance_m=4.5,
+            predicted_yaw_sin=0.0,
+            predicted_yaw_cos=1.0,
+            predicted_yaw_deg=0.0,
+            inference_time_ms=12.5,
+            preprocessing_parameter_revision=9,
+        )
+
+        self.assertEqual(result.preprocessing_parameter_revision, 9)
+        self.assertEqual(result.to_dict()["preprocessing_parameter_revision"], 9)
+
+    def test_debug_image_reference_can_carry_model_input_key_and_parameter_revision(self) -> None:
+        image = contracts.DebugImageReference(
+            request_id="request-1",
+            image_kind=DISPLAY_ARTIFACT_DISTANCE_IMAGE,
+            path=Path("live_debug/distance.png"),
+            created_at_utc="2026-05-01T10:00:00Z",
+            source_frame_hash=FrameHash("abc123"),
+            model_input_key=TRI_STREAM_DISTANCE_IMAGE_KEY,
+            parameter_revision=9,
+            label="Distance image",
+        )
+
+        payload = image.to_dict()
+
+        self.assertEqual(payload["source_frame_hash"]["value"], "abc123")
+        self.assertEqual(payload["model_input_key"], TRI_STREAM_DISTANCE_IMAGE_KEY)
+        self.assertEqual(payload["parameter_revision"], 9)
+        self.assertEqual(payload["label"], "Distance image")
+
+    def test_roi_metadata_includes_bbox_coordinate_space(self) -> None:
+        roi = contracts.RoiMetadata(
+            bbox_xyxy_px=(1.0, 2.0, 30.0, 40.0),
+            source_image_wh_px=(640, 480),
+        )
+
+        payload = roi.to_dict()
+
+        self.assertEqual(roi.bbox_coordinate_space, "source_image_px")
+        self.assertEqual(payload["bbox_coordinate_space"], "source_image_px")
+        self.assertEqual(payload["bbox_xyxy_px"], [1.0, 2.0, 30.0, 40.0])
+
+    def test_contracts_module_keeps_heavy_runtime_imports_out(self) -> None:
+        source = Path(contracts.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        banned_roots = {"PySide6", "cv2", "numpy", "torch"}
+        found: set[str] = set()
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found.update(alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                found.add(node.module.split(".", maxsplit=1)[0])
+
+        self.assertEqual(found & banned_roots, set())
 
     def test_contract_version_helpers(self) -> None:
         frame_hash = FrameHash("abc123")
