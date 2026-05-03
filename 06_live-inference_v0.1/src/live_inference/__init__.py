@@ -5,9 +5,11 @@ from .frame_handoff import (
     LatestFrameHandoffReader,
     compute_frame_hash,
 )
+from .runtime_parameters import RuntimeParameterStateManager
 
 __all__ = [
     "AtomicFrameHandoffWriter",
     "LatestFrameHandoffReader",
+    "RuntimeParameterStateManager",
     "compute_frame_hash",
 ]
