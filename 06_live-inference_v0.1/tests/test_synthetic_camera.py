@@ -18,8 +18,8 @@ for path in (PROJECT_ROOT, SRC_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-import cameras.live_inference.synthetic_camera as synthetic_camera  # noqa: E402
-from cameras.live_inference.synthetic_camera import (  # noqa: E402
+import cameras.synthetic_camera.synthetic_camera as synthetic_camera  # noqa: E402
+from cameras.synthetic_camera import (  # noqa: E402
     SOURCE_KIND,
     SyntheticCameraConfig,
     SyntheticCameraPublisher,
@@ -405,7 +405,7 @@ class SyntheticCameraPublisherTests(unittest.TestCase):
             self.assertTrue(temp_metadata_path.is_file())
 
     def test_import_hygiene(self) -> None:
-        module_path = SRC_ROOT / "cameras" / "live_inference" / "synthetic_camera.py"
+        module_path = SRC_ROOT / "cameras" / "synthetic_camera" / "synthetic_camera.py"
         tree = ast.parse(module_path.read_text(encoding="utf-8"))
         forbidden_roots = {
             "PySide6",

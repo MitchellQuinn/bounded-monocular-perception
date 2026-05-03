@@ -1,6 +1,7 @@
 """Live inference camera implementations."""
 
 from .synthetic_camera import (
+    SOURCE_KIND,
     SyntheticCameraConfig,
     SyntheticCameraPublisher,
     SyntheticCameraSortOrder,
@@ -10,6 +11,7 @@ from .synthetic_camera import (
 )
 
 __all__ = [
+    "SOURCE_KIND",
     "SyntheticCameraConfig",
     "SyntheticCameraPublisher",
     "SyntheticCameraSortOrder",
