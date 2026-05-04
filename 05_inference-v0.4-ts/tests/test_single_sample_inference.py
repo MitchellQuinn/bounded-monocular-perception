@@ -154,7 +154,13 @@ class SingleSampleInferenceTests(unittest.TestCase):
             {"x_distance_image", "x_orientation_image", "x_geometry"},
         )
 
-    def test_tri_stream_preprocess_orientation_uses_inverted_white_background(self) -> None:
+    def _preprocess_tri_stream_orientation_demo(
+        self,
+        *,
+        orientation_representation: str,
+        orientation_content: str | None = None,
+        orientation_polarity: str | None = None,
+    ):
         with TemporaryDirectory() as tmp_dir:
             corpus_root = Path(tmp_dir) / "demo-corpus"
             images_dir = corpus_root / "images"
@@ -182,16 +188,21 @@ class SingleSampleInferenceTests(unittest.TestCase):
                     "final_rot_y_deg": 90.0,
                 }
             )
+            current_representation = {
+                "Kind": "tri_stream_npz",
+                "CanvasWidth": 64,
+                "CanvasHeight": 64,
+                "OrientationContextScale": 1.25,
+            }
+            if orientation_content is not None:
+                current_representation["OrientationImageContent"] = orientation_content
+            if orientation_polarity is not None:
+                current_representation["OrientationImagePolarity"] = orientation_polarity
             preprocessing_contract = {
                 "ContractVersion": "rb-preprocess-v4-tri-stream-orientation-v1",
                 "CurrentStage": "pack_tri_stream",
                 "CompletedStages": ["detect", "silhouette", "pack_tri_stream"],
-                "CurrentRepresentation": {
-                    "Kind": "tri_stream_npz",
-                    "CanvasWidth": 64,
-                    "CanvasHeight": 64,
-                    "OrientationContextScale": 1.25,
-                },
+                "CurrentRepresentation": current_representation,
                 "Stages": {
                     "silhouette": {
                         "RepresentationMode": "filled",
@@ -203,6 +214,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
                         "CanvasHeight": 64,
                         "ClipPolicy": "fail",
                         "OrientationContextScale": 1.25,
+                        "OrientationImageRepresentation": orientation_representation,
                     },
                 },
             }
@@ -249,11 +261,58 @@ class SingleSampleInferenceTests(unittest.TestCase):
                     roi_model_context=roi_model_context,
                 )
 
-            self.assertIsNotNone(preprocessed.orientation_image)
-            orientation = preprocessed.orientation_image[0]
-            self.assertGreater(float(np.mean(orientation[:4, :4])), 0.99)
-            self.assertGreater(float(np.mean(orientation[-4:, -4:])), 0.99)
-            self.assertTrue(bool(np.any(orientation < 0.99)))
+            return preprocessed
+
+    def test_tri_stream_preprocess_orientation_uses_inverted_white_background(self) -> None:
+        preprocessed = self._preprocess_tri_stream_orientation_demo(
+            orientation_representation="target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent",
+            orientation_content="inverted_vehicle_detail_on_white_no_brightness_normalization",
+            orientation_polarity="dark_vehicle_detail_on_white_background",
+        )
+
+        self.assertIsNotNone(preprocessed.orientation_image)
+        orientation = preprocessed.orientation_image[0]
+        self.assertGreater(float(np.mean(orientation[:4, :4])), 0.99)
+        self.assertGreater(float(np.mean(orientation[-4:, -4:])), 0.99)
+        self.assertTrue(bool(np.any(orientation < 0.99)))
+        self.assertEqual(
+            preprocessed.sample_row["tri_stream_orientation_source_mode"],
+            pipeline.TRI_STREAM_ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+        )
+
+    def test_tri_stream_preprocess_orientation_can_follow_legacy_raw_contract(self) -> None:
+        preprocessed = self._preprocess_tri_stream_orientation_demo(
+            orientation_representation="target_centered_raw_grayscale_scaled_by_silhouette_extent",
+            orientation_content="raw_grayscale_detail_preserving_no_brightness_normalization",
+        )
+
+        self.assertIsNotNone(preprocessed.orientation_image)
+        orientation = preprocessed.orientation_image[0]
+        self.assertLess(float(np.mean(orientation[:4, :4])), 0.05)
+        self.assertLess(float(np.mean(orientation[-4:, -4:])), 0.05)
+        self.assertGreater(float(np.max(orientation)), 0.80)
+        self.assertEqual(
+            preprocessed.sample_row["tri_stream_orientation_source_mode"],
+            pipeline.TRI_STREAM_ORIENTATION_SOURCE_RAW_GRAYSCALE,
+        )
+
+    def test_tri_stream_orientation_contract_rejects_conflicting_semantics(self) -> None:
+        preprocessing_contract = {
+            "CurrentRepresentation": {
+                "Kind": "tri_stream_npz",
+                "OrientationImageContent": "raw_grayscale_detail_preserving_no_brightness_normalization",
+            },
+            "Stages": {
+                "pack_tri_stream": {
+                    "OrientationImageRepresentation": (
+                        "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent"
+                    ),
+                }
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "Conflicting tri-stream orientation"):
+            pipeline._resolve_tri_stream_orientation_source_mode(preprocessing_contract)
 
     def test_save_inference_result_can_skip_roi_image_output(self) -> None:
         run_dir = PROJECT_ROOT / "models" / "distance-orientation" / "demo-model" / "runs" / "run_demo"

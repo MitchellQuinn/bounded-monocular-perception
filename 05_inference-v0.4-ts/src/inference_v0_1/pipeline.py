@@ -61,11 +61,28 @@ IMAGE_TENSOR_INPUT_MODE = "image_tensor"
 DUAL_STREAM_INPUT_MODE = "dual_stream_image_bbox_features"
 TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
 TRI_STREAM_ORIENTATION_IMAGE_KEY = "x_orientation_image"
+TRI_STREAM_ORIENTATION_SOURCE_RAW_GRAYSCALE = "raw_grayscale"
+TRI_STREAM_ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE = "inverted_vehicle_on_white"
 _SUPPORTED_BRIGHTNESS_MASK_SOURCES = {
     DEFAULT_BRIGHTNESS_MASK_SOURCE,
     "silhouette_background_mask_lt_0_5",
     "silhouette_foreground_mask",
     "foreground_mask",
+}
+_TRI_STREAM_ORIENTATION_REPRESENTATION_SOURCE_MODES = {
+    "target_centered_raw_grayscale_scaled_by_silhouette_extent": TRI_STREAM_ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent": (
+        TRI_STREAM_ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+}
+_TRI_STREAM_ORIENTATION_CONTENT_SOURCE_MODES = {
+    "raw_grayscale_detail_preserving_no_brightness_normalization": TRI_STREAM_ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    "inverted_vehicle_detail_on_white_no_brightness_normalization": (
+        TRI_STREAM_ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+}
+_TRI_STREAM_ORIENTATION_POLARITY_SOURCE_MODES = {
+    "dark_vehicle_detail_on_white_background": TRI_STREAM_ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
 }
 
 
@@ -166,6 +183,7 @@ class InferenceResult:
     source_samples_csv_path: Path
     preprocessing_contract_version: str
     model_input_mode: str = ""
+    orientation_source_mode: str = ""
     orientation_image_shape: tuple[int, ...] = ()
     brightness_normalization: dict[str, Any] = field(default_factory=dict)
     saved_json_path: Path | None = None
@@ -230,6 +248,7 @@ class InferenceResult:
                 "shape": list(self.roi_image.shape),
                 "dtype": str(self.roi_image.dtype),
                 "preprocessing_contract_version": self.preprocessing_contract_version,
+                "orientation_source_mode": self.orientation_source_mode,
                 "brightness_normalization": dict(self.brightness_normalization),
             },
             "runtime": {
@@ -327,6 +346,62 @@ def _pack_stage_name_for_input_mode(
     if current_kind == "tri_stream_npz":
         return "pack_tri_stream"
     return "pack_dual_stream"
+
+
+def _resolve_tri_stream_orientation_source_mode(
+    preprocessing_contract: Mapping[str, Any],
+) -> str:
+    """Resolve which source image the tri-stream orientation crop must use."""
+    current = _current_representation(preprocessing_contract)
+    stage = _stage_parameters(preprocessing_contract, "pack_tri_stream")
+    sources: dict[str, str] = {}
+
+    representation = str(stage.get("OrientationImageRepresentation", "")).strip()
+    if representation:
+        source_mode = _TRI_STREAM_ORIENTATION_REPRESENTATION_SOURCE_MODES.get(representation)
+        if source_mode is None:
+            supported = ", ".join(sorted(_TRI_STREAM_ORIENTATION_REPRESENTATION_SOURCE_MODES))
+            raise ValueError(
+                "Unsupported tri-stream OrientationImageRepresentation="
+                f"{representation!r}. Supported values: {supported}."
+            )
+        sources["Stages.pack_tri_stream.OrientationImageRepresentation"] = source_mode
+
+    content = str(current.get("OrientationImageContent", "")).strip()
+    if content:
+        source_mode = _TRI_STREAM_ORIENTATION_CONTENT_SOURCE_MODES.get(content)
+        if source_mode is None:
+            supported = ", ".join(sorted(_TRI_STREAM_ORIENTATION_CONTENT_SOURCE_MODES))
+            raise ValueError(
+                f"Unsupported tri-stream OrientationImageContent={content!r}. "
+                f"Supported values: {supported}."
+            )
+        sources["CurrentRepresentation.OrientationImageContent"] = source_mode
+
+    polarity = str(current.get("OrientationImagePolarity", "")).strip()
+    if polarity:
+        source_mode = _TRI_STREAM_ORIENTATION_POLARITY_SOURCE_MODES.get(polarity)
+        if source_mode is None:
+            supported = ", ".join(sorted(_TRI_STREAM_ORIENTATION_POLARITY_SOURCE_MODES))
+            raise ValueError(
+                f"Unsupported tri-stream OrientationImagePolarity={polarity!r}. "
+                f"Supported values: {supported}."
+            )
+        sources["CurrentRepresentation.OrientationImagePolarity"] = source_mode
+
+    source_modes = set(sources.values())
+    if len(source_modes) > 1:
+        details = ", ".join(f"{key}={value}" for key, value in sorted(sources.items()))
+        raise ValueError(
+            "Conflicting tri-stream orientation preprocessing contract fields: "
+            f"{details}."
+        )
+    if not source_modes:
+        raise ValueError(
+            "Tri-stream preprocessing contract must declare OrientationImageRepresentation "
+            "or OrientationImageContent so inference can reproduce the orientation image polarity."
+        )
+    return next(iter(source_modes))
 
 
 def _validate_input_mode_preprocessing_contract(
@@ -490,6 +565,11 @@ def _pack_settings_from_contract(
 ) -> dict[str, Any]:
     current = _current_representation(preprocessing_contract)
     stage = _stage_parameters(preprocessing_contract, pack_stage_name)
+    orientation_source_mode = (
+        _resolve_tri_stream_orientation_source_mode(preprocessing_contract)
+        if pack_stage_name == "pack_tri_stream"
+        else ""
+    )
     return {
         "canvas_width_px": int(stage.get("CanvasWidth", current.get("CanvasWidth", 300))),
         "canvas_height_px": int(stage.get("CanvasHeight", current.get("CanvasHeight", 300))),
@@ -498,6 +578,7 @@ def _pack_settings_from_contract(
         "orientation_context_scale": float(
             stage.get("OrientationContextScale", current.get("OrientationContextScale", 1.25))
         ),
+        "orientation_source_mode": orientation_source_mode,
     }
 
 
@@ -655,7 +736,9 @@ def _contract_summary(contract: Mapping[str, Any]) -> dict[str, Any]:
                 "SilhouetteScaling",
                 "DistanceImageKey",
                 "OrientationImageKey",
+                "OrientationImageContent",
                 "GeometryKey",
+                "OrientationImagePolarity",
                 "OrientationContextScale",
             )
             if key in current
@@ -695,6 +778,10 @@ def build_inference_startup_report(
         model_context.preprocessing_contract,
         input_mode,
     )
+    pack_settings = _pack_settings_from_contract(
+        model_context.preprocessing_contract,
+        pack_stage_name=pack_stage_name,
+    )
     brightness_runtime = _resolve_brightness_normalization_runtime(
         model_context.preprocessing_contract,
         pack_stage_name=pack_stage_name,
@@ -717,6 +804,7 @@ def build_inference_startup_report(
                 "device": model_context.device,
                 "input_mode": input_mode,
                 "pack_stage_name": pack_stage_name,
+                "orientation_source_mode": str(pack_settings.get("orientation_source_mode", "")),
                 "preprocessing_contract_summary": _jsonable(
                     _contract_summary(model_context.preprocessing_contract)
                 ),
@@ -746,6 +834,7 @@ def format_inference_startup_log(report: Mapping[str, Any]) -> list[str]:
         f"selected distance/yaw model: {distance_model.get('label', '')}",
         f"distance/yaw input mode: {distance_model.get('input_mode', '')}",
         f"distance/yaw pack stage: {distance_model.get('pack_stage_name', '')}",
+        f"tri-stream orientation source mode: {distance_model.get('orientation_source_mode', '')}",
         "selected distance/yaw preprocessing contract: "
         + json.dumps(distance_model.get("preprocessing_contract_summary", {}), sort_keys=True),
         "brightness normalization active for distance/yaw input: "
@@ -1174,7 +1263,7 @@ def preprocess_single_sample(
         roi_source_gray,
         background_mask,
     )
-    orientation_repr = roi_repr
+    inverted_orientation_repr = roi_repr
     foreground_mask = background_mask < 0.5
     if brightness_runtime.active():
         expected_canvas_shape = (
@@ -1207,13 +1296,23 @@ def preprocess_single_sample(
     orientation_image: np.ndarray | None = None
     orientation_payload: dict[str, Any] = {}
     if input_mode == TRI_STREAM_INPUT_MODE:
+        orientation_source_mode = str(pack_settings.get("orientation_source_mode", "")).strip()
+        if orientation_source_mode == TRI_STREAM_ORIENTATION_SOURCE_RAW_GRAYSCALE:
+            orientation_source_image = roi_source_gray
+        elif orientation_source_mode == TRI_STREAM_ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE:
+            orientation_source_image = inverted_orientation_repr
+        else:
+            raise ValueError(
+                "Unsupported resolved tri-stream orientation source mode: "
+                f"{orientation_source_mode!r}."
+            )
         (
             x_orientation_image,
             orientation_source_extent_xyxy,
             orientation_crop_source_xyxy,
             orientation_crop_size_px,
         ) = _render_orientation_image_scaled_by_foreground_extent(
-            orientation_repr,
+            orientation_source_image,
             foreground_mask.astype(np.float32, copy=False),
             canvas_height=int(pack_settings["canvas_height_px"]),
             canvas_width=int(pack_settings["canvas_width_px"]),
@@ -1222,6 +1321,7 @@ def preprocess_single_sample(
         orientation_image = x_orientation_image[None, ...].astype(np.float32, copy=False)
         orientation_payload.update(
             {
+                "tri_stream_orientation_source_mode": orientation_source_mode,
                 "tri_stream_orientation_context_scale": float(pack_settings["orientation_context_scale"]),
                 "tri_stream_orientation_source_extent_x1_px": float(orientation_source_extent_xyxy[0]),
                 "tri_stream_orientation_source_extent_y1_px": float(orientation_source_extent_xyxy[1]),
@@ -1515,6 +1615,9 @@ def _build_inference_result(
             model_context.preprocessing_contract.get("ContractVersion", "")
         ).strip(),
         model_input_mode=str(getattr(preprocessed, "input_mode", "")),
+        orientation_source_mode=str(
+            preprocessed.sample_row.get("tri_stream_orientation_source_mode", "")
+        ),
         orientation_image_shape=(
             tuple(int(value) for value in preprocessed.orientation_image.shape)
             if preprocessed.orientation_image is not None

@@ -1,0 +1,29 @@
+{
+  "best_epoch": 6,
+  "best_val_loss_from_training": 0.011139497394038531,
+  "stopped_after_epoch": 10,
+  "validation": {
+    "accuracy_by_tolerance": {
+      "0.10m": 0.628262638486094,
+      "0.25m": 0.9396816123849862,
+      "0.50m": 0.9998539506353147
+    },
+    "accuracy_within_tolerance": 0.628262638486094,
+    "loss": 0.011139497394038531,
+    "loss_components": {
+      "distance_loss": 0.007972471355673156,
+      "orientation_loss": 0.0031670260354663164
+    },
+    "mae": 0.09755590558052063,
+    "orientation": {
+      "yaw_acc@10deg": 0.9528051910117048,
+      "yaw_acc@15deg": 0.9890462976486052,
+      "yaw_acc@5deg": 0.7467504016357529,
+      "yaw_mean_error_deg": 3.876997709274292,
+      "yaw_median_error_deg": 2.819915771484375,
+      "yaw_p95_error_deg": 9.818097114562988
+    },
+    "rmse": 0.1262732893228531,
+    "sample_count": 47929
+  }
+}
