@@ -22,6 +22,7 @@ runtime use.
 - Result: pass
 - Errors: none
 - Warnings: none
+- Distance/orientation orientation source mode: `inverted_vehicle_on_white`
 
 ## Checkpoints
 
@@ -38,6 +39,7 @@ runtime use.
 - Preprocessing contract name: `rb-preprocess-v4-tri-stream-orientation-v1`
 - Input mode: `tri_stream_distance_orientation_geometry`
 - Representation kind: `tri_stream_npz`
+- Orientation source mode: `inverted_vehicle_on_white`
 - Input keys: `x_distance_image`, `x_orientation_image`, `x_geometry`,
   `y_distance_m`, `y_yaw_deg`, `y_yaw_sin`, `y_yaw_cos`
 - Geometry schema: `cx_px`, `cy_px`, `w_px`, `h_px`, `cx_norm`, `cy_norm`,
@@ -57,6 +59,5 @@ runtime use.
 ## Notes
 
 - This report validates metadata compatibility only.
-- The pending preprocessing contract update for the representation correction is
-  not implemented here; real preprocessor implementation should wait until that
-  contract lands.
+- The live preprocessor/runtime is not implemented here; future orientation
+  rendering should use the selected model's `orientation_source_mode`.

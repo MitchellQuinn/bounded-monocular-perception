@@ -26,15 +26,13 @@
     "symlinks_created": false
   },
   "summary": {
-    "distance_orientation_artifacts_scanned": 5,
+    "distance_orientation_artifacts_scanned": 6,
     "distance_orientation_registry_roots_inspected": 4,
-    "roi_fcn_artifacts_scanned": 3,
-    "compatible_live_tri_stream_distance_orientation_models": 3,
-    "likely_current_deployment_candidate": "05_inference-v0.4-ts/models/distance-orientation/260504-1100_ts-2d-cnn/runs/run_0001",
-    "roi_fcn_candidate": "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003",
+    "roi_fcn_artifacts_scanned": 4,
+    "compatible_live_tri_stream_distance_orientation_models": 4,
+    "likely_current_deployment_candidate": "06_live-inference_v0.1/models/distance-orientation/260504-1100_ts-2d-cnn__run_0001",
+    "roi_fcn_candidate": "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003",
     "blockers": [
-      "No live-tree distance/orientation artifacts were found",
-      "No live-tree ROI-FCN artifacts were found",
       "Parent registry roots contain run_register.json but are not directly loader-readable model bundles; use/copy a run artifact root or add manifest metadata at the selected root."
     ]
   },
@@ -52,6 +50,7 @@
       "preprocessing_contract_name": "metadata missing",
       "input_mode": "metadata missing",
       "representation_kind": "metadata missing",
+      "orientation_source_mode": "metadata missing",
       "input_keys_discovered": "none",
       "geometry_schema_status": "metadata missing",
       "output_keys_discovered": "none",
@@ -65,6 +64,7 @@
         "missing_input_mode",
         "missing_preprocessing_contract_name",
         "missing_representation_kind",
+        "missing_orientation_source_mode",
         "missing_input_keys",
         "missing_geometry_schema",
         "missing_geometry_dim",
@@ -85,6 +85,7 @@
       "preprocessing_contract_name": "metadata missing",
       "input_mode": "metadata missing",
       "representation_kind": "metadata missing",
+      "orientation_source_mode": "metadata missing",
       "input_keys_discovered": "none",
       "geometry_schema_status": "metadata missing",
       "output_keys_discovered": "none",
@@ -98,6 +99,7 @@
         "missing_input_mode",
         "missing_preprocessing_contract_name",
         "missing_representation_kind",
+        "missing_orientation_source_mode",
         "missing_input_keys",
         "missing_geometry_schema",
         "missing_geometry_dim",
@@ -118,6 +120,7 @@
       "preprocessing_contract_name": "metadata missing",
       "input_mode": "metadata missing",
       "representation_kind": "metadata missing",
+      "orientation_source_mode": "metadata missing",
       "input_keys_discovered": "none",
       "geometry_schema_status": "metadata missing",
       "output_keys_discovered": "none",
@@ -131,6 +134,7 @@
         "missing_input_mode",
         "missing_preprocessing_contract_name",
         "missing_representation_kind",
+        "missing_orientation_source_mode",
         "missing_input_keys",
         "missing_geometry_schema",
         "missing_geometry_dim",
@@ -151,6 +155,7 @@
       "preprocessing_contract_name": "metadata missing",
       "input_mode": "metadata missing",
       "representation_kind": "metadata missing",
+      "orientation_source_mode": "metadata missing",
       "input_keys_discovered": "none",
       "geometry_schema_status": "metadata missing",
       "output_keys_discovered": "none",
@@ -164,6 +169,7 @@
         "missing_input_mode",
         "missing_preprocessing_contract_name",
         "missing_representation_kind",
+        "missing_orientation_source_mode",
         "missing_input_keys",
         "missing_geometry_schema",
         "missing_geometry_dim",
@@ -184,6 +190,7 @@
       "preprocessing_contract_name": "rb-preprocess-v4-dual-stream-orientation-v1",
       "input_mode": "dual_stream_image_bbox_features",
       "representation_kind": "dual_stream_npz",
+      "orientation_source_mode": "metadata missing",
       "input_keys_discovered": "silhouette_crop, bbox_features, y_position_3d, y_distance_m, y_yaw_deg, y_yaw_sin, y_yaw_cos",
       "geometry_schema_status": "legacy dual-stream / no x_geometry schema",
       "output_keys_discovered": "distance_m, yaw_sin_cos",
@@ -196,6 +203,7 @@
         "input_mode_mismatch",
         "preprocessing_contract_name_mismatch",
         "representation_kind_mismatch",
+        "missing_orientation_source_mode",
         "missing_input_key",
         "missing_input_key",
         "missing_input_key",
@@ -216,6 +224,7 @@
       "preprocessing_contract_name": "rb-preprocess-v4-dual-stream-orientation-brightness-v1",
       "input_mode": "dual_stream_image_bbox_features",
       "representation_kind": "dual_stream_npz",
+      "orientation_source_mode": "metadata missing",
       "input_keys_discovered": "silhouette_crop, bbox_features, y_position_3d, y_distance_m, y_yaw_deg, y_yaw_sin, y_yaw_cos",
       "geometry_schema_status": "legacy dual-stream / no x_geometry schema",
       "output_keys_discovered": "distance_m, yaw_sin_cos",
@@ -228,6 +237,7 @@
         "input_mode_mismatch",
         "preprocessing_contract_name_mismatch",
         "representation_kind_mismatch",
+        "missing_orientation_source_mode",
         "missing_input_key",
         "missing_input_key",
         "missing_input_key",
@@ -248,6 +258,7 @@
       "preprocessing_contract_name": "rb-preprocess-v4-tri-stream-orientation-v1",
       "input_mode": "tri_stream_distance_orientation_geometry",
       "representation_kind": "tri_stream_npz",
+      "orientation_source_mode": "raw_grayscale",
       "input_keys_discovered": "x_distance_image, x_orientation_image, x_geometry, y_distance_m, y_yaw_deg, y_yaw_sin, y_yaw_cos",
       "geometry_schema_status": "ok: 10-field tri-stream geometry schema",
       "output_keys_discovered": "distance_m, yaw_sin_cos",
@@ -271,6 +282,7 @@
       "preprocessing_contract_name": "rb-preprocess-v4-tri-stream-orientation-v1",
       "input_mode": "tri_stream_distance_orientation_geometry",
       "representation_kind": "tri_stream_npz",
+      "orientation_source_mode": "raw_grayscale",
       "input_keys_discovered": "x_distance_image, x_orientation_image, x_geometry, y_distance_m, y_yaw_deg, y_yaw_sin, y_yaw_cos",
       "geometry_schema_status": "ok: 10-field tri-stream geometry schema",
       "output_keys_discovered": "distance_m, yaw_sin_cos",
@@ -294,6 +306,31 @@
       "preprocessing_contract_name": "rb-preprocess-v4-tri-stream-orientation-v1",
       "input_mode": "tri_stream_distance_orientation_geometry",
       "representation_kind": "tri_stream_npz",
+      "orientation_source_mode": "inverted_vehicle_on_white",
+      "input_keys_discovered": "x_distance_image, x_orientation_image, x_geometry, y_distance_m, y_yaw_deg, y_yaw_sin, y_yaw_cos",
+      "geometry_schema_status": "ok: 10-field tri-stream geometry schema",
+      "output_keys_discovered": "distance_m, yaw_sin_cos",
+      "distance_output_width": "1",
+      "yaw_output_width": "2",
+      "compatibility_errors": "none",
+      "compatibility_warnings": "none",
+      "notes": "passes current live tri-stream compatibility checker; most recent compatible distance/orientation artifact found",
+      "issue_codes": []
+    },
+    {
+      "artifact_root": "06_live-inference_v0.1/models/distance-orientation/260504-1100_ts-2d-cnn__run_0001",
+      "artifact_kind": "run-artifact",
+      "location": "live-tree",
+      "compatible": "yes",
+      "likely_family": "ts",
+      "checkpoint_selected": "best.pt",
+      "topology_id": "distance_regressor_tri_stream_yaw",
+      "topology_variant": "tri_stream_yaw_v0_1",
+      "topology_contract_version": "rb-topology-output-reporting-v1",
+      "preprocessing_contract_name": "rb-preprocess-v4-tri-stream-orientation-v1",
+      "input_mode": "tri_stream_distance_orientation_geometry",
+      "representation_kind": "tri_stream_npz",
+      "orientation_source_mode": "inverted_vehicle_on_white",
       "input_keys_discovered": "x_distance_image, x_orientation_image, x_geometry, y_distance_m, y_yaw_deg, y_yaw_sin, y_yaw_cos",
       "geometry_schema_status": "ok: 10-field tri-stream geometry schema",
       "output_keys_discovered": "distance_m, yaw_sin_cos",
@@ -371,6 +408,28 @@
       ],
       "started_at_utc": "2026-04-20T12:40:34+00:00",
       "validation_mean_center_error_px": 3.175694465637207
+    },
+    {
+      "artifact_root": "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003",
+      "artifact_kind": "run-artifact",
+      "location": "live-tree",
+      "checkpoint_selected": "best.pt",
+      "run_config_found": "yes",
+      "dataset_contract_found": "yes",
+      "locator_canvas_size": "480x300",
+      "roi_crop_size": "300x300",
+      "artifact_contract_version": "rb-roi-fcn-topology-v0_1, rb-roi-fcn-training-v0_1, rb-preprocess-roi-fcn-v0_1",
+      "notes_errors": "metadata declares ROI crop 300x300 on locator canvas 480x300; resumed from run_0002; validation mean center error 3.176px",
+      "crop_size": [
+        300,
+        300
+      ],
+      "canvas_size": [
+        480,
+        300
+      ],
+      "started_at_utc": "2026-04-20T12:40:34+00:00",
+      "validation_mean_center_error_px": 3.175694465637207
     }
   ],
   "pairing_notes": [
@@ -379,7 +438,8 @@
       "pairable_roi_fcn_artifacts": [
         "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0001",
         "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0002",
-        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003",
+        "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
       ],
       "metadata_warnings": [],
       "notes": "metadata pairable: ROI crop size matches the distance canvas and fits inside the locator canvas; runtime behavior not checked"
@@ -389,7 +449,8 @@
       "pairable_roi_fcn_artifacts": [
         "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0001",
         "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0002",
-        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003",
+        "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
       ],
       "metadata_warnings": [],
       "notes": "metadata pairable: ROI crop size matches the distance canvas and fits inside the locator canvas; runtime behavior not checked"
@@ -399,15 +460,27 @@
       "pairable_roi_fcn_artifacts": [
         "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0001",
         "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0002",
-        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003"
+        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003",
+        "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
+      ],
+      "metadata_warnings": [],
+      "notes": "metadata pairable: ROI crop size matches the distance canvas and fits inside the locator canvas; runtime behavior not checked"
+    },
+    {
+      "distance_orientation_artifact": "06_live-inference_v0.1/models/distance-orientation/260504-1100_ts-2d-cnn__run_0001",
+      "pairable_roi_fcn_artifacts": [
+        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0001",
+        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0002",
+        "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003",
+        "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
       ],
       "metadata_warnings": [],
       "notes": "metadata pairable: ROI crop size matches the distance canvas and fits inside the locator canvas; runtime behavior not checked"
     }
   ],
   "recommendation": {
-    "distance_orientation": "05_inference-v0.4-ts/models/distance-orientation/260504-1100_ts-2d-cnn/runs/run_0001",
-    "roi_fcn": "05_inference-v0.4-ts/models/roi-fcn/260420-1219_roi-fcn-tiny/runs/run_0003",
-    "notes": "Recommended roots are loader-readable run artifacts. No live-tree artifact copy was found in this scan."
+    "distance_orientation": "06_live-inference_v0.1/models/distance-orientation/260504-1100_ts-2d-cnn__run_0001",
+    "roi_fcn": "06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003",
+    "notes": "Recommended roots are loader-readable run artifacts. Live-tree artifact copies were included when available."
   }
 }

@@ -21,9 +21,14 @@ from live_inference.model_registry import (  # noqa: E402
     ModelCompatibilityError,
     check_live_model_compatibility,
     load_live_model_manifest,
+    load_model_selection,
     require_live_model_compatibility,
 )
-from live_inference.model_registry.model_manifest import LiveModelManifest  # noqa: E402
+from live_inference.model_registry.model_manifest import (  # noqa: E402
+    ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+    ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    LiveModelManifest,
+)
 
 
 _TEMP_DIRS: list[TemporaryDirectory] = []
@@ -34,7 +39,71 @@ def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _write_compatible_bundle(root: Path, roi_root: Path | None = None) -> None:
+def _orientation_semantics(orientation_source_mode: str) -> dict[str, str | None]:
+    if orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE:
+        return {
+            "representation": "target_centered_raw_grayscale_scaled_by_silhouette_extent",
+            "content": "raw_grayscale_detail_preserving_no_brightness_normalization",
+            "polarity": None,
+        }
+    if orientation_source_mode == ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE:
+        return {
+            "representation": (
+                "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent"
+            ),
+            "content": "inverted_vehicle_detail_on_white_no_brightness_normalization",
+            "polarity": "dark_vehicle_detail_on_white_background",
+        }
+    raise ValueError(f"Unsupported test orientation source mode: {orientation_source_mode}")
+
+
+def _write_compatible_bundle(
+    root: Path,
+    roi_root: Path | None = None,
+    *,
+    orientation_source_mode: str = ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+    orientation_image_representation: str | None = None,
+    orientation_image_content: str | None = None,
+    orientation_image_polarity: str | None = None,
+) -> None:
+    orientation_semantics = _orientation_semantics(orientation_source_mode)
+    representation = (
+        orientation_image_representation
+        if orientation_image_representation is not None
+        else orientation_semantics["representation"]
+    )
+    content = (
+        orientation_image_content
+        if orientation_image_content is not None
+        else orientation_semantics["content"]
+    )
+    polarity = (
+        orientation_image_polarity
+        if orientation_image_polarity is not None
+        else orientation_semantics["polarity"]
+    )
+    current_representation: dict[str, object] = {
+        "Kind": contracts.TRI_STREAM_REPRESENTATION_KIND,
+        "StorageFormat": "npz",
+        "ArrayKeys": [
+            contracts.TRI_STREAM_DISTANCE_IMAGE_KEY,
+            contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY,
+            contracts.TRI_STREAM_GEOMETRY_KEY,
+            "y_distance_m",
+            "y_yaw_sin",
+            "y_yaw_cos",
+        ],
+        "DistanceImageKey": contracts.TRI_STREAM_DISTANCE_IMAGE_KEY,
+        "OrientationImageKey": contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY,
+        "GeometryKey": contracts.TRI_STREAM_GEOMETRY_KEY,
+        "GeometrySchema": list(contracts.TRI_STREAM_GEOMETRY_SCHEMA),
+        "GeometryDim": len(contracts.TRI_STREAM_GEOMETRY_SCHEMA),
+        "CanvasWidth": 300,
+        "CanvasHeight": 300,
+        "OrientationImageContent": content,
+    }
+    if polarity:
+        current_representation["OrientationImagePolarity"] = polarity
     _write_json(
         root / "config.json",
         {
@@ -67,26 +136,14 @@ def _write_compatible_bundle(root: Path, roi_root: Path | None = None) -> None:
                 "ContractVersion": contracts.PREPROCESSING_CONTRACT_NAME,
                 "CurrentStage": "pack_tri_stream",
                 "CompletedStages": ["detect", "silhouette", "pack_tri_stream"],
-                "CurrentRepresentation": {
-                    "Kind": contracts.TRI_STREAM_REPRESENTATION_KIND,
-                    "StorageFormat": "npz",
-                    "ArrayKeys": [
-                        contracts.TRI_STREAM_DISTANCE_IMAGE_KEY,
-                        contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY,
-                        contracts.TRI_STREAM_GEOMETRY_KEY,
-                        "y_distance_m",
-                        "y_yaw_sin",
-                        "y_yaw_cos",
-                    ],
-                    "DistanceImageKey": contracts.TRI_STREAM_DISTANCE_IMAGE_KEY,
-                    "OrientationImageKey": contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY,
-                    "GeometryKey": contracts.TRI_STREAM_GEOMETRY_KEY,
-                    "GeometrySchema": list(contracts.TRI_STREAM_GEOMETRY_SCHEMA),
-                    "GeometryDim": len(contracts.TRI_STREAM_GEOMETRY_SCHEMA),
-                    "CanvasWidth": 300,
-                    "CanvasHeight": 300,
+                "CurrentRepresentation": current_representation,
+                "Stages": {
+                    "pack_tri_stream": {
+                        "CanvasWidth": 300,
+                        "CanvasHeight": 300,
+                        "OrientationImageRepresentation": representation,
+                    }
                 },
-                "Stages": {"pack_tri_stream": {"CanvasWidth": 300, "CanvasHeight": 300}},
             }
         },
     )
@@ -104,20 +161,42 @@ def _write_compatible_bundle(root: Path, roi_root: Path | None = None) -> None:
         )
 
 
-def _compatible_manifest() -> LiveModelManifest:
+def _compatible_manifest(
+    *,
+    orientation_source_mode: str = ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+    orientation_image_representation: str | None = None,
+    orientation_image_content: str | None = None,
+    orientation_image_polarity: str | None = None,
+) -> LiveModelManifest:
     tmp = TemporaryDirectory()
     _TEMP_DIRS.append(tmp)
     root = Path(tmp.name) / "model-run"
     roi_root = Path(tmp.name) / "roi-run"
     root.mkdir()
     roi_root.mkdir()
-    _write_compatible_bundle(root, roi_root)
+    _write_compatible_bundle(
+        root,
+        roi_root,
+        orientation_source_mode=orientation_source_mode,
+        orientation_image_representation=orientation_image_representation,
+        orientation_image_content=orientation_image_content,
+        orientation_image_polarity=orientation_image_polarity,
+    )
     return load_live_model_manifest(root, roi_locator_root=roi_root)
 
 
 def _error_codes(manifest: LiveModelManifest) -> set[str]:
     result = check_live_model_compatibility(manifest)
     return {issue.code for issue in result.issues if issue.severity == "error"}
+
+
+def _format_errors(result: object) -> str:
+    issues = getattr(result, "issues", ())
+    return "; ".join(
+        f"{issue.code}: {issue.message}"
+        for issue in issues
+        if issue.severity == "error"
+    )
 
 
 class LiveModelCompatibilityTests(unittest.TestCase):
@@ -128,6 +207,47 @@ class LiveModelCompatibilityTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual([issue for issue in result.issues if issue.severity == "error"], [])
+        self.assertEqual(
+            result.orientation_source_mode,
+            ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+        )
+
+    def test_raw_grayscale_orientation_source_mode_is_compatible(self) -> None:
+        manifest = _compatible_manifest(
+            orientation_source_mode=ORIENTATION_SOURCE_RAW_GRAYSCALE
+        )
+
+        result = check_live_model_compatibility(manifest)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.orientation_source_mode, ORIENTATION_SOURCE_RAW_GRAYSCALE)
+
+    def test_unknown_orientation_semantics_fails(self) -> None:
+        codes = _error_codes(
+            _compatible_manifest(
+                orientation_image_content="unsupported_orientation_encoding"
+            )
+        )
+
+        self.assertIn("unsupported_orientation_image_content", codes)
+
+    def test_conflicting_orientation_semantics_fails(self) -> None:
+        codes = _error_codes(
+            _compatible_manifest(
+                orientation_image_representation=(
+                    "target_centered_raw_grayscale_scaled_by_silhouette_extent"
+                )
+            )
+        )
+
+        self.assertIn("conflicting_orientation_source_mode", codes)
+
+    def test_unknown_orientation_source_mode_fails(self) -> None:
+        codes = _error_codes(
+            replace(_compatible_manifest(), orientation_source_mode="unknown_mode")
+        )
+
+        self.assertIn("unsupported_orientation_source_mode", codes)
 
     def test_wrong_preprocessing_contract_fails(self) -> None:
         codes = _error_codes(
@@ -246,6 +366,28 @@ class LiveModelCompatibilityTests(unittest.TestCase):
         )
 
         self.assertIn("roi_locator_crop_exceeds_canvas", codes)
+
+    def test_current_selected_live_local_260504_model_remains_compatible(self) -> None:
+        selection_path = PROJECT_ROOT / "models/selections/current.toml"
+        if not selection_path.is_file():
+            self.skipTest("current live-local model selection is not available")
+        selection = load_model_selection(selection_path)
+        if not selection.distance_orientation_root.is_dir():
+            self.skipTest("selected live-local distance/orientation artifact is not available")
+
+        manifest = load_live_model_manifest(
+            selection.distance_orientation_root,
+            roi_locator_root=(
+                selection.roi_fcn_root if selection.roi_fcn_root.is_dir() else None
+            ),
+        )
+        result = check_live_model_compatibility(manifest)
+
+        self.assertEqual(
+            manifest.orientation_source_mode,
+            ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+        )
+        self.assertTrue(result.ok, _format_errors(result))
 
     def test_require_helper_does_not_raise_for_compatible_fixture(self) -> None:
         require_live_model_compatibility(_compatible_manifest())

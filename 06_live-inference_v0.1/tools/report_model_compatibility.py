@@ -190,6 +190,7 @@ def _distance_registry_row(artifact: ArtifactRoot) -> dict[str, Any]:
         "preprocessing_contract_name": _missing(manifest.preprocessing_contract_name),
         "input_mode": _missing(manifest.input_mode),
         "representation_kind": _missing(manifest.representation_kind),
+        "orientation_source_mode": _missing(manifest.orientation_source_mode),
         "input_keys_discovered": _join_values(manifest.input_keys),
         "geometry_schema_status": "metadata missing",
         "output_keys_discovered": _join_values(manifest.model_output_keys),
@@ -219,6 +220,7 @@ def _distance_artifact_row(artifact: ArtifactRoot) -> dict[str, Any]:
         "preprocessing_contract_name": _missing(manifest.preprocessing_contract_name),
         "input_mode": _missing(manifest.input_mode),
         "representation_kind": _missing(manifest.representation_kind),
+        "orientation_source_mode": _missing(manifest.orientation_source_mode),
         "input_keys_discovered": _join_values(manifest.input_keys),
         "geometry_schema_status": _geometry_status(manifest, family),
         "output_keys_discovered": _join_values(manifest.model_output_keys),
@@ -319,14 +321,16 @@ def _build_recommendation(
         preferred_name="260504-1100_ts-2d-cnn",
     )
     roi_choice = _most_recent_roi(roi_rows)
+    live_tree_note = (
+        "Live-tree artifact copies were included when available."
+        if _is_live_tree_choice(distance_choice) or _is_live_tree_choice(roi_choice)
+        else "No live-tree artifact copy was found in this scan."
+    )
     return {
         "distance_orientation": distance_choice
         or "none: no compatible live tri-stream distance/orientation artifact found",
         "roi_fcn": roi_choice or "none: no ROI-FCN artifact with sufficient metadata found",
-        "notes": (
-            "Recommended roots are loader-readable run artifacts. No live-tree "
-            "artifact copy was found in this scan."
-        ),
+        "notes": f"Recommended roots are loader-readable run artifacts. {live_tree_note}",
     }
 
 
@@ -397,6 +401,7 @@ def _render_markdown(payload: Mapping[str, Any]) -> str:
                 ("preprocessing_contract_name", "preprocessing contract name"),
                 ("input_mode", "input mode"),
                 ("representation_kind", "representation kind"),
+                ("orientation_source_mode", "orientation source mode"),
                 ("input_keys_discovered", "input keys discovered"),
                 ("geometry_schema_status", "geometry schema status"),
                 ("output_keys_discovered", "output keys discovered"),
@@ -719,8 +724,16 @@ def _most_recent_named(
     *,
     preferred_name: str,
 ) -> str | None:
+    preferred_rows = [
+        row for row in rows if preferred_name in str(row["artifact_root"])
+    ]
+    for row in preferred_rows:
+        if row.get("location") == "live-tree":
+            return str(row["artifact_root"])
+    if preferred_rows:
+        return str(preferred_rows[-1]["artifact_root"])
     for row in rows:
-        if preferred_name in str(row["artifact_root"]):
+        if row.get("location") == "live-tree":
             return str(row["artifact_root"])
     return str(rows[-1]["artifact_root"]) if rows else None
 
@@ -744,6 +757,10 @@ def _most_recent_roi(rows: Sequence[Mapping[str, Any]]) -> str | None:
         )
     )
     return str(sufficient[-1]["artifact_root"])
+
+
+def _is_live_tree_choice(choice: str | None) -> bool:
+    return bool(choice and choice.startswith("06_live-inference_v0.1/"))
 
 
 def _size_from_width_height(

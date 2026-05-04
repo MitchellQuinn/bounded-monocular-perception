@@ -7,7 +7,12 @@ from typing import Any
 
 import interfaces.contracts as contracts
 
-from .model_manifest import LiveModelManifest
+from .model_manifest import (
+    SUPPORTED_ORIENTATION_SOURCE_MODES,
+    LiveModelManifest,
+    OrientationSourceModeError,
+    resolve_orientation_source_mode,
+)
 
 
 ERROR = "error"
@@ -32,6 +37,7 @@ class CompatibilityResult:
 
     ok: bool
     issues: tuple[CompatibilityIssue, ...]
+    orientation_source_mode: str | None = None
 
 
 class ModelCompatibilityError(ValueError):
@@ -68,6 +74,7 @@ def check_live_model_compatibility(
         expected=contracts.TRI_STREAM_REPRESENTATION_KIND,
         actual=manifest.representation_kind,
     )
+    _check_orientation_source_mode(issues, manifest)
 
     _require_contains_all(
         issues,
@@ -156,6 +163,7 @@ def check_live_model_compatibility(
     return CompatibilityResult(
         ok=not any(issue.severity == ERROR for issue in issue_tuple),
         issues=issue_tuple,
+        orientation_source_mode=manifest.orientation_source_mode,
     )
 
 
@@ -299,6 +307,90 @@ def _check_checkpoint(
             actual=manifest.checkpoint_path,
             message=f"Checkpoint path does not exist: {manifest.checkpoint_path}.",
         )
+
+
+def _check_orientation_source_mode(
+    issues: list[CompatibilityIssue],
+    manifest: LiveModelManifest,
+) -> None:
+    declared_mode = manifest.orientation_source_mode
+    if declared_mode and declared_mode not in SUPPORTED_ORIENTATION_SOURCE_MODES:
+        _add_issue(
+            issues,
+            code="unsupported_orientation_source_mode",
+            field="orientation_source_mode",
+            expected=SUPPORTED_ORIENTATION_SOURCE_MODES,
+            actual=declared_mode,
+            message=(
+                "orientation_source_mode must be one of "
+                f"{SUPPORTED_ORIENTATION_SOURCE_MODES!r}; got {declared_mode!r}."
+            ),
+        )
+        return
+
+    try:
+        resolved_mode = resolve_orientation_source_mode(manifest.raw_metadata)
+    except OrientationSourceModeError as exc:
+        _add_issue(
+            issues,
+            code=exc.code,
+            field="orientation_source_mode",
+            expected=SUPPORTED_ORIENTATION_SOURCE_MODES,
+            actual=_orientation_semantics_summary(manifest),
+            message=str(exc),
+        )
+        return
+
+    source_mode = declared_mode or resolved_mode
+    if _is_missing(source_mode):
+        _add_issue(
+            issues,
+            code="missing_orientation_source_mode",
+            field="orientation_source_mode",
+            expected=SUPPORTED_ORIENTATION_SOURCE_MODES,
+            actual=source_mode,
+            message=(
+                "Tri-stream preprocessing contract must declare "
+                "OrientationImageRepresentation or OrientationImageContent so "
+                "the live preprocessor can reproduce the orientation image polarity."
+            ),
+        )
+        return
+
+    if source_mode not in SUPPORTED_ORIENTATION_SOURCE_MODES:
+        _add_issue(
+            issues,
+            code="unsupported_orientation_source_mode",
+            field="orientation_source_mode",
+            expected=SUPPORTED_ORIENTATION_SOURCE_MODES,
+            actual=source_mode,
+            message=(
+                "orientation_source_mode must be one of "
+                f"{SUPPORTED_ORIENTATION_SOURCE_MODES!r}; got {source_mode!r}."
+            ),
+        )
+        return
+
+    if declared_mode and resolved_mode and declared_mode != resolved_mode:
+        _add_issue(
+            issues,
+            code="orientation_source_mode_mismatch",
+            field="orientation_source_mode",
+            expected=resolved_mode,
+            actual=declared_mode,
+            message=(
+                "orientation_source_mode must match the artifact orientation "
+                f"semantic fields; resolved {resolved_mode!r}, got {declared_mode!r}."
+            ),
+        )
+
+
+def _orientation_semantics_summary(manifest: LiveModelManifest) -> dict[str, str | None]:
+    return {
+        "OrientationImageRepresentation": manifest.orientation_image_representation,
+        "OrientationImageContent": manifest.orientation_image_content,
+        "OrientationImagePolarity": manifest.orientation_image_polarity,
+    }
 
 
 def _check_positive_size(

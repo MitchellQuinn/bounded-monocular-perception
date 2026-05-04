@@ -10,6 +10,34 @@ from typing import Any
 
 
 CHECKPOINT_CANDIDATES = ("best.pt", "best_model.pt", "latest.pt")
+ORIENTATION_SOURCE_RAW_GRAYSCALE = "raw_grayscale"
+ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE = "inverted_vehicle_on_white"
+SUPPORTED_ORIENTATION_SOURCE_MODES = (
+    ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+)
+
+_ORIENTATION_REPRESENTATION_SOURCE_MODES = {
+    "target_centered_raw_grayscale_scaled_by_silhouette_extent": (
+        ORIENTATION_SOURCE_RAW_GRAYSCALE
+    ),
+    "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent": (
+        ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+}
+_ORIENTATION_CONTENT_SOURCE_MODES = {
+    "raw_grayscale_detail_preserving_no_brightness_normalization": (
+        ORIENTATION_SOURCE_RAW_GRAYSCALE
+    ),
+    "inverted_vehicle_detail_on_white_no_brightness_normalization": (
+        ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+}
+_ORIENTATION_POLARITY_SOURCE_MODES = {
+    "dark_vehicle_detail_on_white_background": (
+        ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+}
 
 _MODEL_METADATA_FILES = {
     "live_model_manifest": "live_model_manifest.json",
@@ -51,6 +79,10 @@ class LiveModelManifest:
 
     distance_canvas_size: tuple[int, int] | None
     orientation_canvas_size: tuple[int, int] | None
+    orientation_image_representation: str | None
+    orientation_image_content: str | None
+    orientation_image_polarity: str | None
+    orientation_source_mode: str | None
 
     model_output_keys: tuple[str, ...]
     distance_output_key: str | None
@@ -64,6 +96,94 @@ class LiveModelManifest:
 
     source_files: Mapping[str, Path]
     raw_metadata: Mapping[str, Any]
+
+
+class OrientationSourceModeError(ValueError):
+    """Raised when orientation metadata is present but cannot be normalized."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def resolve_orientation_source_mode(metadata: Mapping[str, Any]) -> str | None:
+    """Normalize tri-stream orientation image semantics from artifact metadata."""
+    preprocessing_contract = _preprocessing_contract_from_metadata(metadata)
+    current = _mapping_at(
+        preprocessing_contract,
+        ("CurrentRepresentation",),
+    ) or _mapping_at(preprocessing_contract, ("current_representation",))
+    stage = _mapping_at(
+        preprocessing_contract,
+        ("Stages", "pack_tri_stream"),
+    ) or _mapping_at(preprocessing_contract, ("stages", "pack_tri_stream"))
+    sources: dict[str, str] = {}
+
+    representation = _first_string(
+        stage,
+        (
+            ("OrientationImageRepresentation",),
+            ("orientation_image_representation",),
+        ),
+    )
+    if representation:
+        source_mode = _ORIENTATION_REPRESENTATION_SOURCE_MODES.get(representation)
+        if source_mode is None:
+            supported = ", ".join(sorted(_ORIENTATION_REPRESENTATION_SOURCE_MODES))
+            raise OrientationSourceModeError(
+                "unsupported_orientation_image_representation",
+                "Unsupported tri-stream OrientationImageRepresentation="
+                f"{representation!r}. Supported values: {supported}.",
+            )
+        sources["Stages.pack_tri_stream.OrientationImageRepresentation"] = source_mode
+
+    content = _first_string(
+        current,
+        (
+            ("OrientationImageContent",),
+            ("orientation_image_content",),
+        ),
+    )
+    if content:
+        source_mode = _ORIENTATION_CONTENT_SOURCE_MODES.get(content)
+        if source_mode is None:
+            supported = ", ".join(sorted(_ORIENTATION_CONTENT_SOURCE_MODES))
+            raise OrientationSourceModeError(
+                "unsupported_orientation_image_content",
+                f"Unsupported tri-stream OrientationImageContent={content!r}. "
+                f"Supported values: {supported}.",
+            )
+        sources["CurrentRepresentation.OrientationImageContent"] = source_mode
+
+    polarity = _first_string(
+        current,
+        (
+            ("OrientationImagePolarity",),
+            ("orientation_image_polarity",),
+        ),
+    )
+    if polarity:
+        source_mode = _ORIENTATION_POLARITY_SOURCE_MODES.get(polarity)
+        if source_mode is None:
+            supported = ", ".join(sorted(_ORIENTATION_POLARITY_SOURCE_MODES))
+            raise OrientationSourceModeError(
+                "unsupported_orientation_image_polarity",
+                f"Unsupported tri-stream OrientationImagePolarity={polarity!r}. "
+                f"Supported values: {supported}.",
+            )
+        sources["CurrentRepresentation.OrientationImagePolarity"] = source_mode
+
+    source_modes = set(sources.values())
+    if len(source_modes) > 1:
+        details = ", ".join(f"{key}={value}" for key, value in sorted(sources.items()))
+        raise OrientationSourceModeError(
+            "conflicting_orientation_source_mode",
+            "Conflicting tri-stream orientation preprocessing contract fields: "
+            f"{details}.",
+        )
+    if not source_modes:
+        return None
+    return next(iter(source_modes))
 
 
 def load_live_model_manifest(
@@ -104,6 +224,10 @@ def load_live_model_manifest(
         preprocessing_contract,
         ("Stages", "pack_tri_stream"),
     ) or _mapping_at(preprocessing_contract, ("stages", "pack_tri_stream"))
+    try:
+        orientation_source_mode = resolve_orientation_source_mode(preprocessing_contract)
+    except OrientationSourceModeError:
+        orientation_source_mode = None
 
     topology_id = _first_string_from_metadata(
         raw_metadata,
@@ -265,6 +389,27 @@ def load_live_model_manifest(
             ),
         )
     )
+    orientation_image_representation = _first_string(
+        pack_tri_stream_stage,
+        (
+            ("OrientationImageRepresentation",),
+            ("orientation_image_representation",),
+        ),
+    )
+    orientation_image_content = _first_string(
+        current_representation,
+        (
+            ("OrientationImageContent",),
+            ("orientation_image_content",),
+        ),
+    )
+    orientation_image_polarity = _first_string(
+        current_representation,
+        (
+            ("OrientationImagePolarity",),
+            ("orientation_image_polarity",),
+        ),
+    )
 
     return LiveModelManifest(
         model_root=root,
@@ -356,6 +501,10 @@ def load_live_model_manifest(
         geometry_dim=geometry_dim,
         distance_canvas_size=distance_canvas_size,
         orientation_canvas_size=orientation_canvas_size,
+        orientation_image_representation=orientation_image_representation,
+        orientation_image_content=orientation_image_content,
+        orientation_image_polarity=orientation_image_polarity,
+        orientation_source_mode=orientation_source_mode,
         model_output_keys=model_output_keys,
         distance_output_key=distance_output_key,
         yaw_output_key=yaw_output_key,
@@ -587,6 +736,23 @@ def _resolve_preprocessing_contract(raw_metadata: Mapping[str, Any]) -> Mapping[
         if candidate:
             return candidate
     return {}
+
+
+def _preprocessing_contract_from_metadata(metadata: Mapping[str, Any]) -> Mapping[str, Any]:
+    if _mapping_at(metadata, ("CurrentRepresentation",)) or _mapping_at(metadata, ("Stages",)):
+        return metadata
+    if _mapping_at(metadata, ("current_representation",)) or _mapping_at(metadata, ("stages",)):
+        return metadata
+    for path in (
+        ("preprocessing_contract",),
+        ("PreprocessingContract",),
+        ("dataset_summary", "preprocessing_contract"),
+        ("dataset_summary", "PreprocessingContract"),
+    ):
+        candidate = _mapping_at(metadata, path)
+        if candidate:
+            return candidate
+    return _resolve_preprocessing_contract(metadata)
 
 
 def _append_unique(items: list[str], value: Any) -> None:
