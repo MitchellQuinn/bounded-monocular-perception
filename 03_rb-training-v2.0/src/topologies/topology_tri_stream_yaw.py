@@ -19,7 +19,7 @@ TOPOLOGY_METADATA = {
     "note": "Distance plus yaw multitask topology with distance image, orientation image, and geometry streams.",
     "replacement": "",
 }
-_SUPPORTED_VARIANTS = {"tri_stream_yaw_v0_1"}
+_SUPPORTED_VARIANTS = {"tri_stream_yaw_v0_1", "tri_stream_yaw_v0_2"}
 _SUPPORTED_PARAM_KEYS = (
     "input_channels",
     "orientation_input_channels",
@@ -122,7 +122,7 @@ def _make_image_encoder(input_channels: int, output_dim: int) -> nn.Sequential:
 class DistanceRegressorTriStreamYaw(nn.Module):
     """Tri-stream distance + yaw regressor.
 
-    v0.1 accepts only a mapping with:
+    Accepts only a mapping with:
     - ``x_distance_image``: fixed unscaled distance image tensor ``(B, C, H, W)``
     - ``x_orientation_image``: target-normalised orientation image tensor ``(B, C, H, W)``
     - ``x_geometry``: geometry/context vector ``(B, F)``
@@ -186,18 +186,45 @@ class DistanceRegressorTriStreamYaw(nn.Module):
             self.orientation_feature_dim,
         )
 
-        fused_dim = self.geom_feature_dim + self.distance_feature_dim + self.orientation_feature_dim
-        trunk_dim = max(16, self.fusion_hidden // 2)
-        self.fusion_trunk = nn.Sequential(
-            nn.Linear(fused_dim, self.fusion_hidden),
-            nn.ReLU(inplace=True),
-            _make_dropout(self.dropout_p),
-            nn.Linear(self.fusion_hidden, trunk_dim),
-            nn.ReLU(inplace=True),
-            _make_dropout(self.dropout_p),
-        )
-        self.distance_head = nn.Linear(trunk_dim, 1)
-        self.orientation_head = nn.Linear(trunk_dim, 2)
+        if self.architecture_variant == "tri_stream_yaw_v0_1":
+            fused_dim = self.geom_feature_dim + self.distance_feature_dim + self.orientation_feature_dim
+            trunk_dim = max(16, self.fusion_hidden // 2)
+            self.fusion_trunk = nn.Sequential(
+                nn.Linear(fused_dim, self.fusion_hidden),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+                nn.Linear(self.fusion_hidden, trunk_dim),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+            )
+            self.distance_head = nn.Linear(trunk_dim, 1)
+            self.orientation_head = nn.Linear(trunk_dim, 2)
+        elif self.architecture_variant == "tri_stream_yaw_v0_2":
+            camera_input_dim = self.geom_feature_dim + self.distance_feature_dim
+            camera_dim = max(16, self.fusion_hidden // 2)
+            yaw_input_dim = camera_dim + self.orientation_feature_dim
+            yaw_dim = max(16, self.fusion_hidden // 2)
+
+            self.camera_trunk = nn.Sequential(
+                nn.Linear(camera_input_dim, self.fusion_hidden),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+                nn.Linear(self.fusion_hidden, camera_dim),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+            )
+            self.distance_head = nn.Linear(camera_dim, 1)
+            self.yaw_trunk = nn.Sequential(
+                nn.Linear(yaw_input_dim, self.fusion_hidden),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+                nn.Linear(self.fusion_hidden, yaw_dim),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+            )
+            self.orientation_head = nn.Linear(yaw_dim, 2)
+        else:
+            raise RuntimeError(f"Unhandled architecture_variant={self.architecture_variant}")
 
     def _require_4d(
         self,
@@ -283,10 +310,23 @@ class DistanceRegressorTriStreamYaw(nn.Module):
         geom = self.geom_mlp(x_geometry)
         distance_features = self.distance_cnn(distance_image)
         orientation_features = self.orientation_cnn(orientation_image)
-        fused = torch.cat([geom, distance_features, orientation_features], dim=1)
-        shared = self.fusion_trunk(fused)
-        distance = self.distance_head(shared).squeeze(-1)
-        yaw_sin_cos = self.orientation_head(shared)
+
+        if self.architecture_variant == "tri_stream_yaw_v0_1":
+            fused = torch.cat([geom, distance_features, orientation_features], dim=1)
+            shared = self.fusion_trunk(fused)
+            distance = self.distance_head(shared).squeeze(-1)
+            yaw_sin_cos = self.orientation_head(shared)
+        elif self.architecture_variant == "tri_stream_yaw_v0_2":
+            camera_input = torch.cat([geom, distance_features], dim=1)
+            camera_features = self.camera_trunk(camera_input)
+            distance = self.distance_head(camera_features).squeeze(-1)
+
+            yaw_input = torch.cat([camera_features, orientation_features], dim=1)
+            yaw_features = self.yaw_trunk(yaw_input)
+            yaw_sin_cos = self.orientation_head(yaw_features)
+        else:
+            raise RuntimeError(f"Unhandled architecture_variant={self.architecture_variant}")
+
         return {
             "distance_m": distance,
             "yaw_sin_cos": yaw_sin_cos,
