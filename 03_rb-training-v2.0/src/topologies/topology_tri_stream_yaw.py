@@ -19,7 +19,11 @@ TOPOLOGY_METADATA = {
     "note": "Distance plus yaw multitask topology with distance image, orientation image, and geometry streams.",
     "replacement": "",
 }
-_SUPPORTED_VARIANTS = {"tri_stream_yaw_v0_1", "tri_stream_yaw_v0_2"}
+_SUPPORTED_VARIANTS = {
+    "tri_stream_yaw_v0_1",
+    "tri_stream_yaw_v0_2",
+    "tri_stream_yaw_v0_3",
+}
 _SUPPORTED_PARAM_KEYS = (
     "input_channels",
     "orientation_input_channels",
@@ -223,6 +227,34 @@ class DistanceRegressorTriStreamYaw(nn.Module):
                 _make_dropout(self.dropout_p),
             )
             self.orientation_head = nn.Linear(yaw_dim, 2)
+        elif self.architecture_variant == "tri_stream_yaw_v0_3":
+            distance_input_dim = self.geom_feature_dim + self.distance_feature_dim
+            yaw_input_dim = (
+                self.geom_feature_dim
+                + self.distance_feature_dim
+                + self.orientation_feature_dim
+            )
+            distance_dim = max(16, self.fusion_hidden // 2)
+            yaw_dim = max(16, self.fusion_hidden // 2)
+
+            self.distance_trunk = nn.Sequential(
+                nn.Linear(distance_input_dim, self.fusion_hidden),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+                nn.Linear(self.fusion_hidden, distance_dim),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+            )
+            self.distance_head = nn.Linear(distance_dim, 1)
+            self.yaw_trunk = nn.Sequential(
+                nn.Linear(yaw_input_dim, self.fusion_hidden),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+                nn.Linear(self.fusion_hidden, yaw_dim),
+                nn.ReLU(inplace=True),
+                _make_dropout(self.dropout_p),
+            )
+            self.orientation_head = nn.Linear(yaw_dim, 2)
         else:
             raise RuntimeError(f"Unhandled architecture_variant={self.architecture_variant}")
 
@@ -322,6 +354,14 @@ class DistanceRegressorTriStreamYaw(nn.Module):
             distance = self.distance_head(camera_features).squeeze(-1)
 
             yaw_input = torch.cat([camera_features, orientation_features], dim=1)
+            yaw_features = self.yaw_trunk(yaw_input)
+            yaw_sin_cos = self.orientation_head(yaw_features)
+        elif self.architecture_variant == "tri_stream_yaw_v0_3":
+            distance_input = torch.cat([geom, distance_features], dim=1)
+            distance_trunk = self.distance_trunk(distance_input)
+            distance = self.distance_head(distance_trunk).squeeze(-1)
+
+            yaw_input = torch.cat([geom, distance_features, orientation_features], dim=1)
             yaw_features = self.yaw_trunk(yaw_input)
             yaw_sin_cos = self.orientation_head(yaw_features)
         else:

@@ -30,11 +30,12 @@ from src.topologies.topology_tri_stream_yaw import build_model as build_tri_stre
 
 
 class TriStreamYawTests(unittest.TestCase):
-    def test_supported_variants_include_v0_1_and_v0_2(self) -> None:
+    def test_supported_variants_include_v0_1_v0_2_and_v0_3(self) -> None:
         variants = list_topology_variants("distance_regressor_tri_stream_yaw")
 
         self.assertIn("tri_stream_yaw_v0_1", variants)
         self.assertIn("tri_stream_yaw_v0_2", variants)
+        self.assertIn("tri_stream_yaw_v0_3", variants)
 
     def test_tri_stream_yaw_forward_matches_mapping_contract(self) -> None:
         spec = resolve_topology_spec(
@@ -99,6 +100,55 @@ class TriStreamYawTests(unittest.TestCase):
             model.yaw_trunk[0].in_features,
             camera_dim + params["orientation_feature_dim"],
         )
+
+    def test_tri_stream_yaw_v0_3_uses_all_streams_for_yaw_only(self) -> None:
+        params = {
+            "fusion_hidden": 96,
+            "geom_feature_dim": 24,
+            "distance_feature_dim": 40,
+            "orientation_feature_dim": 48,
+        }
+        model = build_tri_stream_yaw_model("tri_stream_yaw_v0_3", params)
+        trunk_dim = max(16, params["fusion_hidden"] // 2)
+
+        self.assertTrue(hasattr(model, "distance_trunk"))
+        self.assertTrue(hasattr(model, "yaw_trunk"))
+        self.assertFalse(hasattr(model, "camera_trunk"))
+        self.assertIsInstance(model.distance_trunk[0], nn.Linear)
+        self.assertIsInstance(model.yaw_trunk[0], nn.Linear)
+        self.assertEqual(
+            model.distance_trunk[0].in_features,
+            params["geom_feature_dim"] + params["distance_feature_dim"],
+        )
+        self.assertEqual(model.distance_head.in_features, trunk_dim)
+        self.assertEqual(
+            model.yaw_trunk[0].in_features,
+            params["geom_feature_dim"]
+            + params["distance_feature_dim"]
+            + params["orientation_feature_dim"],
+        )
+        self.assertEqual(model.orientation_head.in_features, trunk_dim)
+
+    def test_tri_stream_yaw_v0_3_orientation_does_not_change_distance(self) -> None:
+        torch.manual_seed(7)
+        model = build_tri_stream_yaw_model("tri_stream_yaw_v0_3", {})
+        model.eval()
+        batch = {
+            TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY: torch.rand(2, 1, 64, 64),
+            TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY: torch.zeros(2, 1, 64, 64),
+            TRI_STREAM_GEOMETRY_ARRAY_KEY: torch.rand(2, 10),
+        }
+
+        with torch.no_grad():
+            distance_with_zero_orientation = model(batch)["distance_m"]
+            batch[TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY] = torch.ones(2, 1, 64, 64)
+            outputs_with_one_orientation = model(batch)
+
+        torch.testing.assert_close(
+            outputs_with_one_orientation["distance_m"],
+            distance_with_zero_orientation,
+        )
+        self.assertEqual(tuple(outputs_with_one_orientation["yaw_sin_cos"].shape), (2, 2))
 
     def test_missing_orientation_image_raises_clear_error(self) -> None:
         spec = resolve_topology_spec(
