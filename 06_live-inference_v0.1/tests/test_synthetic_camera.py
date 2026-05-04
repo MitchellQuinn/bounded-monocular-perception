@@ -14,9 +14,8 @@ from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
-for path in (PROJECT_ROOT, SRC_ROOT):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
 import cameras.synthetic_camera.synthetic_camera as synthetic_camera  # noqa: E402
 from cameras.synthetic_camera import (  # noqa: E402

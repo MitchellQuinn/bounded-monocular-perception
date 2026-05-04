@@ -40,6 +40,7 @@ pip-wheel-metadata/
 # ------------------------------
 03_rb-training-v2.0/training-data/
 03_rb-training-v2.0/validation-data/
+03_rb-training-v2.0/validation-data-tri-stream/
 03_rb-training-v2.0/models/
 .archive/rb-training-v1.0/models/
 02_synthetic-data-processing-v3.0/training-data-shuffled/

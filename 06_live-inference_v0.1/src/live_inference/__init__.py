@@ -10,11 +10,14 @@ from .frame_selection import (
     InferenceFrameSelector,
     SelectedFrameForInference,
 )
+from .inference_core import InferenceProcessingCore, InferenceProcessingOutcome
 from .runtime_parameters import RuntimeParameterStateManager
 
 __all__ = [
     "AtomicFrameHandoffWriter",
     "FrameSelectionResult",
+    "InferenceProcessingCore",
+    "InferenceProcessingOutcome",
     "InferenceFrameSelector",
     "LatestFrameHandoffReader",
     "RuntimeParameterStateManager",
