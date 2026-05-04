@@ -182,7 +182,12 @@ def resolve_orientation_source_mode(metadata: Mapping[str, Any]) -> str | None:
             f"{details}.",
         )
     if not source_modes:
-        return None
+        raise OrientationSourceModeError(
+            "missing_orientation_source_mode",
+            "Tri-stream preprocessing contract must declare OrientationImageRepresentation "
+            "or OrientationImageContent so inference can reproduce the orientation image "
+            "polarity.",
+        )
     return next(iter(source_modes))
 
 

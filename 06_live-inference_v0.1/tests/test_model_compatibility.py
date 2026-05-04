@@ -222,6 +222,17 @@ class LiveModelCompatibilityTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.orientation_source_mode, ORIENTATION_SOURCE_RAW_GRAYSCALE)
 
+    def test_reports_resolved_orientation_source_mode_when_manifest_field_is_empty(self) -> None:
+        manifest = replace(_compatible_manifest(), orientation_source_mode=None)
+
+        result = check_live_model_compatibility(manifest)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            result.orientation_source_mode,
+            ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+        )
+
     def test_unknown_orientation_semantics_fails(self) -> None:
         codes = _error_codes(
             _compatible_manifest(

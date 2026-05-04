@@ -74,7 +74,7 @@ def check_live_model_compatibility(
         expected=contracts.TRI_STREAM_REPRESENTATION_KIND,
         actual=manifest.representation_kind,
     )
-    _check_orientation_source_mode(issues, manifest)
+    orientation_source_mode = _check_orientation_source_mode(issues, manifest)
 
     _require_contains_all(
         issues,
@@ -163,7 +163,7 @@ def check_live_model_compatibility(
     return CompatibilityResult(
         ok=not any(issue.severity == ERROR for issue in issue_tuple),
         issues=issue_tuple,
-        orientation_source_mode=manifest.orientation_source_mode,
+        orientation_source_mode=orientation_source_mode,
     )
 
 
@@ -312,7 +312,7 @@ def _check_checkpoint(
 def _check_orientation_source_mode(
     issues: list[CompatibilityIssue],
     manifest: LiveModelManifest,
-) -> None:
+) -> str | None:
     declared_mode = manifest.orientation_source_mode
     if declared_mode and declared_mode not in SUPPORTED_ORIENTATION_SOURCE_MODES:
         _add_issue(
@@ -326,7 +326,7 @@ def _check_orientation_source_mode(
                 f"{SUPPORTED_ORIENTATION_SOURCE_MODES!r}; got {declared_mode!r}."
             ),
         )
-        return
+        return declared_mode
 
     try:
         resolved_mode = resolve_orientation_source_mode(manifest.raw_metadata)
@@ -339,7 +339,7 @@ def _check_orientation_source_mode(
             actual=_orientation_semantics_summary(manifest),
             message=str(exc),
         )
-        return
+        return declared_mode
 
     source_mode = declared_mode or resolved_mode
     if _is_missing(source_mode):
@@ -355,7 +355,7 @@ def _check_orientation_source_mode(
                 "the live preprocessor can reproduce the orientation image polarity."
             ),
         )
-        return
+        return source_mode
 
     if source_mode not in SUPPORTED_ORIENTATION_SOURCE_MODES:
         _add_issue(
@@ -369,7 +369,7 @@ def _check_orientation_source_mode(
                 f"{SUPPORTED_ORIENTATION_SOURCE_MODES!r}; got {source_mode!r}."
             ),
         )
-        return
+        return source_mode
 
     if declared_mode and resolved_mode and declared_mode != resolved_mode:
         _add_issue(
@@ -383,6 +383,7 @@ def _check_orientation_source_mode(
                 f"semantic fields; resolved {resolved_mode!r}, got {declared_mode!r}."
             ),
         )
+    return source_mode
 
 
 def _orientation_semantics_summary(manifest: LiveModelManifest) -> dict[str, str | None]:

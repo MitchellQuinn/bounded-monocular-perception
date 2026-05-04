@@ -23,6 +23,7 @@ from live_inference.model_registry import (  # noqa: E402
 from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    OrientationSourceModeError,
 )
 
 
@@ -246,6 +247,17 @@ class LiveModelManifestLoaderTests(unittest.TestCase):
             resolve_orientation_source_mode(contract),
             ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
         )
+
+    def test_missing_orientation_semantics_fail_clearly(self) -> None:
+        contract = _preprocessing_contract()
+        contract["CurrentRepresentation"].pop("OrientationImageContent")
+        contract["Stages"]["pack_tri_stream"].pop("OrientationImageRepresentation")
+
+        with self.assertRaises(OrientationSourceModeError) as context:
+            resolve_orientation_source_mode(contract)
+
+        self.assertEqual(context.exception.code, "missing_orientation_source_mode")
+        self.assertIn("OrientationImageRepresentation", str(context.exception))
 
     def test_loads_inverted_vehicle_orientation_fields(self) -> None:
         with TemporaryDirectory() as tmp_dir:
