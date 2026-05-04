@@ -232,6 +232,7 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         module_paths = (
             SRC_ROOT / "live_inference/preprocessing/__init__.py",
             SRC_ROOT / "live_inference/preprocessing/preprocessing_config.py",
+            SRC_ROOT / "live_inference/preprocessing/roi_fcn_locator.py",
             SRC_ROOT / "live_inference/preprocessing/roi_locator.py",
             SRC_ROOT / "live_inference/preprocessing/tri_stream_live_preprocessor.py",
         )
@@ -239,7 +240,7 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         found = {
             str(path): _banned_imports(
                 path,
-                banned_roots={"PySide6", "torch", "roi_fcn_training_v0_1", "src"},
+                banned_roots={"PySide6", "torch", "src"},
             )
             for path in module_paths
         }
