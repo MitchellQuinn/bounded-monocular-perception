@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from typing import Any
 
@@ -47,6 +48,61 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             "stop_all_button",
         ):
             self.assertIsNotNone(self.window.findChild(QPushButton, object_name))
+
+    def test_main_window_has_image_preview_widget(self) -> None:
+        preview = self._preview_label()
+
+        self.assertGreaterEqual(preview.minimumWidth(), 320)
+        self.assertGreaterEqual(preview.minimumHeight(), 240)
+
+    def test_image_preview_shows_placeholder_before_first_frame(self) -> None:
+        preview = self._preview_label()
+
+        self.assertEqual(preview.text(), "No frame yet")
+        self.assertFalse(_label_has_pixmap(preview))
+
+    def test_frame_written_with_valid_image_path_loads_preview_pixmap(self) -> None:
+        image_path = self._write_temp_frame_image()
+
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+
+        preview = self._preview_label()
+        self.assertTrue(_label_has_pixmap(preview))
+
+    def test_frame_written_with_missing_image_path_logs_warning_without_crashing(self) -> None:
+        missing_path = Path(tempfile.mkdtemp()) / "missing-frame.png"
+        self.addCleanup(lambda: missing_path.parent.rmdir())
+
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=missing_path))
+        _process_events(self.app)
+
+        self.assertEqual(self.window.frames_written_value.text(), "1")
+        log_text = self.window.log_panel.toPlainText()
+        self.assertIn("WARNING", log_text)
+        self.assertIn("Frame preview unavailable", log_text)
+        self.assertIn(str(missing_path), log_text)
+
+    def test_frame_preview_does_not_affect_result_label_updates(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        self.inference_controller.signals.result_ready.emit(
+            _ResultPayload(
+                predicted_distance_m=2.5,
+                predicted_yaw_deg=-15.25,
+                inference_time_ms=8.0,
+                preprocessing_time_ms=3.0,
+                total_time_ms=11.0,
+            )
+        )
+        _process_events(self.app)
+
+        self.assertTrue(_label_has_pixmap(self._preview_label()))
+        self.assertEqual(self.window.distance_value.text(), "2.500 m")
+        self.assertEqual(self.window.yaw_value.text(), "-15.25 deg")
+        self.assertEqual(self.window.inference_time_value.text(), "8.0 ms")
+        self.assertEqual(self.window.preprocessing_time_value.text(), "3.0 ms")
+        self.assertEqual(self.window.total_time_value.text(), "11.0 ms")
 
     def test_start_camera_button_calls_camera_controller_start(self) -> None:
         self.window.start_camera_button.click()
@@ -147,6 +203,24 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(self.camera_controller.stop_calls, 1)
         self.assertEqual(self.inference_controller.stop_calls, 1)
 
+    def _preview_label(self) -> object:
+        from PySide6.QtWidgets import QLabel
+
+        preview = self.window.findChild(QLabel, "frame_preview_label")
+        self.assertIsNotNone(preview)
+        return preview
+
+    def _write_temp_frame_image(self) -> Path:
+        from PySide6.QtGui import QColor, QImage
+
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        image_path = Path(temp_dir.name) / "frame.png"
+        image = QImage(80, 48, QImage.Format.Format_RGB32)
+        image.fill(QColor(20, 120, 200))
+        self.assertTrue(image.save(str(image_path)))
+        return image_path
+
 
 class PySide6IsolationTests(unittest.TestCase):
     def test_pyside6_imports_remain_isolated_to_gui_modules(self) -> None:
@@ -184,6 +258,14 @@ class _IssuePayload:
     message: str
     warning_type: str | None = None
     error_type: str | None = None
+
+
+@dataclass(frozen=True)
+class _FramePayload:
+    image_path: Path
+    completed_at_utc: str | None = None
+    frame_hash: object | None = None
+    metadata: object | None = None
 
 
 class _FakeController:
@@ -251,6 +333,11 @@ def _application(QApplication: Any) -> Any:
 
 def _process_events(app: object) -> None:
     app.processEvents()
+
+
+def _label_has_pixmap(label: object) -> bool:
+    pixmap = label.pixmap()
+    return pixmap is not None and not pixmap.isNull()
 
 
 def _imported_roots(module_path: Path) -> set[str]:

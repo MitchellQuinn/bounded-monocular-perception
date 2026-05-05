@@ -1,0 +1,10 @@
+[synthetic_camera]
+source_dir = "demo/synthetic_camera_source"
+output_dir = "live_frames"
+allowed_extensions = ["png", "jpg", "jpeg"]
+sort_order = "modified_time_ascending"
+frame_interval_ms = 250
+max_images = 2048
+loop = true
+start_index = 0
+rescan_on_loop = false

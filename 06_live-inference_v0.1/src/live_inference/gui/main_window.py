@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -40,6 +42,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._duplicate_skipped_count = 0
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
+        self._preview_source_pixmap: QPixmap | None = None
 
         self.setWindowTitle("Live Inference")
         self._build_ui()
@@ -72,6 +75,16 @@ class LiveInferenceMainWindow(QMainWindow):
             controls_layout.addWidget(button)
         controls_layout.addStretch(1)
         root_layout.addLayout(controls_layout)
+
+        self.frame_preview_label = QLabel("No frame yet")
+        self.frame_preview_label.setObjectName("frame_preview_label")
+        self.frame_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.frame_preview_label.setMinimumSize(320, 240)
+        self.frame_preview_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        root_layout.addWidget(self.frame_preview_label, stretch=2)
 
         status_grid = QGridLayout()
         status_grid.setColumnStretch(1, 1)
@@ -261,6 +274,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._frames_written_count += 1
         self.frames_written_value.setText(str(self._frames_written_count))
         path = _payload_value(frame, "image_path")
+        self._display_frame_preview(path)
         frame_hash = _hash_value(_payload_value(frame, "frame_hash"))
         timestamp = (
             _payload_value(frame, "completed_at_utc")
@@ -274,6 +288,39 @@ class LiveInferenceMainWindow(QMainWindow):
             f"hash={_text(frame_hash, default='n/a')} "
             f"time={_text(timestamp, default='n/a')}",
         )
+
+    def _display_frame_preview(self, path: object | None) -> None:
+        if path is None:
+            self._append_log("WARNING", "Frame preview unavailable: missing image path.")
+            return
+
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            self._append_log(
+                "WARNING",
+                f"Frame preview unavailable: could not load image path={path}",
+            )
+            return
+
+        self._preview_source_pixmap = pixmap
+        self._set_scaled_frame_preview()
+
+    def _set_scaled_frame_preview(self) -> None:
+        if self._preview_source_pixmap is None or self._preview_source_pixmap.isNull():
+            return
+
+        target_size = self.frame_preview_label.size()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            target_size = self.frame_preview_label.minimumSize()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            return
+
+        scaled_pixmap = self._preview_source_pixmap.scaled(
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.frame_preview_label.setPixmap(scaled_pixmap)
 
     def _on_inference_status_changed(self, status: object) -> None:
         self.inference_status_value.setText(_status_display_text(status))
@@ -394,6 +441,11 @@ class LiveInferenceMainWindow(QMainWindow):
         self._wait_for_controller(self.camera_controller)
         self._wait_for_controller(self.inference_controller)
         super().closeEvent(event)
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        if hasattr(self, "frame_preview_label"):
+            self._set_scaled_frame_preview()
 
     def _wait_for_controller(self, controller: object) -> None:
         wait = getattr(controller, "wait", None)

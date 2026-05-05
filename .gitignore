@@ -59,6 +59,7 @@ pip-wheel-metadata/
 05_inference-v0.3-ds/output/**/brightness-analysis_*.json
 05_inference-v0.4-ts/output/**/inference-output_*.json
 05_inference-v0.4-ts/output/**/brightness-analysis_*.json
+06_live-inference_v0.1/live_frames/
 
 
 # ------------------------------
@@ -94,6 +95,7 @@ analysis/
 *.npy
 *.npz
 *.png
+!06_live-inference_v0.1/demo/synthetic_camera_source/*.png
 *.zip
 !examples/defender-images/**
 
