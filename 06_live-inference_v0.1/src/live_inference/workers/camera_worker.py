@@ -183,6 +183,7 @@ class CameraWorker:
             error.message,
         )
         self._emit_error_occurred(error)
+        self._close_publisher()
 
     def _finish_stopping(self) -> None:
         if self._state == WorkerState.RUNNING:
@@ -193,6 +194,7 @@ class CameraWorker:
             )
 
         if self._state == WorkerState.STOPPING:
+            self._close_publisher()
             self._transition_to(
                 WorkerState.STOPPED,
                 WorkerEventType.STOPPED,
@@ -250,6 +252,23 @@ class CameraWorker:
     def _emit_frame_written(self, frame: FrameReference) -> None:
         if self._event_sink is not None:
             self._event_sink.frame_written(frame)
+
+    def _close_publisher(self) -> None:
+        close = getattr(self._publisher, "close", None)
+        if not callable(close):
+            return
+        try:
+            close()
+        except Exception as exc:
+            self._emit_warning_occurred(
+                WorkerWarning(
+                    worker_name=self.worker_name,
+                    warning_type="publisher_close_failed",
+                    message=f"Camera publisher close failed: {exc}",
+                    timestamp_utc=self._now_utc_fn(),
+                    details={"exception_type": type(exc).__name__},
+                )
+            )
 
 
 def _publisher_sleep_fn(publisher: object) -> Callable[[float], None]:

@@ -14,6 +14,15 @@ DEFAULT_FRAME_INTERVAL_MS = 250
 DEFAULT_INFERENCE_POLL_INTERVAL_MS = 10
 DEFAULT_SYNTHETIC_SOURCE_DIR = Path("demo/synthetic_camera_source")
 DEFAULT_SYNTHETIC_OUTPUT_DIR = Path("live_frames")
+DEFAULT_CAMERA_SOURCE = "synthetic"
+OPENCV_V4L2_CAMERA_SOURCE = "opencv-v4l2"
+DEFAULT_CAMERA_DEVICE = "/dev/video0"
+DEFAULT_CAMERA_WIDTH_PX = 960
+DEFAULT_CAMERA_HEIGHT_PX = 600
+DEFAULT_CAMERA_FPS = 80
+DEFAULT_CAMERA_PIXEL_FORMAT = "YUYV"
+DEFAULT_CAMERA_ENCODING = "png"
+DEFAULT_CAMERA_NAME = "Arducam B0495 AR0234"
 
 
 @dataclass(frozen=True)
@@ -23,9 +32,11 @@ class LiveInferenceGuiContext:
     camera_controller: object
     inference_controller: object
     model_selection_path: Path
+    live_inference_config: object
+    camera_source: str
     synthetic_camera_config_path: Path | None
     synthetic_camera_base_dir: Path
-    synthetic_camera_config: object
+    synthetic_camera_config: object | None
     distance_orientation_device: str
     roi_fcn_device: str
 
@@ -35,6 +46,8 @@ class _RuntimeDependencies:
     synthetic_camera_config_cls: type
     synthetic_camera_publisher_cls: type
     load_synthetic_camera_config: Callable[[Path], object]
+    opencv_v4l2_camera_publisher_cls: type
+    atomic_frame_handoff_writer_cls: type
     live_inference_config_cls: type
     torch_tri_stream_inference_engine_cls: type
     latest_frame_handoff_reader_cls: type
@@ -61,48 +74,84 @@ def default_synthetic_camera_config_path() -> Path:
 
 def build_live_inference_gui_context(
     *,
+    camera_source: str = DEFAULT_CAMERA_SOURCE,
     model_selection_path: Path | None = None,
     synthetic_camera_config_path: Path | None = None,
     selection_path: Path | None = None,
     source_dir: Path | None = None,
     output_dir: Path | None = None,
+    camera_device: str | int = DEFAULT_CAMERA_DEVICE,
+    camera_width_px: int = DEFAULT_CAMERA_WIDTH_PX,
+    camera_height_px: int = DEFAULT_CAMERA_HEIGHT_PX,
+    camera_fps: int = DEFAULT_CAMERA_FPS,
+    camera_pixel_format: str = DEFAULT_CAMERA_PIXEL_FORMAT,
+    camera_encoding: str = DEFAULT_CAMERA_ENCODING,
+    camera_name: str = DEFAULT_CAMERA_NAME,
+    log_v4l2_controls_at_startup: bool = False,
     device: str | None = None,
     frame_interval_ms: int = DEFAULT_FRAME_INTERVAL_MS,
     inference_poll_interval_ms: int = DEFAULT_INFERENCE_POLL_INTERVAL_MS,
     dependency_loader: Callable[[], _RuntimeDependencies] | None = None,
 ) -> LiveInferenceGuiContext:
-    """Build the current synthetic-camera to tri-stream inference pipeline."""
+    """Build the selected camera to tri-stream inference pipeline."""
     deps = (dependency_loader or _load_runtime_dependencies)()
 
+    resolved_camera_source = _camera_source(camera_source)
     project_root = _live_project_root()
     resolved_selection_path = _resolve_path(
         model_selection_path or selection_path or default_model_selection_path()
     )
-    resolved_camera_config_path = _resolve_synthetic_camera_config_path(
-        synthetic_camera_config_path
-    )
-    synthetic_config = _synthetic_camera_config_from_path_or_default(
-        deps,
-        resolved_camera_config_path,
-    )
-    synthetic_config = _override_synthetic_camera_config(
-        synthetic_config,
-        source_dir=source_dir,
-        output_dir=output_dir,
-        frame_interval_ms=frame_interval_ms,
-    )
     synthetic_base_dir = project_root
-    publisher = deps.synthetic_camera_publisher_cls(
-        synthetic_config,
-        base_dir=synthetic_base_dir,
-    )
+    resolved_camera_config_path: Path | None = None
+    synthetic_config: object | None = None
 
-    live_config = deps.live_inference_config_cls(
-        frame_dir=publisher.output_dir,
-        latest_frame_filename=synthetic_config.latest_frame_filename,
-        temp_frame_filename=synthetic_config.temp_frame_filename,
-        inference_poll_interval_ms=inference_poll_interval_ms,
-    )
+    if resolved_camera_source == DEFAULT_CAMERA_SOURCE:
+        resolved_camera_config_path = _resolve_synthetic_camera_config_path(
+            synthetic_camera_config_path
+        )
+        synthetic_config = _synthetic_camera_config_from_path_or_default(
+            deps,
+            resolved_camera_config_path,
+        )
+        synthetic_config = _override_synthetic_camera_config(
+            synthetic_config,
+            source_dir=source_dir,
+            output_dir=output_dir,
+            frame_interval_ms=frame_interval_ms,
+        )
+        publisher = deps.synthetic_camera_publisher_cls(
+            synthetic_config,
+            base_dir=synthetic_base_dir,
+        )
+        live_config = deps.live_inference_config_cls(
+            frame_dir=publisher.output_dir,
+            latest_frame_filename=synthetic_config.latest_frame_filename,
+            temp_frame_filename=synthetic_config.temp_frame_filename,
+            inference_poll_interval_ms=inference_poll_interval_ms,
+        )
+    else:
+        camera_frame_dir = _resolve_camera_frame_dir(project_root, output_dir)
+        camera_extension = _frame_extension(camera_encoding)
+        live_config = deps.live_inference_config_cls(
+            frame_dir=camera_frame_dir,
+            latest_frame_filename=f"latest_frame.{camera_extension}",
+            temp_frame_filename=f"latest_frame.tmp.{camera_extension}",
+            inference_poll_interval_ms=inference_poll_interval_ms,
+        )
+        writer = deps.atomic_frame_handoff_writer_cls(live_config)
+        publisher = deps.opencv_v4l2_camera_publisher_cls(
+            handoff_writer=writer,
+            device=camera_device,
+            width_px=camera_width_px,
+            height_px=camera_height_px,
+            fps=camera_fps,
+            pixel_format=camera_pixel_format,
+            encoding=camera_encoding,
+            camera_name=camera_name,
+            auto_open=False,
+            log_v4l2_controls_at_startup=log_v4l2_controls_at_startup,
+        )
+
     selection = deps.load_model_selection(resolved_selection_path)
     device_override = (
         normalize_torch_device_policy(device) if device is not None else None
@@ -144,6 +193,8 @@ def build_live_inference_gui_context(
         camera_controller=deps.worker_thread_controller_cls(camera_worker),
         inference_controller=deps.worker_thread_controller_cls(inference_worker),
         model_selection_path=resolved_selection_path,
+        live_inference_config=live_config,
+        camera_source=resolved_camera_source,
         synthetic_camera_config_path=resolved_camera_config_path,
         synthetic_camera_base_dir=synthetic_base_dir,
         synthetic_camera_config=synthetic_config,
@@ -167,10 +218,19 @@ def main(argv: list[str] | None = None) -> int:
             app = QApplication(sys.argv[:1])
 
         context = build_live_inference_gui_context(
+            camera_source=args.camera_source,
             model_selection_path=args.model_selection,
             synthetic_camera_config_path=args.synthetic_camera_config,
             source_dir=args.source_dir,
             output_dir=args.output_dir,
+            camera_device=args.camera_device,
+            camera_width_px=args.camera_width,
+            camera_height_px=args.camera_height,
+            camera_fps=args.camera_fps,
+            camera_pixel_format=args.camera_pixel_format,
+            camera_encoding=args.camera_encoding,
+            camera_name=args.camera_name,
+            log_v4l2_controls_at_startup=args.log_v4l2_controls_at_startup,
             device=args.device,
             frame_interval_ms=args.frame_interval_ms,
             inference_poll_interval_ms=args.inference_poll_interval_ms,
@@ -205,6 +265,12 @@ def main(argv: list[str] | None = None) -> int:
 def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--camera-source",
+        choices=(DEFAULT_CAMERA_SOURCE, OPENCV_V4L2_CAMERA_SOURCE),
+        default=DEFAULT_CAMERA_SOURCE,
+        help="Camera source implementation.",
+    )
+    parser.add_argument(
         "--synthetic-camera-config",
         type=Path,
         default=default_synthetic_camera_config_path(),
@@ -231,6 +297,49 @@ def _argument_parser() -> argparse.ArgumentParser:
         type=_positive_int,
         default=DEFAULT_FRAME_INTERVAL_MS,
         help="Synthetic camera frame interval in milliseconds.",
+    )
+    parser.add_argument(
+        "--camera-device",
+        default=DEFAULT_CAMERA_DEVICE,
+        help="OpenCV/V4L2 camera device path or index.",
+    )
+    parser.add_argument(
+        "--camera-width",
+        type=_positive_int,
+        default=DEFAULT_CAMERA_WIDTH_PX,
+        help="OpenCV/V4L2 requested capture width in pixels.",
+    )
+    parser.add_argument(
+        "--camera-height",
+        type=_positive_int,
+        default=DEFAULT_CAMERA_HEIGHT_PX,
+        help="OpenCV/V4L2 requested capture height in pixels.",
+    )
+    parser.add_argument(
+        "--camera-fps",
+        type=_positive_int,
+        default=DEFAULT_CAMERA_FPS,
+        help="OpenCV/V4L2 requested capture frame rate.",
+    )
+    parser.add_argument(
+        "--camera-pixel-format",
+        default=DEFAULT_CAMERA_PIXEL_FORMAT,
+        help="OpenCV/V4L2 requested FOURCC pixel format.",
+    )
+    parser.add_argument(
+        "--camera-encoding",
+        default=DEFAULT_CAMERA_ENCODING,
+        help="Encoded handoff image format.",
+    )
+    parser.add_argument(
+        "--camera-name",
+        default=DEFAULT_CAMERA_NAME,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--log-v4l2-controls-at-startup",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--debug",
@@ -268,8 +377,12 @@ def _load_runtime_dependencies() -> _RuntimeDependencies:
         load_synthetic_camera_config,
     )
     from interfaces import LiveInferenceConfig  # noqa: PLC0415
+    from live_inference.cameras import OpenCvV4L2CameraPublisher  # noqa: PLC0415
     from live_inference.engines import TorchTriStreamInferenceEngine  # noqa: PLC0415
-    from live_inference.frame_handoff import LatestFrameHandoffReader  # noqa: PLC0415
+    from live_inference.frame_handoff import (  # noqa: PLC0415
+        AtomicFrameHandoffWriter,
+        LatestFrameHandoffReader,
+    )
     from live_inference.frame_selection import InferenceFrameSelector  # noqa: PLC0415
     from live_inference.gui.qt_worker_bridge import WorkerThreadController  # noqa: PLC0415
     from live_inference.inference_core import InferenceProcessingCore  # noqa: PLC0415
@@ -287,6 +400,8 @@ def _load_runtime_dependencies() -> _RuntimeDependencies:
         synthetic_camera_config_cls=SyntheticCameraConfig,
         synthetic_camera_publisher_cls=SyntheticCameraPublisher,
         load_synthetic_camera_config=load_synthetic_camera_config,
+        opencv_v4l2_camera_publisher_cls=OpenCvV4L2CameraPublisher,
+        atomic_frame_handoff_writer_cls=AtomicFrameHandoffWriter,
         live_inference_config_cls=LiveInferenceConfig,
         torch_tri_stream_inference_engine_cls=TorchTriStreamInferenceEngine,
         latest_frame_handoff_reader_cls=LatestFrameHandoffReader,
@@ -331,6 +446,32 @@ def _override_synthetic_camera_config(
     return replace(config, **updates)
 
 
+def _camera_source(value: str) -> str:
+    text = str(value).strip()
+    if text in {DEFAULT_CAMERA_SOURCE, OPENCV_V4L2_CAMERA_SOURCE}:
+        return text
+    raise ValueError(
+        "camera_source must be one of "
+        f"{DEFAULT_CAMERA_SOURCE!r}, {OPENCV_V4L2_CAMERA_SOURCE!r}; got {value!r}."
+    )
+
+
+def _resolve_camera_frame_dir(project_root: Path, output_dir: Path | None) -> Path:
+    frame_dir = Path(DEFAULT_SYNTHETIC_OUTPUT_DIR if output_dir is None else output_dir)
+    if frame_dir.is_absolute():
+        return frame_dir
+    return project_root / frame_dir
+
+
+def _frame_extension(encoding: str) -> str:
+    text = str(encoding).strip().lower().lstrip(".")
+    if text == "jpeg":
+        return "jpg"
+    if not text:
+        raise ValueError("camera_encoding must not be empty.")
+    return text
+
+
 def _resolve_path(path: Path) -> Path:
     return Path(path).expanduser().resolve(strict=False)
 
@@ -370,6 +511,7 @@ def _device_policy(value: str) -> str:
 def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     synthetic_config = context.synthetic_camera_config
     print("Live inference GUI launch context:", file=sys.stderr)
+    print(f"  camera_source = {context.camera_source}", file=sys.stderr)
     print(f"  model_selection = {context.model_selection_path}", file=sys.stderr)
     print(
         f"  distance_orientation_device = {context.distance_orientation_device}",
@@ -382,6 +524,10 @@ def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     )
     print(
         f"  synthetic_camera_base_dir = {context.synthetic_camera_base_dir}",
+        file=sys.stderr,
+    )
+    print(
+        f"  camera_frame_dir = {getattr(context.live_inference_config, 'frame_dir', 'n/a')}",
         file=sys.stderr,
     )
     print(
@@ -416,9 +562,18 @@ if __name__ == "__main__":
 __all__ = [
     "DEFAULT_FRAME_INTERVAL_MS",
     "DEFAULT_INFERENCE_POLL_INTERVAL_MS",
+    "DEFAULT_CAMERA_DEVICE",
+    "DEFAULT_CAMERA_ENCODING",
+    "DEFAULT_CAMERA_FPS",
+    "DEFAULT_CAMERA_HEIGHT_PX",
+    "DEFAULT_CAMERA_NAME",
+    "DEFAULT_CAMERA_PIXEL_FORMAT",
+    "DEFAULT_CAMERA_SOURCE",
+    "DEFAULT_CAMERA_WIDTH_PX",
     "DEFAULT_SYNTHETIC_OUTPUT_DIR",
     "DEFAULT_SYNTHETIC_SOURCE_DIR",
     "LiveInferenceGuiContext",
+    "OPENCV_V4L2_CAMERA_SOURCE",
     "build_live_inference_gui_context",
     "default_model_selection_path",
     "default_synthetic_camera_config_path",

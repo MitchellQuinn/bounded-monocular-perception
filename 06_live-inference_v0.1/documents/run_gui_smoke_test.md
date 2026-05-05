@@ -83,6 +83,39 @@ Useful manual-test options:
 --debug
 ```
 
+## Real Camera Smoke Test
+
+The OpenCV/V4L2 source targets `/dev/video0` by default and requests
+960x600 at 80 fps with YUYV 4:2:2 input, encoded to PNG for the existing
+latest-frame GUI preview.
+
+Proof-of-life commands:
+
+```bash
+v4l2-ctl --list-devices
+v4l2-ctl -d /dev/video0 --list-formats-ext
+v4l2-ctl -d /dev/video0 --all
+```
+
+Live GUI command:
+
+```bash
+PYTHONPATH=06_live-inference_v0.1/src ./.venv/bin/python \
+  -m live_inference.gui.app \
+  --camera-source opencv-v4l2 \
+  --camera-device /dev/video0 \
+  --camera-width 960 \
+  --camera-height 600 \
+  --camera-fps 80 \
+  --device auto \
+  --auto-start-camera \
+  --auto-start-inference
+```
+
+Do not use high-bandwidth `ffplay` raw preview over RDP as a normal workflow.
+Prefer headless capture checks or the app's compressed and scaled GUI preview.
+Full resolution 1920x1200 at 50 fps is for later testing, not the default.
+
 ## Manual Steps
 
 1. Launch the GUI with the command above.
@@ -107,4 +140,4 @@ Useful manual-test options:
 - The frame preview is a live latest-frame preview, not guaranteed to match the exact inference result frame.
 - Inference inspection/debug views are not implemented yet.
 - Parameter tuning UI is not implemented yet.
-- Real camera support is not implemented yet.
+- Real camera support currently starts with OpenCV/V4L2 at 960x600 and 80 fps.

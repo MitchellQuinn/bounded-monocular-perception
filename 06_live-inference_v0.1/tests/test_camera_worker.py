@@ -180,6 +180,14 @@ class CameraWorkerTests(unittest.TestCase):
 
         self.assertEqual(len(sink.frames), 1)
 
+    def test_stop_closes_publisher_when_close_is_available(self) -> None:
+        publisher = CloseablePublisher(frames=[_frame()])
+        worker = CameraWorker(publisher, now_utc_fn=lambda: NOW)
+
+        worker.start_work()
+
+        self.assertEqual(publisher.close_calls, 1)
+
     def test_camera_worker_module_has_no_inference_model_preprocessor_imports(self) -> None:
         module_path = SRC_ROOT / "live_inference" / "workers" / "camera_worker.py"
         source = module_path.read_text(encoding="utf-8")
@@ -264,6 +272,15 @@ class FakePublisher:
         if not self.frames:
             raise StopIteration("Synthetic camera source list exhausted.")
         return self.frames.pop(0)
+
+
+class CloseablePublisher(FakePublisher):
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 class RecordingSink:

@@ -34,8 +34,44 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertFalse(args.auto_start_camera)
         self.assertFalse(args.auto_start_inference)
         self.assertEqual(args.frame_interval_ms, gui_app.DEFAULT_FRAME_INTERVAL_MS)
+        self.assertEqual(args.camera_source, "synthetic")
         self.assertFalse(args.debug)
         self.assertIsNone(args.device)
+
+    def test_cli_parser_parses_camera_sources(self) -> None:
+        for value in ("synthetic", "opencv-v4l2"):
+            with self.subTest(value=value):
+                args = gui_app._argument_parser().parse_args(["--camera-source", value])
+
+                self.assertEqual(args.camera_source, value)
+
+    def test_cli_parser_parses_real_camera_options(self) -> None:
+        args = gui_app._argument_parser().parse_args(
+            [
+                "--camera-source",
+                "opencv-v4l2",
+                "--camera-device",
+                "/dev/video-test",
+                "--camera-width",
+                "960",
+                "--camera-height",
+                "600",
+                "--camera-fps",
+                "80",
+                "--camera-pixel-format",
+                "YUYV",
+                "--camera-encoding",
+                "png",
+            ]
+        )
+
+        self.assertEqual(args.camera_source, "opencv-v4l2")
+        self.assertEqual(args.camera_device, "/dev/video-test")
+        self.assertEqual(args.camera_width, 960)
+        self.assertEqual(args.camera_height, 600)
+        self.assertEqual(args.camera_fps, 80)
+        self.assertEqual(args.camera_pixel_format, "YUYV")
+        self.assertEqual(args.camera_encoding, "png")
 
     def test_cli_parser_parses_explicit_paths_and_smoke_options(self) -> None:
         args = gui_app._argument_parser().parse_args(
@@ -101,6 +137,38 @@ class GuiAppCompositionTests(unittest.TestCase):
         self.assertEqual(records["engine_device"], "cpu")
         self.assertEqual(records["inference_poll_interval_ms"], 17)
 
+    def test_real_camera_composition_uses_fake_real_camera_publisher(self) -> None:
+        records: dict[str, Any] = {}
+
+        context = gui_app.build_live_inference_gui_context(
+            camera_source="opencv-v4l2",
+            model_selection_path=PROJECT_ROOT / "models/selections/current.toml",
+            output_dir=Path("real_frames"),
+            camera_device="/dev/video-test",
+            camera_width_px=960,
+            camera_height_px=600,
+            camera_fps=80,
+            camera_pixel_format="YUYV",
+            camera_encoding="png",
+            device="cpu",
+            inference_poll_interval_ms=17,
+            dependency_loader=lambda: _fake_dependencies(records),
+        )
+
+        self.assertEqual(context.camera_source, "opencv-v4l2")
+        self.assertIsNone(context.synthetic_camera_config)
+        self.assertIsNone(context.synthetic_camera_config_path)
+        self.assertIsInstance(context.camera_controller.worker, _FakeCameraWorker)
+        self.assertIsInstance(context.camera_controller.worker.publisher, _FakeOpenCvV4L2CameraPublisher)
+        self.assertEqual(records["writer_frame_dir"], PROJECT_ROOT / "real_frames")
+        self.assertEqual(records["real_camera_device"], "/dev/video-test")
+        self.assertEqual(records["real_camera_width_px"], 960)
+        self.assertEqual(records["real_camera_height_px"], 600)
+        self.assertEqual(records["real_camera_fps"], 80)
+        self.assertEqual(records["real_camera_pixel_format"], "YUYV")
+        self.assertEqual(records["real_camera_encoding"], "png")
+        self.assertFalse(records["real_camera_auto_open"])
+
 
 @dataclass(frozen=True)
 class _FakeSyntheticCameraConfig:
@@ -139,6 +207,38 @@ class _FakeSyntheticCameraPublisher:
         self.config = config
         self.base_dir = base_dir
         self.output_dir = base_dir / config.output_dir
+
+
+class _FakeAtomicFrameHandoffWriter:
+    def __init__(self, live_config: _FakeLiveInferenceConfig) -> None:
+        self.live_config = live_config
+
+
+class _FakeOpenCvV4L2CameraPublisher:
+    def __init__(
+        self,
+        *,
+        handoff_writer: _FakeAtomicFrameHandoffWriter,
+        device: str | int,
+        width_px: int,
+        height_px: int,
+        fps: int,
+        pixel_format: str,
+        encoding: str,
+        camera_name: str,
+        auto_open: bool,
+        log_v4l2_controls_at_startup: bool,
+    ) -> None:
+        self.handoff_writer = handoff_writer
+        self.device = device
+        self.width_px = width_px
+        self.height_px = height_px
+        self.fps = fps
+        self.pixel_format = pixel_format
+        self.encoding = encoding
+        self.camera_name = camera_name
+        self.auto_open = auto_open
+        self.log_v4l2_controls_at_startup = log_v4l2_controls_at_startup
 
 
 class _FakeReader:
@@ -184,7 +284,7 @@ class _FakeCore:
 
 
 class _FakeCameraWorker:
-    def __init__(self, publisher: _FakeSyntheticCameraPublisher) -> None:
+    def __init__(self, publisher: object) -> None:
         self.publisher = publisher
 
 
@@ -235,6 +335,22 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
             super().__init__(config, base_dir=base_dir)
             records["publisher_base_dir"] = base_dir
 
+    class RecordingWriter(_FakeAtomicFrameHandoffWriter):
+        def __init__(self, live_config: _FakeLiveInferenceConfig) -> None:
+            super().__init__(live_config)
+            records["writer_frame_dir"] = live_config.frame_dir
+
+    class RecordingOpenCvPublisher(_FakeOpenCvV4L2CameraPublisher):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            records["real_camera_device"] = self.device
+            records["real_camera_width_px"] = self.width_px
+            records["real_camera_height_px"] = self.height_px
+            records["real_camera_fps"] = self.fps
+            records["real_camera_pixel_format"] = self.pixel_format
+            records["real_camera_encoding"] = self.encoding
+            records["real_camera_auto_open"] = self.auto_open
+
     class RecordingSelector(_FakeSelector):
         def __init__(self, reader: _FakeReader, *, duplicate_hash_skip_enabled: bool) -> None:
             super().__init__(
@@ -266,6 +382,8 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
         synthetic_camera_config_cls=_FakeSyntheticCameraConfig,
         synthetic_camera_publisher_cls=RecordingPublisher,
         load_synthetic_camera_config=load_synthetic_camera_config,
+        opencv_v4l2_camera_publisher_cls=RecordingOpenCvPublisher,
+        atomic_frame_handoff_writer_cls=RecordingWriter,
         live_inference_config_cls=make_live_config,
         torch_tri_stream_inference_engine_cls=RecordingEngine,
         latest_frame_handoff_reader_cls=_FakeReader,
