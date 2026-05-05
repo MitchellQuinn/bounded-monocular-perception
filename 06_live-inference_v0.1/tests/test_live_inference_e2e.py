@@ -61,6 +61,7 @@ SOURCE_IMAGE_PATH = (
 
 class LiveInferenceE2ETests(unittest.TestCase):
     def test_synchronous_non_gui_live_inference_processes_one_real_frame(self) -> None:
+        pyside_modules_before = _loaded_pyside6_modules()
         _optional_torch()
         selected = _load_selected_artifacts()
         _require_file(SOURCE_IMAGE_PATH, "05 inference input corpus sample image")
@@ -152,7 +153,7 @@ class LiveInferenceE2ETests(unittest.TestCase):
         self.assertIsNone(duplicate.result)
         self.assertIsNone(duplicate.error)
 
-        self.assertNotIn("PySide6", sys.modules)
+        self.assertEqual(_loaded_pyside6_modules(), pyside_modules_before)
 
     def test_generic_core_modules_remain_heavy_import_free(self) -> None:
         module_paths = (
@@ -257,6 +258,14 @@ def _require_dir(path: Path, label: str) -> None:
 def _require_file(path: Path, label: str) -> None:
     if not path.is_file():
         raise unittest.SkipTest(f"{label} is not available: {path}")
+
+
+def _loaded_pyside6_modules() -> set[str]:
+    return {
+        module_name
+        for module_name in sys.modules
+        if module_name == "PySide6" or module_name.startswith("PySide6.")
+    }
 
 
 def _banned_imports(module_path: Path) -> set[str]:
