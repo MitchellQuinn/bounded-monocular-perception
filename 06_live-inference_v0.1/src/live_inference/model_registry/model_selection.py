@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 import tomllib
 
+from live_inference.runtime.device import normalize_torch_device_policy
+
 
 @dataclass(frozen=True)
 class ModelSelection:
@@ -20,8 +22,8 @@ class ModelSelection:
     selection_path: Path
     distance_orientation_root: Path
     roi_fcn_root: Path
-    distance_orientation_device: str = "cuda"
-    roi_fcn_device: str = "cuda"
+    distance_orientation_device: str = "auto"
+    roi_fcn_device: str = "auto"
 
 
 class ModelSelectionError(ValueError):
@@ -69,9 +71,9 @@ def load_model_selection(selection_path: Path) -> ModelSelection:
         distance_orientation_device=_optional_string(
             devices,
             "distance_orientation",
-            default="cuda",
+            default="auto",
         ),
-        roi_fcn_device=_optional_string(devices, "roi_fcn", default="cuda"),
+        roi_fcn_device=_optional_string(devices, "roi_fcn", default="auto"),
     )
 
 
@@ -130,7 +132,10 @@ def _optional_string(payload: Mapping[str, Any], key: str, *, default: str) -> s
     value = payload.get(key, default)
     if not isinstance(value, str) or not value.strip():
         raise ModelSelectionError(f"[device].{key} must be a non-empty string.")
-    return value
+    try:
+        return normalize_torch_device_policy(value)
+    except ValueError as exc:
+        raise ModelSelectionError(f"[device].{key} {exc}") from exc
 
 
 def _is_inside(path: Path, root: Path) -> bool:

@@ -335,7 +335,7 @@ class LiveInferenceConfig:
     duplicate_hash_skip_enabled: bool = True
     model_path: Path | None = None
     model_contract: ModelContractReference | None = None
-    device: str = "cuda"
+    device: str = "auto"
     save_debug_images: bool = False
     debug_output_dir: Path | None = DEFAULT_DEBUG_OUTPUT_DIR
     extras: Mapping[str, Any] = field(default_factory=dict)

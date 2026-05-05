@@ -25,6 +25,10 @@ from live_inference.model_registry import (
     load_model_selection,
     require_live_model_compatibility,
 )
+from live_inference.runtime.device import (
+    normalize_torch_device_policy,
+    resolve_torch_device,
+)
 
 from .output_decoding import decode_distance_yaw_outputs
 
@@ -58,7 +62,10 @@ class TorchTriStreamInferenceEngine:
             if model_manifest is not None
             else load_live_model_manifest(selected_root)
         )
-        self._device = str(device or selected_device or "cuda").strip() or "cuda"
+        self._device_policy = normalize_torch_device_policy(
+            device or selected_device or "auto"
+        )
+        self._resolved_device: str | None = None
         self._checkpoint_name = checkpoint_name
         self._model = model
         self._load_model = bool(model is None) if load_model is None else bool(load_model)
@@ -90,7 +97,7 @@ class TorchTriStreamInferenceEngine:
 
         start = perf_counter()
         torch = _import_torch()
-        device_obj = _resolve_device(torch, self._device)
+        device_obj = self._torch_device(torch)
         input_mode = _coerce_input_mode(inputs.input_mode)
         if input_mode != InferenceInputMode.TRI_STREAM_V0_4:
             raise ValueError(
@@ -158,7 +165,8 @@ class TorchTriStreamInferenceEngine:
             extras={
                 "model_root": str(self._manifest.model_root),
                 "checkpoint_path": str(self._resolved_checkpoint_path()),
-                "device": self._device,
+                "device": self._resolved_device or self._device_policy,
+                "device_policy": self._device_policy,
                 "model_label": self._manifest.model_label,
             },
         )
@@ -178,7 +186,7 @@ class TorchTriStreamInferenceEngine:
 
     def _load_torch_model(self) -> Any:
         torch = _import_torch()
-        device_obj = _resolve_device(torch, self._device)
+        device_obj = self._torch_device(torch)
         _ensure_training_repo_path()
         from src.topologies.registry import (  # noqa: PLC0415
             build_model_from_spec,
@@ -223,6 +231,11 @@ class TorchTriStreamInferenceEngine:
             checkpoint_name=self._checkpoint_name,
         )
 
+    def _torch_device(self, torch: Any) -> Any:
+        resolved_device = resolve_torch_device(self._device_policy)
+        self._resolved_device = resolved_device
+        return torch.device(resolved_device)
+
 
 def resolve_distance_orientation_checkpoint(
     model_root: Path | str,
@@ -248,14 +261,14 @@ def _resolve_selected_model_root_and_device(
     model_root: Path | str | None,
 ) -> tuple[Path, str]:
     if model_root is not None:
-        return Path(model_root).expanduser().resolve(), "cuda"
+        return Path(model_root).expanduser().resolve(), "auto"
 
     repo_root = _repo_root()
     selection_path = (repo_root / DEFAULT_SELECTION_PATH).resolve()
     if selection_path.is_file():
         selection = load_model_selection(selection_path)
         return selection.distance_orientation_root, selection.distance_orientation_device
-    return (repo_root / DEFAULT_DISTANCE_ORIENTATION_ROOT).resolve(), "cuda"
+    return (repo_root / DEFAULT_DISTANCE_ORIENTATION_ROOT).resolve(), "auto"
 
 
 def _prepare_model_inputs(
@@ -651,16 +664,6 @@ def _torch_load_checkpoint(torch: Any, path: Path, *, map_location: Any) -> Any:
         return torch.load(path, map_location=map_location, weights_only=True)
     except TypeError:
         return torch.load(path, map_location=map_location)
-
-
-def _resolve_device(torch: Any, raw_device: str) -> Any:
-    device = torch.device(str(raw_device).strip() or "cuda")
-    if device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError(
-            f"Requested distance/orientation device {str(device)!r}, "
-            "but torch.cuda.is_available() is false."
-        )
-    return device
 
 
 def _eval_model(model: Any) -> None:

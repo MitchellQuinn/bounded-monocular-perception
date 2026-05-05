@@ -5,5 +5,5 @@ root = "../distance-orientation/260504-1100_ts-2d-cnn"
 root = "../roi-fcn/<roi-fcn-run-id>"
 
 [device]
-distance_orientation = "cuda"
-roi_fcn = "cuda"
+distance_orientation = "auto"
+roi_fcn = "auto"

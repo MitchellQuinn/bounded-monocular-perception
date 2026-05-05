@@ -41,6 +41,10 @@ from live_inference.model_registry.model_manifest import (  # noqa: E402
     load_live_model_manifest,
 )
 from live_inference.preprocessing import RoiFcnLocator, TriStreamLivePreprocessor  # noqa: E402
+from live_inference.runtime.device import (  # noqa: E402
+    normalize_torch_device_policy,
+    resolve_torch_device,
+)
 
 
 REQUESTED_AT = "2026-05-05T00:00:00Z"
@@ -211,7 +215,7 @@ def _load_selected_artifacts() -> _SelectedArtifacts:
     return _SelectedArtifacts(
         distance_orientation_root=KNOWN_DISTANCE_ORIENTATION_ROOT.resolve(),
         roi_fcn_root=KNOWN_ROI_FCN_ROOT.resolve(),
-        roi_fcn_device="cuda",
+        roi_fcn_device="auto",
     )
 
 
@@ -222,10 +226,10 @@ def _optional_torch() -> object:
 
 
 def _roi_runtime_device(requested_device: str, torch: object) -> str:
-    requested = str(requested_device).strip() or "cuda"
-    if requested.startswith("cuda") and not torch.cuda.is_available():
+    requested = normalize_torch_device_policy(requested_device)
+    if requested == "cuda" and not torch.cuda.is_available():
         return "cpu"
-    return requested
+    return resolve_torch_device(requested)
 
 
 def _request_for_image(image_path: Path, image_bytes: bytes) -> InferenceRequest:

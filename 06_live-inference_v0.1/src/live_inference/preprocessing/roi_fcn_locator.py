@@ -12,6 +12,11 @@ from typing import Any
 
 import numpy as np
 
+from live_inference.runtime.device import (
+    normalize_torch_device_policy,
+    resolve_torch_device,
+)
+
 from .roi_locator import (
     RoiFcnLocatorInput,
     RoiLocation,
@@ -55,7 +60,7 @@ class RoiFcnLocator:
         self,
         roi_model_root: Path,
         *,
-        device: str = "cuda",
+        device: str = "auto",
         checkpoint_name: str | None = None,
         load_model: bool = True,
         model: Any | None = None,
@@ -64,7 +69,8 @@ class RoiFcnLocator:
             roi_model_root,
             checkpoint_name=checkpoint_name,
         )
-        self._device = str(device).strip() or "cuda"
+        self._device_policy = normalize_torch_device_policy(device)
+        self._resolved_device: str | None = None
         self._model = model
         if self._model is not None:
             _eval_model(self._model)
@@ -105,7 +111,8 @@ class RoiFcnLocator:
                 "roi_model_root": str(self._metadata.roi_model_root),
                 "checkpoint_path": str(self._metadata.checkpoint_path),
                 "checkpoint_name": self._metadata.checkpoint_name,
-                "device": self._device,
+                "device": self._resolved_device or self._device_policy,
+                "device_policy": self._device_policy,
                 "topology_id": self._metadata.topology_id,
                 "topology_variant": self._metadata.topology_variant,
             },
@@ -119,11 +126,7 @@ class RoiFcnLocator:
             resolve_topology_spec,
         )
 
-        device_obj = torch.device(self._device)
-        if device_obj.type == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError(
-                f"Requested ROI-FCN device {self._device!r}, but torch.cuda.is_available() is false."
-            )
+        device_obj = self._torch_device(torch)
 
         spec = resolve_topology_spec(
             topology_id=self._metadata.topology_id,
@@ -147,7 +150,7 @@ class RoiFcnLocator:
 
     def _run_model(self, locator_input: RoiFcnLocatorInput) -> np.ndarray:
         torch = _import_torch()
-        device_obj = torch.device(self._device)
+        device_obj = self._torch_device(torch)
         input_tensor = torch.from_numpy(locator_input.locator_image[None, ...]).to(
             device=device_obj,
             dtype=torch.float32,
@@ -160,6 +163,11 @@ class RoiFcnLocator:
                 f"got {tuple(heatmap_tensor.shape)}"
             )
         return heatmap_tensor[0, 0].detach().cpu().numpy()
+
+    def _torch_device(self, torch: Any) -> Any:
+        resolved_device = resolve_torch_device(self._device_policy)
+        self._resolved_device = resolved_device
+        return torch.device(resolved_device)
 
 
 def load_roi_fcn_artifact_metadata(

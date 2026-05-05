@@ -21,9 +21,16 @@ That selection should point at staged artifact directories under:
 06_live-inference_v0.1/models/
 ```
 
-The default launch uses the device values in `current.toml`. To intentionally
-override both model devices for a local smoke run, pass `--device cpu` or
-another valid Torch device.
+The default launch uses the device values in `current.toml`. The supported
+device policies are:
+
+- `auto`: use CUDA when Torch reports CUDA is available, otherwise CPU.
+- `cuda`: require CUDA and fail clearly when CUDA is unavailable.
+- `cpu`: force CPU execution. This is useful on mini PCs, but inference may be
+  slower than on the GPU path.
+
+To intentionally override both model devices for a local smoke run, pass
+`--device auto`, `--device cuda`, or `--device cpu`.
 
 ## Synthetic Camera Images
 
@@ -59,6 +66,12 @@ Optional auto-start smoke command:
 
 ```bash
 PYTHONPATH=06_live-inference_v0.1/src ./.venv/bin/python -m live_inference.gui.app --auto-start-camera --auto-start-inference
+```
+
+Mini PC / CPU auto-start smoke command:
+
+```bash
+PYTHONPATH=06_live-inference_v0.1/src ./.venv/bin/python -m live_inference.gui.app --device cpu --auto-start-camera --auto-start-inference
 ```
 
 Useful manual-test options:

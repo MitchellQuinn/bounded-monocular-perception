@@ -5,5 +5,5 @@ root = "../distance-orientation/260504-1100_ts-2d-cnn__run_0001"
 root = "../roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
 
 [device]
-distance_orientation = "auto"
-roi_fcn = "auto"
+distance_orientation = "cpu"
+roi_fcn = "cpu"

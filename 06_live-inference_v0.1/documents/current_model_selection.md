@@ -12,7 +12,7 @@ runtime use.
 - Selection file: `06_live-inference_v0.1/models/selections/current.toml`
 - Distance/orientation live-local path: `06_live-inference_v0.1/models/distance-orientation/260504-1100_ts-2d-cnn__run_0001`
 - ROI-FCN live-local path: `06_live-inference_v0.1/models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003`
-- Device requests: distance/orientation `cuda`; ROI-FCN `cuda`
+- Device requests: distance/orientation `auto`; ROI-FCN `auto`
 - Artifact staging: copied directories; no symlinks
 
 ## Compatibility Result

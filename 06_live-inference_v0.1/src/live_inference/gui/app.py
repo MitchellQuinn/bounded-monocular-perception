@@ -8,6 +8,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 import sys
 
+from live_inference.runtime.device import normalize_torch_device_policy
+
 DEFAULT_FRAME_INTERVAL_MS = 250
 DEFAULT_INFERENCE_POLL_INTERVAL_MS = 10
 DEFAULT_SYNTHETIC_SOURCE_DIR = Path("demo/synthetic_camera_source")
@@ -24,6 +26,8 @@ class LiveInferenceGuiContext:
     synthetic_camera_config_path: Path | None
     synthetic_camera_base_dir: Path
     synthetic_camera_config: object
+    distance_orientation_device: str
+    roi_fcn_device: str
 
 
 @dataclass(frozen=True)
@@ -100,8 +104,15 @@ def build_live_inference_gui_context(
         inference_poll_interval_ms=inference_poll_interval_ms,
     )
     selection = deps.load_model_selection(resolved_selection_path)
-    distance_orientation_device = device or selection.distance_orientation_device
-    roi_fcn_device = device or selection.roi_fcn_device
+    device_override = (
+        normalize_torch_device_policy(device) if device is not None else None
+    )
+    distance_orientation_device = normalize_torch_device_policy(
+        device_override or selection.distance_orientation_device
+    )
+    roi_fcn_device = normalize_torch_device_policy(
+        device_override or selection.roi_fcn_device
+    )
     manifest = deps.load_live_model_manifest(
         selection.distance_orientation_root,
         roi_locator_root=selection.roi_fcn_root,
@@ -136,6 +147,8 @@ def build_live_inference_gui_context(
         synthetic_camera_config_path=resolved_camera_config_path,
         synthetic_camera_base_dir=synthetic_base_dir,
         synthetic_camera_config=synthetic_config,
+        distance_orientation_device=distance_orientation_device,
+        roi_fcn_device=roi_fcn_device,
     )
 
 
@@ -226,7 +239,9 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--device",
+        type=_device_policy,
         default=None,
+        metavar="{auto,cuda,cpu}",
         help="Optional runtime device override for both selected models.",
     )
     parser.add_argument(
@@ -345,10 +360,22 @@ def _non_negative_int(value: str) -> int:
     return number
 
 
+def _device_policy(value: str) -> str:
+    try:
+        return normalize_torch_device_policy(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     synthetic_config = context.synthetic_camera_config
     print("Live inference GUI launch context:", file=sys.stderr)
     print(f"  model_selection = {context.model_selection_path}", file=sys.stderr)
+    print(
+        f"  distance_orientation_device = {context.distance_orientation_device}",
+        file=sys.stderr,
+    )
+    print(f"  roi_fcn_device = {context.roi_fcn_device}", file=sys.stderr)
     print(
         f"  synthetic_camera_config = {context.synthetic_camera_config_path}",
         file=sys.stderr,

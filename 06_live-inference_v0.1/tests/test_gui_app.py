@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 import sys
 import unittest
@@ -33,6 +35,7 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertFalse(args.auto_start_inference)
         self.assertEqual(args.frame_interval_ms, gui_app.DEFAULT_FRAME_INTERVAL_MS)
         self.assertFalse(args.debug)
+        self.assertIsNone(args.device)
 
     def test_cli_parser_parses_explicit_paths_and_smoke_options(self) -> None:
         args = gui_app._argument_parser().parse_args(
@@ -56,6 +59,18 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertEqual(args.frame_interval_ms, 333)
         self.assertTrue(args.debug)
 
+    def test_cli_parser_parses_device_override(self) -> None:
+        for value in ("auto", "cpu", "cuda"):
+            with self.subTest(value=value):
+                args = gui_app._argument_parser().parse_args(["--device", value])
+
+                self.assertEqual(args.device, value)
+
+    def test_cli_parser_rejects_invalid_device_override(self) -> None:
+        with redirect_stderr(StringIO()):
+            with self.assertRaises(SystemExit):
+                gui_app._argument_parser().parse_args(["--device", "cuda:0"])
+
 
 class GuiAppCompositionTests(unittest.TestCase):
     def test_composition_can_be_built_with_lightweight_dependencies(self) -> None:
@@ -75,6 +90,8 @@ class GuiAppCompositionTests(unittest.TestCase):
         self.assertEqual(context.synthetic_camera_config.source_dir, Path("configured_source"))
         self.assertEqual(context.synthetic_camera_config.output_dir, Path("configured_output"))
         self.assertEqual(context.synthetic_camera_config.frame_interval_ms, 123)
+        self.assertEqual(context.distance_orientation_device, "cpu")
+        self.assertEqual(context.roi_fcn_device, "cpu")
         self.assertIsInstance(context.camera_controller.worker, _FakeCameraWorker)
         self.assertIsInstance(context.inference_controller.worker, _FakeInferenceWorker)
         self.assertEqual(records["publisher_base_dir"], PROJECT_ROOT)

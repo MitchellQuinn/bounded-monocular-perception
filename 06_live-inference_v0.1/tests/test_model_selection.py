@@ -77,6 +77,24 @@ class ModelSelectionTests(unittest.TestCase):
         self.assertEqual(selection.distance_orientation_device, "cuda")
         self.assertEqual(selection.roi_fcn_device, "cuda")
 
+    def test_accepts_auto_and_cpu_device_policies(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            fixture = SelectionFixture(Path(tmp_dir))
+            fixture.write_selection(
+                device_block=textwrap.dedent(
+                    """\
+                    [device]
+                    distance_orientation = "auto"
+                    roi_fcn = "cpu"
+                    """
+                )
+            )
+
+            selection = load_model_selection(fixture.selection_path)
+
+        self.assertEqual(selection.distance_orientation_device, "auto")
+        self.assertEqual(selection.roi_fcn_device, "cpu")
+
     def test_resolves_paths_relative_to_selection_file(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             fixture = SelectionFixture(Path(tmp_dir))
@@ -134,15 +152,31 @@ class ModelSelectionTests(unittest.TestCase):
             with self.assertRaises(ModelSelectionError):
                 load_model_selection(fixture.selection_path)
 
-    def test_default_devices_are_cuda_if_omitted(self) -> None:
+    def test_default_devices_are_auto_if_omitted(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             fixture = SelectionFixture(Path(tmp_dir))
             fixture.write_selection(device_block="")
 
             selection = load_model_selection(fixture.selection_path)
 
-        self.assertEqual(selection.distance_orientation_device, "cuda")
-        self.assertEqual(selection.roi_fcn_device, "cuda")
+        self.assertEqual(selection.distance_orientation_device, "auto")
+        self.assertEqual(selection.roi_fcn_device, "auto")
+
+    def test_rejects_invalid_device_policy(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            fixture = SelectionFixture(Path(tmp_dir))
+            fixture.write_selection(
+                device_block=textwrap.dedent(
+                    """\
+                    [device]
+                    distance_orientation = "cuda:0"
+                    roi_fcn = "cpu"
+                    """
+                )
+            )
+
+            with self.assertRaisesRegex(ModelSelectionError, "distance_orientation"):
+                load_model_selection(fixture.selection_path)
 
     def test_model_selection_module_keeps_heavy_runtime_imports_out(self) -> None:
         module_path = SRC_ROOT / "live_inference" / "model_registry" / "model_selection.py"
