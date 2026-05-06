@@ -10,6 +10,7 @@ from . import (
     topology_tri_stream_yaw_v0_1,
     topology_tri_stream_yaw_v0_2,
     topology_tri_stream_yaw_v0_3,
+    topology_tri_stream_yaw_v0_4,
 )
 from .contracts import TOPOLOGY_CONTRACT_VERSION, task_contract_from_topology_contract
 from .topology_tri_stream_yaw_common import parse_common_topology_params
@@ -28,6 +29,7 @@ _VARIANT_BUILDERS: dict[str, Callable[..., nn.Module]] = {
     topology_tri_stream_yaw_v0_1.VARIANT: topology_tri_stream_yaw_v0_1.build_model,
     topology_tri_stream_yaw_v0_2.VARIANT: topology_tri_stream_yaw_v0_2.build_model,
     topology_tri_stream_yaw_v0_3.VARIANT: topology_tri_stream_yaw_v0_3.build_model,
+    topology_tri_stream_yaw_v0_4.VARIANT: topology_tri_stream_yaw_v0_4.build_model,
 }
 _SUPPORTED_VARIANTS = frozenset(_VARIANT_BUILDERS)
 

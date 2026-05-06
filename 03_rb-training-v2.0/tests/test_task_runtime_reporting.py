@@ -57,15 +57,19 @@ class TaskRuntimeReportingTests(unittest.TestCase):
         self.assertAlmostEqual(float(orientation["yaw_acc@5deg"]), 0.5, places=4)
         self.assertAlmostEqual(float(orientation["yaw_acc@10deg"]), 0.5, places=4)
         self.assertAlmostEqual(float(orientation["yaw_acc@15deg"]), 1.0, places=4)
+        self.assertAlmostEqual(float(orientation["yaw_pred_norm_mean"]), 1.0, places=4)
+        self.assertAlmostEqual(float(orientation["yaw_pred_norm_p50"]), 1.0, places=4)
 
         flattened = flatten_task_metrics_scalars(metrics.task_metrics)
         self.assertIn("yaw_mean_error_deg", flattened)
         self.assertIn("yaw_acc@15deg", flattened)
+        self.assertIn("yaw_pred_norm_mean", flattened)
 
         yaw_log_line = _format_yaw_metric_log_line(metrics.task_metrics, spec.task_contract)
         self.assertTrue(yaw_log_line.startswith("        "))
         self.assertIn("yaw_acc@5deg", yaw_log_line)
         self.assertIn("yaw_acc@15deg", yaw_log_line)
+        self.assertIn("yaw_pred_norm_mean", yaw_log_line)
 
     def test_multitask_chunk_summary_matches_direct_summary(self) -> None:
         spec = resolve_topology_spec(

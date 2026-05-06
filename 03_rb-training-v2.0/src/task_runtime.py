@@ -378,6 +378,16 @@ def format_orientation_metrics_log_line(
         for key in reporting_validation_metrics(contract or {})
         if key in orientation_metrics
     ]
+    ordered_keys.extend(
+        key
+        for key in (
+            "yaw_pred_norm_mean",
+            "yaw_pred_norm_p05",
+            "yaw_pred_norm_p50",
+            "yaw_pred_norm_p95",
+        )
+        if key in orientation_metrics and key not in ordered_keys
+    )
     if not ordered_keys:
         ordered_keys = [
             key
@@ -534,12 +544,17 @@ def summarize_task_metrics(
         if rows is not None and len(rows) == int(true_orientation.shape[0]) and "yaw_deg" in rows[0]:
             true_yaw_deg = np.asarray([float(row["yaw_deg"]) for row in rows], dtype=np.float32)
         pred_yaw_deg = _decode_yaw_deg(pred_orientation[:, 0], pred_orientation[:, 1])
+        pred_norm = np.linalg.norm(pred_orientation, axis=1).astype(np.float32)
         angular_error = _angular_error_deg(pred_yaw_deg, true_yaw_deg)
         if declared_reporting_family == "distance_orientation_multitask":
             orientation_metrics: dict[str, float] = {
                 "yaw_mean_error_deg": float(np.mean(angular_error)),
                 "yaw_median_error_deg": float(np.median(angular_error)),
                 "yaw_p95_error_deg": float(np.percentile(angular_error, 95)),
+                "yaw_pred_norm_mean": float(np.mean(pred_norm)),
+                "yaw_pred_norm_p05": float(np.percentile(pred_norm, 5)),
+                "yaw_pred_norm_p50": float(np.percentile(pred_norm, 50)),
+                "yaw_pred_norm_p95": float(np.percentile(pred_norm, 95)),
             }
             for threshold in reporting_orientation_accuracy_thresholds_deg(task_contract):
                 orientation_metrics[
@@ -550,6 +565,10 @@ def summarize_task_metrics(
                 "mean_angular_error_deg": float(np.mean(angular_error)),
                 "median_angular_error_deg": float(np.median(angular_error)),
                 "p95_angular_error_deg": float(np.percentile(angular_error, 95)),
+                "yaw_pred_norm_mean": float(np.mean(pred_norm)),
+                "yaw_pred_norm_p05": float(np.percentile(pred_norm, 5)),
+                "yaw_pred_norm_p50": float(np.percentile(pred_norm, 50)),
+                "yaw_pred_norm_p95": float(np.percentile(pred_norm, 95)),
             }
         task_metrics["orientation"] = orientation_metrics
     else:
