@@ -37,6 +37,41 @@ class TriStreamYawTests(unittest.TestCase):
         self.assertIn("tri_stream_yaw_v0_2", variants)
         self.assertIn("tri_stream_yaw_v0_3", variants)
 
+    def test_variants_dispatch_to_separate_modules_with_stable_state_keys(self) -> None:
+        expectations = {
+            "tri_stream_yaw_v0_1": {
+                "module_suffix": "topology_tri_stream_yaw_v0_1",
+                "present_prefixes": ("fusion_trunk.",),
+                "absent_prefixes": ("camera_trunk.", "distance_trunk.", "yaw_trunk."),
+            },
+            "tri_stream_yaw_v0_2": {
+                "module_suffix": "topology_tri_stream_yaw_v0_2",
+                "present_prefixes": ("camera_trunk.", "yaw_trunk."),
+                "absent_prefixes": ("fusion_trunk.", "distance_trunk."),
+            },
+            "tri_stream_yaw_v0_3": {
+                "module_suffix": "topology_tri_stream_yaw_v0_3",
+                "present_prefixes": ("distance_trunk.", "yaw_trunk."),
+                "absent_prefixes": ("fusion_trunk.", "camera_trunk."),
+            },
+        }
+
+        for variant, expected in expectations.items():
+            with self.subTest(variant=variant):
+                model = build_tri_stream_yaw_model(variant, {})
+                state_keys = tuple(model.state_dict().keys())
+
+                self.assertTrue(type(model).__module__.endswith(expected["module_suffix"]))
+                self.assertTrue(any(key.startswith("geom_mlp.") for key in state_keys))
+                self.assertTrue(any(key.startswith("distance_cnn.") for key in state_keys))
+                self.assertTrue(any(key.startswith("orientation_cnn.") for key in state_keys))
+                self.assertTrue(any(key.startswith("distance_head.") for key in state_keys))
+                self.assertTrue(any(key.startswith("orientation_head.") for key in state_keys))
+                for prefix in expected["present_prefixes"]:
+                    self.assertTrue(any(key.startswith(prefix) for key in state_keys), prefix)
+                for prefix in expected["absent_prefixes"]:
+                    self.assertFalse(any(key.startswith(prefix) for key in state_keys), prefix)
+
     def test_tri_stream_yaw_forward_matches_mapping_contract(self) -> None:
         spec = resolve_topology_spec(
             topology_id="distance_regressor_tri_stream_yaw",
