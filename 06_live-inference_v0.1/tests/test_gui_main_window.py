@@ -50,16 +50,16 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             self.assertIsNotNone(self.window.findChild(QPushButton, object_name))
 
     def test_main_window_has_image_preview_widget(self) -> None:
-        preview = self._preview_label()
+        preview = self._preview_widget()
 
         self.assertGreaterEqual(preview.minimumWidth(), 320)
         self.assertGreaterEqual(preview.minimumHeight(), 240)
 
     def test_image_preview_shows_placeholder_before_first_frame(self) -> None:
-        preview = self._preview_label()
+        preview = self._preview_widget()
 
-        self.assertEqual(preview.text(), "No frame yet")
-        self.assertFalse(_label_has_pixmap(preview))
+        self.assertEqual(preview.placeholder_text(), "No frame yet")
+        self.assertFalse(_widget_has_pixmap(preview))
 
     def test_frame_written_with_valid_image_path_loads_preview_pixmap(self) -> None:
         image_path = self._write_temp_frame_image()
@@ -67,8 +67,8 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
         _process_events(self.app)
 
-        preview = self._preview_label()
-        self.assertTrue(_label_has_pixmap(preview))
+        preview = self._preview_widget()
+        self.assertTrue(_widget_has_pixmap(preview))
 
     def test_frame_written_with_missing_image_path_logs_warning_without_crashing(self) -> None:
         missing_path = Path(tempfile.mkdtemp()) / "missing-frame.png"
@@ -97,7 +97,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         )
         _process_events(self.app)
 
-        self.assertTrue(_label_has_pixmap(self._preview_label()))
+        self.assertTrue(_widget_has_pixmap(self._preview_widget()))
         self.assertEqual(self.window.distance_value.text(), "2.500 m")
         self.assertEqual(self.window.yaw_value.text(), "-15.25 deg")
         self.assertEqual(self.window.inference_time_value.text(), "8.0 ms")
@@ -147,6 +147,53 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(self.window.inference_time_value.text(), "9.0 ms")
         self.assertEqual(self.window.preprocessing_time_value.text(), "4.5 ms")
         self.assertEqual(self.window.total_time_value.text(), "13.5 ms")
+
+    def test_result_ready_updates_preview_overlay_metadata(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        self.inference_controller.signals.result_ready.emit(
+            _ResultPayload(
+                predicted_distance_m=1.0,
+                predicted_yaw_deg=2.0,
+                inference_time_ms=3.0,
+                preprocessing_time_ms=4.0,
+                total_time_ms=7.0,
+                roi_metadata=_RoiMetadataPayload(
+                    bbox_xyxy_px=(10.0, 12.0, 40.0, 32.0),
+                    center_xy_px=(25.0, 22.0),
+                    source_image_wh_px=(80, 48),
+                    extras={"roi_source_xyxy_px": (0.0, 0.0, 60.0, 48.0)},
+                ),
+            )
+        )
+        _process_events(self.app)
+
+        overlay = self._preview_widget().overlay()
+        self.assertIsNotNone(overlay)
+        assert overlay is not None
+        self.assertEqual(overlay.bbox_xyxy_px, (10.0, 12.0, 40.0, 32.0))
+        self.assertEqual(overlay.center_xy_px, (25.0, 22.0))
+        self.assertEqual(overlay.roi_bounds_xyxy_px, (0.0, 0.0, 60.0, 48.0))
+
+    def test_result_ready_shows_debug_artifact_paths(self) -> None:
+        self.inference_controller.signals.result_ready.emit(
+            _ResultPayload(
+                predicted_distance_m=1.0,
+                predicted_yaw_deg=2.0,
+                inference_time_ms=3.0,
+                preprocessing_time_ms=4.0,
+                total_time_ms=7.0,
+                debug_paths={
+                    "accepted_raw_frame": Path("live_debug/raw.png"),
+                    "x_distance_image": Path("live_debug/distance.png"),
+                },
+            )
+        )
+        _process_events(self.app)
+
+        self.assertIn("accepted_raw_frame", self.window.debug_artifacts_value.text())
+        self.assertIn("live_debug/raw.png", self.window.debug_artifacts_value.text())
+        self.assertIn("Debug artifacts", self.window.log_panel.toPlainText())
 
     def test_status_changed_updates_status_labels(self) -> None:
         self.camera_controller.signals.status_changed.emit(
@@ -203,10 +250,10 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(self.camera_controller.stop_calls, 1)
         self.assertEqual(self.inference_controller.stop_calls, 1)
 
-    def _preview_label(self) -> object:
-        from PySide6.QtWidgets import QLabel
+    def _preview_widget(self) -> object:
+        from live_inference.gui.frame_preview_widget import FramePreviewWidget
 
-        preview = self.window.findChild(QLabel, "frame_preview_label")
+        preview = self.window.findChild(FramePreviewWidget, "frame_preview_widget")
         self.assertIsNotNone(preview)
         return preview
 
@@ -251,6 +298,16 @@ class _ResultPayload:
     inference_time_ms: float
     preprocessing_time_ms: float | None
     total_time_ms: float | None
+    roi_metadata: object | None = None
+    debug_paths: dict[str, Path] | None = None
+
+
+@dataclass(frozen=True)
+class _RoiMetadataPayload:
+    bbox_xyxy_px: tuple[float, float, float, float] | None = None
+    center_xy_px: tuple[float, float] | None = None
+    source_image_wh_px: tuple[int, int] | None = None
+    extras: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -335,8 +392,8 @@ def _process_events(app: object) -> None:
     app.processEvents()
 
 
-def _label_has_pixmap(label: object) -> bool:
-    pixmap = label.pixmap()
+def _widget_has_pixmap(widget: object) -> bool:
+    pixmap = widget.pixmap()
     return pixmap is not None and not pixmap.isNull()
 
 

@@ -36,6 +36,8 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertEqual(args.frame_interval_ms, gui_app.DEFAULT_FRAME_INTERVAL_MS)
         self.assertEqual(args.camera_source, "synthetic")
         self.assertFalse(args.debug)
+        self.assertFalse(args.save_debug_images)
+        self.assertIsNone(args.debug_output_dir)
         self.assertIsNone(args.device)
 
     def test_cli_parser_parses_camera_sources(self) -> None:
@@ -85,6 +87,9 @@ class GuiAppCliParserTests(unittest.TestCase):
                 "--frame-interval-ms",
                 "333",
                 "--debug",
+                "--save-debug-images",
+                "--debug-output-dir",
+                "custom_debug",
             ]
         )
 
@@ -94,6 +99,8 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertTrue(args.auto_start_inference)
         self.assertEqual(args.frame_interval_ms, 333)
         self.assertTrue(args.debug)
+        self.assertTrue(args.save_debug_images)
+        self.assertEqual(args.debug_output_dir, Path("custom_debug"))
 
     def test_cli_parser_parses_device_override(self) -> None:
         for value in ("auto", "cpu", "cuda"):
@@ -116,6 +123,8 @@ class GuiAppCompositionTests(unittest.TestCase):
             model_selection_path=PROJECT_ROOT / "models/selections/current.toml",
             synthetic_camera_config_path=PROJECT_ROOT / "config/synthetic_camera.toml.example",
             device="cpu",
+            save_debug_images=True,
+            debug_output_dir=Path("debug_artifacts"),
             frame_interval_ms=123,
             inference_poll_interval_ms=17,
             dependency_loader=lambda: _fake_dependencies(records),
@@ -133,6 +142,10 @@ class GuiAppCompositionTests(unittest.TestCase):
         self.assertEqual(records["publisher_base_dir"], PROJECT_ROOT)
         self.assertEqual(records["live_frame_dir"], PROJECT_ROOT / "configured_output")
         self.assertEqual(records["selector_duplicate_skip"], True)
+        self.assertTrue(records["live_save_debug_images"])
+        self.assertEqual(records["live_debug_output_dir"], PROJECT_ROOT / "debug_artifacts")
+        self.assertTrue(records["selector_save_debug_images"])
+        self.assertEqual(records["selector_debug_output_dir"], PROJECT_ROOT / "debug_artifacts")
         self.assertEqual(records["roi_device"], "cpu")
         self.assertEqual(records["engine_device"], "cpu")
         self.assertEqual(records["inference_poll_interval_ms"], 17)
@@ -192,6 +205,8 @@ class _FakeLiveInferenceConfig:
     temp_frame_filename: str
     inference_poll_interval_ms: int
     duplicate_hash_skip_enabled: bool = True
+    save_debug_images: bool = False
+    debug_output_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -247,9 +262,18 @@ class _FakeReader:
 
 
 class _FakeSelector:
-    def __init__(self, reader: _FakeReader, *, duplicate_hash_skip_enabled: bool) -> None:
+    def __init__(
+        self,
+        reader: _FakeReader,
+        *,
+        duplicate_hash_skip_enabled: bool,
+        save_debug_images: bool,
+        debug_output_dir: Path | None,
+    ) -> None:
         self.reader = reader
         self.duplicate_hash_skip_enabled = duplicate_hash_skip_enabled
+        self.save_debug_images = save_debug_images
+        self.debug_output_dir = debug_output_dir
 
 
 class _FakeRoiLocator:
@@ -319,6 +343,8 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
     def make_live_config(**kwargs: Any) -> _FakeLiveInferenceConfig:
         config = _FakeLiveInferenceConfig(**kwargs)
         records["live_frame_dir"] = config.frame_dir
+        records["live_save_debug_images"] = config.save_debug_images
+        records["live_debug_output_dir"] = config.debug_output_dir
         return config
 
     def load_model_selection(path: Path) -> _FakeSelection:
@@ -352,12 +378,23 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
             records["real_camera_auto_open"] = self.auto_open
 
     class RecordingSelector(_FakeSelector):
-        def __init__(self, reader: _FakeReader, *, duplicate_hash_skip_enabled: bool) -> None:
+        def __init__(
+            self,
+            reader: _FakeReader,
+            *,
+            duplicate_hash_skip_enabled: bool,
+            save_debug_images: bool,
+            debug_output_dir: Path | None,
+        ) -> None:
             super().__init__(
                 reader,
                 duplicate_hash_skip_enabled=duplicate_hash_skip_enabled,
+                save_debug_images=save_debug_images,
+                debug_output_dir=debug_output_dir,
             )
             records["selector_duplicate_skip"] = duplicate_hash_skip_enabled
+            records["selector_save_debug_images"] = save_debug_images
+            records["selector_debug_output_dir"] = debug_output_dir
 
     class RecordingRoiLocator(_FakeRoiLocator):
         def __init__(self, roi_root: Path, *, device: str) -> None:

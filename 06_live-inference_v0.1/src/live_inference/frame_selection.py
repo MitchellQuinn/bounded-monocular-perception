@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable
 import uuid
 
@@ -55,11 +56,17 @@ class InferenceFrameSelector:
         reader: FrameHandoffReader,
         *,
         duplicate_hash_skip_enabled: bool = True,
+        save_debug_images: bool = False,
+        debug_output_dir: Path | str | None = None,
         request_id_factory: Callable[[], str] | None = None,
         now_utc_fn: Callable[[], str] | None = None,
     ) -> None:
         self._reader = reader
         self._duplicate_hash_skip_enabled = duplicate_hash_skip_enabled
+        self._save_debug_images = bool(save_debug_images)
+        self._debug_output_dir = (
+            Path(debug_output_dir) if debug_output_dir is not None else None
+        )
         self._request_id_factory = request_id_factory or _default_request_id
         self._now_utc_fn = now_utc_fn or _utc_now_iso
         self._last_processed_hash: FrameHash | None = None
@@ -121,6 +128,8 @@ class InferenceFrameSelector:
             frame=updated_frame,
             requested_at_utc=timestamp_utc,
             duplicate_hash_skip_enabled=self._duplicate_hash_skip_enabled,
+            save_debug_images=self._save_debug_images,
+            debug_output_dir=self._debug_output_dir,
         )
         return FrameSelectionResult(
             selected=SelectedFrameForInference(

@@ -155,6 +155,23 @@ class TorchTriStreamInferenceEngineUnitTests(unittest.TestCase):
 
         self.assertEqual(result.preprocessing_parameter_revision, 9)
 
+    def test_debug_paths_are_populated_from_preprocessing_metadata(self) -> None:
+        result = _fake_engine().run_inference(_prepared_inputs())
+
+        self.assertEqual(
+            set(result.debug_paths),
+            {
+                contracts.DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME,
+                contracts.TRI_STREAM_DISTANCE_IMAGE_KEY,
+                contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY,
+                "roi_overlay_metadata",
+            },
+        )
+        self.assertEqual(
+            result.debug_paths[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY],
+            Path("debug/x_distance.png"),
+        )
+
     def test_inference_time_ms_is_populated(self) -> None:
         result = _fake_engine().run_inference(_prepared_inputs())
 
@@ -359,7 +376,12 @@ def _prepared_inputs(
             "predicted_roi_center_xy_px": (60.0, 120.0),
             "silhouette_bbox_xyxy_px": (10.0, 20.0, 110.0, 220.0),
             "geometry_schema": contracts.TRI_STREAM_GEOMETRY_SCHEMA,
-            "debug_paths": {"roi_overlay": "debug/roi.png"},
+            "debug_paths": {
+                contracts.DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME: "debug/raw.png",
+                contracts.TRI_STREAM_DISTANCE_IMAGE_KEY: "debug/x_distance.png",
+                contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY: "debug/x_orientation.png",
+                "roi_overlay_metadata": "debug/metadata.json",
+            },
         },
     )
 
