@@ -26,7 +26,7 @@ Camera:
 
 Defender 90 baseline:
 - Position: sampled from stratified depth-band/lateral-bin cells over the camera-visible footprint on the movement plane.
-- Rotation: base `[0, 180, 0]` plus configurable yaw jitter only.
+- Rotation: base `[0, 180, 0]` plus configurable vehicle yaw jitter only.
 
 ## What the pipeline writes
 
@@ -68,9 +68,11 @@ The generator now uses uniform stratified coverage over the camera-visible footp
 6. Random-sample candidate positions inside each cell until each cell quota is met.
 7. Reject candidates when projected Defender bounds clip frame, violate `Sweep.EdgeMarginPx`, or violate projected size constraints.
 8. Cells that are infeasible under current constraints are skipped after probing (`Sweep.FeasibilityProbeAttemptsPerCell`).
-9. If a cell later exhausts attempt budget mid-run, its shortfall is redistributed to remaining cells.
+9. If a cell later exceeds `Sweep.MaxConsecutiveFailuresPerCell` or `Sweep.MaxFailuresPerCell`, its remaining quota is redistributed to eligible cells.
+10. At run end, `runlog.txt` includes a final per-cell metrics breakdown: generated samples, failures, failure streaks, final quota, redistribution, status, and last rejection reason.
 
-`JitterPolicy.PosX/PosZ` are currently ignored by this strategy. Yaw jitter (`RotY`) is applied after position selection.
+`VehicleJitter` controls vehicle yaw jitter (`RotY`) after position selection.
+`CameraJitter` controls camera vertical position jitter (`PosY`) and pitch jitter (`RotX`) as offsets from the configured camera pose.
 
 ## Fail-fast behavior
 

@@ -3,13 +3,17 @@ using System;
 namespace RaccoonBall.SyntheticData.Core
 {
     [Serializable]
-    public sealed class JitterPolicy
+    public sealed class CameraJitterPolicy
     {
-        public float PosXMinM = 0f;
-        public float PosXMaxM = 0f;
-        public float PosZMinM = 0f;
-        public float PosZMaxM = 0f;
+        public float PosYMinM = -0.01f;
+        public float PosYMaxM = 0.01f;
+        public float RotXMinDeg = -2f;
+        public float RotXMaxDeg = 2f;
+    }
 
+    [Serializable]
+    public sealed class VehicleJitterPolicy
+    {
         public float RotYMinDeg = 0f;
         public float RotYMaxDeg = 0f;
     }

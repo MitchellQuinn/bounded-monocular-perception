@@ -2,11 +2,14 @@ namespace RaccoonBall.SyntheticData.Core
 {
     public sealed class ManifestRow
     {
+        public const string PlacementBinIdColumnName = "placement_bin_id";
+
         public string RunId;
         public string SampleId;
         public int FrameIndex;
         public string ImageFilename;
 
+        public int PlacementBinId;
         public int PositionStepIndex;
         public int SampleAtPositionIndex;
 

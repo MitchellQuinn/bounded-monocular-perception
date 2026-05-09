@@ -12,7 +12,7 @@ namespace RaccoonBall.SyntheticData.Runtime
         private const int BufferSizeBytes = 64 * 1024;
         private StreamWriter _writer;
 
-        public void Open(RunConfig config)
+        public void Open(RunConfig config, bool append)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (config.Output == null) throw new ArgumentException("RunConfig.Output must not be null.");
@@ -22,9 +22,21 @@ namespace RaccoonBall.SyntheticData.Runtime
             string manifestPath = Path.Combine(manifestDirectory, config.Output.ManifestFileName);
 
             Directory.CreateDirectory(manifestDirectory);
-            _writer = new StreamWriter(manifestPath, false, Encoding.UTF8, BufferSizeBytes);
-            _writer.WriteLine(Header);
-            _writer.Flush();
+            if (append)
+            {
+                if (!File.Exists(manifestPath))
+                {
+                    throw new FileNotFoundException("Cannot append to missing manifest.", manifestPath);
+                }
+
+                _writer = new StreamWriter(manifestPath, true, Encoding.UTF8, BufferSizeBytes);
+            }
+            else
+            {
+                _writer = new StreamWriter(manifestPath, false, Encoding.UTF8, BufferSizeBytes);
+                _writer.WriteLine(Header);
+                _writer.Flush();
+            }
         }
 
         public void AppendRow(ManifestRow row)
@@ -51,7 +63,7 @@ namespace RaccoonBall.SyntheticData.Runtime
         }
 
         private static string Header =>
-            "run_id,sample_id,frame_index,image_filename,position_step_index,sample_at_position_index,base_pos_x_m,base_pos_y_m,base_pos_z_m,base_rot_x_deg,base_rot_y_deg,base_rot_z_deg,jitter_pos_x_m,jitter_pos_y_m,jitter_pos_z_m,jitter_rot_x_deg,jitter_rot_y_deg,jitter_rot_z_deg,final_pos_x_m,final_pos_y_m,final_pos_z_m,final_rot_x_deg,final_rot_y_deg,final_rot_z_deg,distance_m,image_width_px,image_height_px,capture_success,error_message";
+            $"run_id,sample_id,frame_index,image_filename,{ManifestRow.PlacementBinIdColumnName},position_step_index,sample_at_position_index,base_pos_x_m,base_pos_y_m,base_pos_z_m,base_rot_x_deg,base_rot_y_deg,base_rot_z_deg,jitter_pos_x_m,jitter_pos_y_m,jitter_pos_z_m,jitter_rot_x_deg,jitter_rot_y_deg,jitter_rot_z_deg,final_pos_x_m,final_pos_y_m,final_pos_z_m,final_rot_x_deg,final_rot_y_deg,final_rot_z_deg,distance_m,image_width_px,image_height_px,capture_success,error_message";
 
         private static string ToCsvLine(ManifestRow row)
         {
@@ -61,6 +73,7 @@ namespace RaccoonBall.SyntheticData.Runtime
                 Escape(row.SampleId),
                 row.FrameIndex.ToString(CultureInfo.InvariantCulture),
                 Escape(row.ImageFilename),
+                row.PlacementBinId.ToString(CultureInfo.InvariantCulture),
                 row.PositionStepIndex.ToString(CultureInfo.InvariantCulture),
                 row.SampleAtPositionIndex.ToString(CultureInfo.InvariantCulture),
                 F(row.BasePosXM),

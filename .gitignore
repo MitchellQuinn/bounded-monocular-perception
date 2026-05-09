@@ -95,8 +95,10 @@ analysis/
 *.npy
 *.npz
 *.png
+!01_rb_synthetic-data_3/Assets/**/*.png
 !06_live-inference_v0.1/demo/synthetic_camera_source/*.png
 *.zip
+*.zip.meta
 !examples/defender-images/**
 
 # ------------------------------
@@ -114,8 +116,6 @@ analysis/
 01_rb_synthetic-data_3/SyntheticDataset/
 01_rb_synthetic-data_3/Assets/_Recovery/
 01_rb_synthetic-data_3/Assets/_Recovery.meta
-01_rb_synthetic-data_3/Assets/models/1997-defender-90/
-01_rb_synthetic-data_3/Assets/models/1997-defender-90.meta
 01_rb_synthetic-data_3/*.csproj
 01_rb_synthetic-data_3/*.sln
 01_rb_synthetic-data_3/*.slnx

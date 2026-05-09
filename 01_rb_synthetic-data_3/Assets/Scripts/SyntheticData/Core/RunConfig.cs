@@ -1,4 +1,5 @@
 using System;
+using UnityEngine.Serialization;
 
 namespace RaccoonBall.SyntheticData.Core
 {
@@ -11,7 +12,8 @@ namespace RaccoonBall.SyntheticData.Core
         public CaptureSettings Capture = new CaptureSettings();
         public SweepSettings Sweep = new SweepSettings();
         public CoordinateConvention CoordinateConvention = new CoordinateConvention();
-        public JitterPolicy JitterPolicy = new JitterPolicy();
+        public CameraJitterPolicy CameraJitter = new CameraJitterPolicy();
+        [FormerlySerializedAs("JitterPolicy")] public VehicleJitterPolicy VehicleJitter = new VehicleJitterPolicy();
         public int RandomSeed = 123456789;
         public string Notes = string.Empty;
     }
