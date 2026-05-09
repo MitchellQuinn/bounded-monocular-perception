@@ -9,5 +9,8 @@ namespace RaccoonBall.SyntheticData.Core
         public float RotXDeg;
         public float RotYDeg;
         public float RotZDeg;
+
+        public float CameraPosYM;
+        public float CameraRotXDeg;
     }
 }

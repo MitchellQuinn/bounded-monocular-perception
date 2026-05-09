@@ -9,19 +9,23 @@ namespace RaccoonBall.SyntheticData.Runtime
         public PoseJitter Generate(RunConfig config, PlannedSample sample, Random rng)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            if (config.JitterPolicy == null) throw new ArgumentException("RunConfig.JitterPolicy must not be null.");
+            if (config.CameraJitter == null) throw new ArgumentException("RunConfig.CameraJitter must not be null.");
+            if (config.VehicleJitter == null) throw new ArgumentException("RunConfig.VehicleJitter must not be null.");
             if (rng == null) throw new ArgumentNullException(nameof(rng));
 
-            var p = config.JitterPolicy;
+            var camera = config.CameraJitter;
+            var vehicle = config.VehicleJitter;
 
             return new PoseJitter
             {
-                PosX = NextRange(rng, p.PosXMinM, p.PosXMaxM),
-                PosZ = NextRange(rng, p.PosZMinM, p.PosZMaxM),
-                RotYDeg = NextRange(rng, p.RotYMinDeg, p.RotYMaxDeg),
+                PosX = 0f,
+                PosZ = 0f,
+                RotYDeg = NextRange(rng, vehicle.RotYMinDeg, vehicle.RotYMaxDeg),
                 PosY = 0f,
                 RotXDeg = 0f,
                 RotZDeg = 0f,
+                CameraPosYM = NextRange(rng, camera.PosYMinM, camera.PosYMaxM),
+                CameraRotXDeg = NextRange(rng, camera.RotXMinDeg, camera.RotXMaxDeg),
             };
         }
 

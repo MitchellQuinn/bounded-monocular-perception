@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using RaccoonBall.SyntheticData.Config;
 using RaccoonBall.SyntheticData.Core;
 using RaccoonBall.SyntheticData.Interfaces;
@@ -26,6 +28,32 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             public int ProbeAttempts;
             public int ProbeAccepted;
             public float AcceptanceRate;
+        }
+
+        private sealed class CellRunMetrics
+        {
+            public CellExecutionPlan Plan;
+            public int ExistingSamplesAtStart;
+            public int NewSamplesWritten;
+            public int FailedPlacementAttempts;
+            public int ConsecutiveFailures;
+            public int MaxConsecutiveFailures;
+            public int RedistributedIn;
+            public int RedistributedOut;
+            public bool RemovedFromPool;
+            public string RemovalReason = string.Empty;
+            public string LastRejectionReason = "n/a";
+
+            public int TotalGenerated => ExistingSamplesAtStart + NewSamplesWritten;
+        }
+
+        private sealed class ResumeState
+        {
+            public bool IsResume;
+            public bool HasPlacementBinId;
+            public int ManifestRowCount;
+            public int ImageFileCount;
+            public Dictionary<int, int> BinCounts = new Dictionary<int, int>();
         }
 
         [Header("Scene References")]
@@ -97,7 +125,6 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                 RunConfig config = _runConfigAsset.ToRunConfig();
                 ValidateConfig(config);
                 NormalizeAndValidateOutputPaths(config);
-                LogIgnoredLegacySettings(config);
 
                 Camera captureCamera = _cameraRig.GetCamera();
                 Transform cameraTransform = _cameraRig.GetCameraTransform();
@@ -117,9 +144,8 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                 string runRoot = Path.Combine(config.Output.OutputRoot, config.RunId);
                 runLogWriter = new RunLogWriter(runRoot);
 
+                ResumeState resumeState = ReadResumeState(config);
                 RunMetadata runMetadata = BuildRunMetadata(config, cameraTransform);
-                runMetadataWriter.Write(runMetadata, config);
-                manifestWriter.Open(config);
 
                 StratifiedPlacementPlan placementPlan = placementPlanner.BuildPlan(config, captureCamera);
                 if (placementPlan.TotalSamples <= 0 || placementPlan.Cells.Count == 0)
@@ -152,19 +178,66 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                     projectionValidator,
                     baseRotationEulerDeg,
                     rng);
-                int plannedTotalSamples = 0;
-                for (int i = 0; i < cellExecutionPlan.Count; i++)
+
+                int requestedTotalSamples = placementPlan.TotalSamples;
+                int validBinCount = cellExecutionPlan.Count;
+                ValidateExecutionPlanTotal(cellExecutionPlan, requestedTotalSamples);
+                GetExecutionPlanQuotaRange(cellExecutionPlan, out int minCellQuota, out int maxCellQuota);
+                Dictionary<int, int> binCounts = BuildInitialBinCounts(cellExecutionPlan);
+                ApplyResumeStateToBinCounts(resumeState, binCounts, requestedTotalSamples);
+                Dictionary<int, CellRunMetrics> cellMetrics = BuildCellRunMetrics(cellExecutionPlan, binCounts);
+
+                if (resumeState.ManifestRowCount >= requestedTotalSamples)
                 {
-                    plannedTotalSamples += cellExecutionPlan[i].TargetSampleCount;
+                    LogFinalCellMetrics(
+                        cellMetrics,
+                        resumeState.ManifestRowCount,
+                        requestedTotalSamples,
+                        0,
+                        "already_complete");
+
+                    Debug.Log(
+                        "Synthetic data generation already complete for this run. " +
+                        $"manifest_rows={resumeState.ManifestRowCount}, image_files={resumeState.ImageFileCount}, " +
+                        $"target_samples={requestedTotalSamples}.",
+                        this);
+                    yield break;
                 }
 
+                runMetadataWriter.Write(runMetadata, config);
+                manifestWriter.Open(config, resumeState.IsResume);
+
+                if (resumeState.IsResume)
+                {
+                    rng = new System.Random(BuildResumeRandomSeed(config.RandomSeed, resumeState.ManifestRowCount));
+                    Debug.Log(
+                        "Resuming synthetic data generation from manifest. " +
+                        $"existing_samples={resumeState.ManifestRowCount}, image_files={resumeState.ImageFileCount}, " +
+                        $"valid_bins={validBinCount}, cell_quota[min/max]={minCellQuota}/{maxCellQuota}, " +
+                        $"max_consecutive_failures_per_cell={config.Sweep.MaxConsecutiveFailuresPerCell}, " +
+                        $"max_failures_per_cell={config.Sweep.MaxFailuresPerCell}, " +
+                        $"remaining_samples={requestedTotalSamples - resumeState.ManifestRowCount}.",
+                        this);
+                }
+                else
+                {
+                    Debug.Log(
+                        "Starting synthetic data generation with resumable bin occupancy. " +
+                        $"valid_bins={validBinCount}, cell_quota[min/max]={minCellQuota}/{maxCellQuota}, " +
+                        $"max_consecutive_failures_per_cell={config.Sweep.MaxConsecutiveFailuresPerCell}, " +
+                        $"max_failures_per_cell={config.Sweep.MaxFailuresPerCell}, target_samples={requestedTotalSamples}.",
+                        this);
+                }
+
+                List<CellExecutionPlan> eligibleBins = BuildEligibleBins(cellExecutionPlan, binCounts);
                 var totalTimer = System.Diagnostics.Stopwatch.StartNew();
                 var batchTimer = System.Diagnostics.Stopwatch.StartNew();
                 int processedInBatch = 0;
-                int processedTotal = 0;
+                int processedTotal = resumeState.ManifestRowCount;
+                int newSamplesWritten = 0;
                 bool cancelled = false;
 
-                for (int cellCursor = 0; cellCursor < cellExecutionPlan.Count; cellCursor++)
+                while (processedTotal < requestedTotalSamples)
                 {
                     if (_cancelRequested)
                     {
@@ -172,194 +245,283 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                         break;
                     }
 
-                    CellExecutionPlan executionCell = cellExecutionPlan[cellCursor];
+                    if (eligibleBins.Count == 0)
+                    {
+                        LogFinalCellMetrics(
+                            cellMetrics,
+                            processedTotal,
+                            requestedTotalSamples,
+                            eligibleBins.Count,
+                            "failed");
+
+                        throw new InvalidOperationException(
+                            "Failed to reach target sample count: no eligible placement bins remain after quota redistribution. " +
+                            $"generated_total={processedTotal}, target_samples={requestedTotalSamples}, " +
+                            $"valid_bins={validBinCount}, " +
+                            $"max_consecutive_failures_per_cell={config.Sweep.MaxConsecutiveFailuresPerCell}, " +
+                            $"max_failures_per_cell={config.Sweep.MaxFailuresPerCell}.");
+                    }
+
+                    int eligibleIndex = rng.Next(eligibleBins.Count);
+                    CellExecutionPlan executionCell = eligibleBins[eligibleIndex];
                     StratifiedPlacementCell cell = executionCell.Cell;
-                    int validSamplesInCell = 0;
-                    int attemptsInCell = 0;
+                    int placementBinId = GetPlacementBinId(cell);
+                    int binSampleCount = binCounts[placementBinId];
+                    int binTargetSampleCount = executionCell.TargetSampleCount;
+                    CellRunMetrics cellMetricsForBin = cellMetrics[placementBinId];
                     string lastRejectionReason = "n/a";
 
-                    while (validSamplesInCell < executionCell.TargetSampleCount)
+                    if (binSampleCount >= binTargetSampleCount)
                     {
-                        if (_cancelRequested)
+                        eligibleBins.RemoveAt(eligibleIndex);
+                        continue;
+                    }
+
+                    if (HasCellExceededFailureBudget(cellMetricsForBin, config.Sweep, out string failureLimitReason))
+                    {
+                        Debug.LogWarning(
+                            "Placement bin exceeded failure budget and its remaining quota was redistributed. " +
+                            $"placement_bin_id={placementBinId}, depth_band={cell.DepthBandIndex}, lateral_bin={cell.LateralBinIndex}, " +
+                            $"generated_in_bin={binSampleCount}, target_in_bin={binTargetSampleCount}, " +
+                            $"failures={cellMetricsForBin.FailedPlacementAttempts}, " +
+                            $"consecutive_failures={cellMetricsForBin.ConsecutiveFailures}, " +
+                            $"max_consecutive_failures_per_cell={config.Sweep.MaxConsecutiveFailuresPerCell}, " +
+                            $"max_failures_per_cell={config.Sweep.MaxFailuresPerCell}, " +
+                            $"reason='{failureLimitReason}', " +
+                            $"redistributed_shortfall={Mathf.Max(binTargetSampleCount - binSampleCount, 0)}.",
+                            this);
+                        if (!TryRemoveEligibleBinAndRedistributeShortfall(
+                                eligibleBins,
+                                eligibleIndex,
+                                binCounts,
+                                cellMetrics,
+                                failureLimitReason))
                         {
-                            cancelled = true;
+                            LogFinalCellMetrics(
+                                cellMetrics,
+                                processedTotal,
+                                requestedTotalSamples,
+                                eligibleBins.Count,
+                                "failed");
+
+                            throw BuildNoRedistributionTargetFailure(
+                                processedTotal,
+                                requestedTotalSamples,
+                                validBinCount,
+                                config.Sweep.MaxConsecutiveFailuresPerCell,
+                                config.Sweep.MaxFailuresPerCell);
+                        }
+
+                        continue;
+                    }
+
+                    PoseState poseState = null;
+                    PoseJitter jitter = null;
+                    bool accepted = false;
+
+                    for (int attempt = 0; attempt < config.Sweep.MaxAttemptsPerSample; attempt++)
+                    {
+                        if (HasCellExceededFailureBudget(cellMetricsForBin, config.Sweep, out _))
+                        {
                             break;
                         }
 
-                        if (attemptsInCell >= config.Sweep.MaxAttemptsPerCell)
+                        Vector3 candidatePosition = placementPlanner.SamplePositionInCell(placementPlan, cell, rng);
+                        PoseJitter candidateJitter = BuildJitter(config, rng);
+                        ApplyCameraJitter(
+                            cameraTransform,
+                            config.CoordinateConvention.CameraPosition,
+                            config.CoordinateConvention.CameraRotationEulerDeg,
+                            candidateJitter);
+                        PoseState candidatePose = BuildPoseFromPlacement(candidatePosition, baseRotationEulerDeg, candidateJitter);
+
+                        _vehicleSceneController.ApplyPose(candidatePose.FinalPosition, candidatePose.FinalRotationEulerDeg);
+
+                        if (!projectionValidator.IsPlacementValid(out string rejectionReason))
                         {
-                            int shortfall = executionCell.TargetSampleCount - validSamplesInCell;
-                            executionCell.TargetSampleCount = validSamplesInCell;
-
-                            if (shortfall > 0)
-                            {
-                                bool redistributed = TryRedistributeShortfallToRemainingCells(
-                                    cellExecutionPlan,
-                                    cellCursor + 1,
-                                    shortfall);
-
-                                if (!redistributed)
-                                {
-                                    throw new InvalidOperationException(
-                                        "Failed to reach target sample count: no remaining cells available for redistribution. " +
-                                        $"cell_index={cell.CellIndex}, depth_band={cell.DepthBandIndex}, lateral_bin={cell.LateralBinIndex}, " +
-                                        $"accepted_samples={validSamplesInCell}, shortfall={shortfall}, " +
-                                        $"max_attempts_per_cell={config.Sweep.MaxAttemptsPerCell}, last_rejection='{lastRejectionReason}'.");
-                                }
-
-                                Debug.LogWarning(
-                                    "Placement cell exhausted attempt budget; redistributing remaining quota to later cells. " +
-                                    $"cell_index={cell.CellIndex}, depth_band={cell.DepthBandIndex}, lateral_bin={cell.LateralBinIndex}, " +
-                                    $"accepted_samples={validSamplesInCell}, redistributed_shortfall={shortfall}, " +
-                                    $"max_attempts_per_cell={config.Sweep.MaxAttemptsPerCell}, last_rejection='{lastRejectionReason}'.",
-                                    this);
-                            }
-
-                            break;
-                        }
-
-                        PoseState poseState = null;
-                        PoseJitter jitter = null;
-                        bool accepted = false;
-
-                        for (int attempt = 0; attempt < config.Sweep.MaxAttemptsPerSample; attempt++)
-                        {
-                            if (attemptsInCell >= config.Sweep.MaxAttemptsPerCell)
-                            {
-                                break;
-                            }
-
-                            attemptsInCell++;
-
-                            Vector3 candidatePosition = placementPlanner.SamplePositionInCell(placementPlan, cell, rng);
-                            PoseJitter candidateJitter = BuildYawOnlyJitter(config, rng);
-                            PoseState candidatePose = BuildPoseFromPlacement(candidatePosition, baseRotationEulerDeg, candidateJitter);
-
-                            _vehicleSceneController.ApplyPose(candidatePose.FinalPosition, candidatePose.FinalRotationEulerDeg);
-
-                            if (!projectionValidator.IsPlacementValid(out string rejectionReason))
-                            {
-                                lastRejectionReason = rejectionReason;
-                                continue;
-                            }
-
-                            poseState = candidatePose;
-                            jitter = candidateJitter;
-                            accepted = true;
-                            break;
-                        }
-
-                        if (!accepted)
-                        {
+                            lastRejectionReason = rejectionReason;
+                            RecordPlacementFailure(cellMetricsForBin, rejectionReason);
                             continue;
                         }
 
-                        PlannedSample sample = new PlannedSample
-                        {
-                            FrameIndex = processedTotal,
-                            PositionStepIndex = cell.CellIndex,
-                            SampleAtPositionIndex = validSamplesInCell,
-                            BasePosZM = placementPlanner.ComputeDepthMeters(placementPlan, poseState.BasePosition),
-                        };
-
-                        sample.SampleId = fileNamingStrategy.BuildSampleId(sample);
-
-                        CapturedImage capturedImage = captureService.Capture(config.Capture);
-                        string imageFilename = fileNamingStrategy.BuildImageFilename(sample);
-                        string imageFullPath = fileNamingStrategy.BuildImageFullPath(config, imageFilename);
-
-                        ImageWriteResult imageWriteResult = imageFileWriter.WriteImage(
-                            sample.SampleId,
-                            imageFilename,
-                            imageFullPath,
-                            capturedImage);
-
-                        capturedImage = null;
-
-                        if (!imageWriteResult.Success)
-                        {
-                            string failureMessage = BuildCaptureFailureMessage(sample, jitter, poseState, imageWriteResult);
-                            Debug.LogError(failureMessage, this);
-                            throw new IOException(failureMessage);
-                        }
-
-                        float distanceM = distanceCalculator.CalculateDistanceM(
-                            cameraTransform.position,
-                            _vehicleSceneController.GetVehicleRootTransform().position);
-
-                        ManifestRow row = manifestRowMapper.Map(
-                            config,
-                            sample,
-                            jitter,
-                            poseState,
-                            distanceM,
-                            imageWriteResult,
-                            config.Capture);
-
-                        manifestWriter.AppendRow(row);
-                        processedInBatch++;
-                        processedTotal++;
-                        validSamplesInCell++;
-
-                        if (_logPerSample)
-                        {
-                            Debug.Log($"Generated {sample.SampleId} -> {imageWriteResult.FullPath}", this);
-                        }
-
-                        bool isBatchBoundary =
-                            processedInBatch >= _batchSize ||
-                            processedTotal == plannedTotalSamples;
-
-                        if (isBatchBoundary)
-                        {
-                            if (_flushManifestEveryBatch)
-                            {
-                                manifestWriter.Flush();
-                            }
-
-                            if (_runGarbageCollectionEveryBatch)
-                            {
-                                GC.Collect();
-                                GC.WaitForPendingFinalizers();
-                            }
-
-                            if (_logBatchDiagnostics)
-                            {
-                                LogBatchDiagnostics(
-                                    processedInBatch,
-                                    processedTotal,
-                                    plannedTotalSamples,
-                                    batchTimer.Elapsed,
-                                    totalTimer.Elapsed);
-                            }
-                            else if (!_logPerSample && (processedTotal % 500 == 0 || processedTotal == plannedTotalSamples))
-                            {
-                                Debug.Log($"Generated {processedTotal} / {plannedTotalSamples} images.", this);
-                            }
-
-                            processedInBatch = 0;
-                            batchTimer.Restart();
-
-                            if (_yieldEveryBatch)
-                            {
-                                yield return null;
-                            }
-                        }
+                        poseState = candidatePose;
+                        jitter = candidateJitter;
+                        accepted = true;
+                        break;
                     }
 
-                    if (cancelled)
+                    if (!accepted)
                     {
-                        break;
+                        if (HasCellExceededFailureBudget(cellMetricsForBin, config.Sweep, out failureLimitReason))
+                        {
+                            Debug.LogWarning(
+                                "Placement bin exceeded failure budget and its remaining quota was redistributed. " +
+                                $"placement_bin_id={placementBinId}, depth_band={cell.DepthBandIndex}, lateral_bin={cell.LateralBinIndex}, " +
+                                $"generated_in_bin={binSampleCount}, target_in_bin={binTargetSampleCount}, " +
+                                $"failures={cellMetricsForBin.FailedPlacementAttempts}, " +
+                                $"consecutive_failures={cellMetricsForBin.ConsecutiveFailures}, " +
+                                $"max_consecutive_failures_per_cell={config.Sweep.MaxConsecutiveFailuresPerCell}, " +
+                                $"max_failures_per_cell={config.Sweep.MaxFailuresPerCell}, " +
+                                $"reason='{failureLimitReason}', last_rejection='{lastRejectionReason}'.",
+                                this);
+                            if (!TryRemoveEligibleBinAndRedistributeShortfall(
+                                    eligibleBins,
+                                    eligibleIndex,
+                                    binCounts,
+                                    cellMetrics,
+                                    failureLimitReason))
+                            {
+                                LogFinalCellMetrics(
+                                    cellMetrics,
+                                    processedTotal,
+                                    requestedTotalSamples,
+                                    eligibleBins.Count,
+                                    "failed");
+
+                                throw BuildNoRedistributionTargetFailure(
+                                    processedTotal,
+                                    requestedTotalSamples,
+                                    validBinCount,
+                                    config.Sweep.MaxConsecutiveFailuresPerCell,
+                                    config.Sweep.MaxFailuresPerCell);
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    PlannedSample sample = new PlannedSample
+                    {
+                        FrameIndex = processedTotal,
+                        PlacementBinId = placementBinId,
+                        PositionStepIndex = cell.CellIndex,
+                        SampleAtPositionIndex = binSampleCount,
+                        BasePosZM = placementPlanner.ComputeDepthMeters(placementPlan, poseState.BasePosition),
+                    };
+
+                    sample.SampleId = fileNamingStrategy.BuildSampleId(sample);
+
+                    CapturedImage capturedImage = captureService.Capture(config.Capture);
+                    string imageFilename = fileNamingStrategy.BuildImageFilename(sample);
+                    string imageFullPath = fileNamingStrategy.BuildImageFullPath(config, imageFilename);
+
+                    ImageWriteResult imageWriteResult = imageFileWriter.WriteImage(
+                        sample.SampleId,
+                        imageFilename,
+                        imageFullPath,
+                        capturedImage);
+
+                    capturedImage = null;
+
+                    if (!imageWriteResult.Success)
+                    {
+                        string failureMessage = BuildCaptureFailureMessage(sample, jitter, poseState, cameraTransform, imageWriteResult);
+                        Debug.LogError(failureMessage, this);
+                        LogFinalCellMetrics(
+                            cellMetrics,
+                            processedTotal,
+                            requestedTotalSamples,
+                            eligibleBins.Count,
+                            "failed");
+                        throw new IOException(failureMessage);
+                    }
+
+                    float distanceM = distanceCalculator.CalculateDistanceM(
+                        cameraTransform.position,
+                        _vehicleSceneController.GetVehicleRootTransform().position);
+
+                    ManifestRow row = manifestRowMapper.Map(
+                        config,
+                        sample,
+                        jitter,
+                        poseState,
+                        distanceM,
+                        imageWriteResult,
+                        config.Capture);
+
+                    manifestWriter.AppendRow(row);
+                    processedInBatch++;
+                    processedTotal++;
+                    newSamplesWritten++;
+
+                    RecordPlacementSuccess(cellMetricsForBin);
+                    binSampleCount++;
+                    binCounts[placementBinId] = binSampleCount;
+                    if (binSampleCount >= executionCell.TargetSampleCount)
+                    {
+                        eligibleBins.RemoveAt(eligibleIndex);
+                    }
+
+                    if (_logPerSample)
+                    {
+                        Debug.Log($"Generated {sample.SampleId} from placement_bin_id={placementBinId} -> {imageWriteResult.FullPath}", this);
+                    }
+
+                    bool isBatchBoundary =
+                        processedInBatch >= _batchSize ||
+                        processedTotal == requestedTotalSamples;
+
+                    if (isBatchBoundary)
+                    {
+                        if (_flushManifestEveryBatch)
+                        {
+                            manifestWriter.Flush();
+                        }
+
+                        if (_runGarbageCollectionEveryBatch)
+                        {
+                            GC.Collect();
+                            GC.WaitForPendingFinalizers();
+                        }
+
+                        if (_logBatchDiagnostics)
+                        {
+                            LogBatchDiagnostics(
+                                processedInBatch,
+                                processedTotal,
+                                requestedTotalSamples,
+                                batchTimer.Elapsed,
+                                totalTimer.Elapsed);
+                        }
+                        else if (!_logPerSample && (processedTotal % 500 == 0 || processedTotal == requestedTotalSamples))
+                        {
+                            Debug.Log($"Generated {processedTotal} / {requestedTotalSamples} images.", this);
+                        }
+
+                        processedInBatch = 0;
+                        batchTimer.Restart();
+
+                        if (_yieldEveryBatch)
+                        {
+                            yield return null;
+                        }
                     }
                 }
 
                 if (cancelled || _cancelRequested)
                 {
+                    LogFinalCellMetrics(
+                        cellMetrics,
+                        processedTotal,
+                        requestedTotalSamples,
+                        eligibleBins.Count,
+                        "cancelled");
+
                     Debug.LogWarning("Synthetic data generation stopped before completion.", this);
                 }
                 else
                 {
-                    Debug.Log($"Synthetic data generation complete: {processedTotal} images written.", this);
+                    LogFinalCellMetrics(
+                        cellMetrics,
+                        processedTotal,
+                        requestedTotalSamples,
+                        eligibleBins.Count,
+                        "completed");
+
+                    Debug.Log(
+                        "Synthetic data generation complete. " +
+                        $"total_images={processedTotal}, new_images_this_run={newSamplesWritten}.",
+                        this);
                 }
             }
             finally
@@ -455,8 +617,14 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             if (config.Sweep.MaxAttemptsPerSample <= 0)
                 throw new ArgumentException("MaxAttemptsPerSample must be > 0.");
 
-            if (config.Sweep.MaxAttemptsPerCell <= 0)
-                throw new ArgumentException("MaxAttemptsPerCell must be > 0.");
+            if (config.Sweep.MaxConsecutiveFailuresPerCell <= 0)
+                throw new ArgumentException("MaxConsecutiveFailuresPerCell must be > 0.");
+
+            if (config.Sweep.MaxFailuresPerCell <= 0)
+                throw new ArgumentException("MaxFailuresPerCell must be > 0.");
+
+            if (config.Sweep.MaxFailuresPerCell < config.Sweep.MaxConsecutiveFailuresPerCell)
+                throw new ArgumentException("MaxFailuresPerCell must be >= MaxConsecutiveFailuresPerCell.");
 
             if (config.Sweep.FeasibilityProbeAttemptsPerCell <= 0)
                 throw new ArgumentException("FeasibilityProbeAttemptsPerCell must be > 0.");
@@ -503,38 +671,41 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             if (config.CoordinateConvention == null)
                 throw new ArgumentException("CoordinateConvention must not be null.");
 
-            if (config.JitterPolicy == null)
-                throw new ArgumentException("JitterPolicy must not be null.");
+            if (config.CameraJitter == null)
+                throw new ArgumentException("CameraJitter must not be null.");
+
+            if (config.VehicleJitter == null)
+                throw new ArgumentException("VehicleJitter must not be null.");
+
+            ValidateJitterRange(
+                nameof(config.VehicleJitter.RotYMinDeg),
+                config.VehicleJitter.RotYMinDeg,
+                nameof(config.VehicleJitter.RotYMaxDeg),
+                config.VehicleJitter.RotYMaxDeg);
+
+            ValidateJitterRange(
+                nameof(config.CameraJitter.PosYMinM),
+                config.CameraJitter.PosYMinM,
+                nameof(config.CameraJitter.PosYMaxM),
+                config.CameraJitter.PosYMaxM);
+
+            ValidateJitterRange(
+                nameof(config.CameraJitter.RotXMinDeg),
+                config.CameraJitter.RotXMinDeg,
+                nameof(config.CameraJitter.RotXMaxDeg),
+                config.CameraJitter.RotXMaxDeg);
         }
 
-        private void LogIgnoredLegacySettings(RunConfig config)
-        {
-            const float epsilon = 0.00001f;
-
-            bool hasPositionJitter =
-                Mathf.Abs(config.JitterPolicy.PosXMinM) > epsilon ||
-                Mathf.Abs(config.JitterPolicy.PosXMaxM) > epsilon ||
-                Mathf.Abs(config.JitterPolicy.PosZMinM) > epsilon ||
-                Mathf.Abs(config.JitterPolicy.PosZMaxM) > epsilon;
-
-            if (hasPositionJitter)
-            {
-                Debug.LogWarning(
-                    "Position jitter settings are ignored by stratified placement. " +
-                    "Position is sampled from depth-band/lateral-bin cells instead.",
-                    this);
-            }
-
-            // Pitch and roll jitter settings were removed for this placement model.
-        }
-
-        private static PoseJitter BuildYawOnlyJitter(RunConfig config, System.Random rng)
+        private static PoseJitter BuildJitter(RunConfig config, System.Random rng)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
-            if (config.JitterPolicy == null) throw new ArgumentException("RunConfig.JitterPolicy must not be null.");
+            if (config.CameraJitter == null) throw new ArgumentException("RunConfig.CameraJitter must not be null.");
+            if (config.VehicleJitter == null) throw new ArgumentException("RunConfig.VehicleJitter must not be null.");
             if (rng == null) throw new ArgumentNullException(nameof(rng));
 
-            float yawJitterDeg = NextRange(rng, config.JitterPolicy.RotYMinDeg, config.JitterPolicy.RotYMaxDeg);
+            float yawJitterDeg = NextRange(rng, config.VehicleJitter.RotYMinDeg, config.VehicleJitter.RotYMaxDeg);
+            float cameraPosYJitterM = NextRange(rng, config.CameraJitter.PosYMinM, config.CameraJitter.PosYMaxM);
+            float cameraRotXJitterDeg = NextRange(rng, config.CameraJitter.RotXMinDeg, config.CameraJitter.RotXMaxDeg);
 
             return new PoseJitter
             {
@@ -544,7 +715,25 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                 RotXDeg = 0f,
                 RotYDeg = yawJitterDeg,
                 RotZDeg = 0f,
+                CameraPosYM = cameraPosYJitterM,
+                CameraRotXDeg = cameraRotXJitterDeg,
             };
+        }
+
+        private static void ApplyCameraJitter(
+            Transform cameraTransform,
+            Vector3 baseCameraPosition,
+            Vector3 baseCameraRotationEulerDeg,
+            PoseJitter jitter)
+        {
+            if (cameraTransform == null) throw new ArgumentNullException(nameof(cameraTransform));
+            if (jitter == null) throw new ArgumentNullException(nameof(jitter));
+
+            Vector3 cameraPosition = baseCameraPosition;
+            cameraPosition.y += jitter.CameraPosYM;
+            Vector3 cameraRotationEulerDeg = baseCameraRotationEulerDeg;
+            cameraRotationEulerDeg.x += jitter.CameraRotXDeg;
+            cameraTransform.SetPositionAndRotation(cameraPosition, Quaternion.Euler(cameraRotationEulerDeg));
         }
 
         private static PoseState BuildPoseFromPlacement(
@@ -558,12 +747,23 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             {
                 BasePosition = basePosition,
                 BaseRotationEulerDeg = baseRotationEulerDeg,
-                FinalPosition = basePosition,
+                FinalPosition = new Vector3(
+                    basePosition.x + jitter.PosX,
+                    basePosition.y + jitter.PosY,
+                    basePosition.z + jitter.PosZ),
                 FinalRotationEulerDeg = new Vector3(
-                    baseRotationEulerDeg.x,
+                    baseRotationEulerDeg.x + jitter.RotXDeg,
                     baseRotationEulerDeg.y + jitter.RotYDeg,
-                    baseRotationEulerDeg.z),
+                    baseRotationEulerDeg.z + jitter.RotZDeg),
             };
+        }
+
+        private static void ValidateJitterRange(string minName, float min, string maxName, float max)
+        {
+            if (max < min)
+            {
+                throw new ArgumentException($"{maxName} must be >= {minName}.");
+            }
         }
 
         private static float NextRange(System.Random rng, float min, float max)
@@ -581,25 +781,110 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             return (float)(min + ((max - min) * rng.NextDouble()));
         }
 
-        private static bool TryRedistributeShortfallToRemainingCells(
-            List<CellExecutionPlan> cellExecutionPlan,
-            int startIndex,
-            int shortfall)
+        private static void RecordPlacementFailure(CellRunMetrics metrics, string rejectionReason)
         {
-            if (cellExecutionPlan == null) throw new ArgumentNullException(nameof(cellExecutionPlan));
-            if (shortfall <= 0) return true;
-            if (startIndex >= cellExecutionPlan.Count) return false;
+            if (metrics == null) throw new ArgumentNullException(nameof(metrics));
 
-            int recipientCount = cellExecutionPlan.Count - startIndex;
+            metrics.FailedPlacementAttempts++;
+            metrics.ConsecutiveFailures++;
+            if (metrics.ConsecutiveFailures > metrics.MaxConsecutiveFailures)
+            {
+                metrics.MaxConsecutiveFailures = metrics.ConsecutiveFailures;
+            }
+
+            metrics.LastRejectionReason = string.IsNullOrWhiteSpace(rejectionReason)
+                ? "n/a"
+                : rejectionReason;
+        }
+
+        private static void RecordPlacementSuccess(CellRunMetrics metrics)
+        {
+            if (metrics == null) throw new ArgumentNullException(nameof(metrics));
+
+            metrics.NewSamplesWritten++;
+            metrics.ConsecutiveFailures = 0;
+        }
+
+        private static bool HasCellExceededFailureBudget(
+            CellRunMetrics metrics,
+            SweepSettings sweep,
+            out string reason)
+        {
+            if (metrics == null) throw new ArgumentNullException(nameof(metrics));
+            if (sweep == null) throw new ArgumentNullException(nameof(sweep));
+
+            if (metrics.ConsecutiveFailures >= sweep.MaxConsecutiveFailuresPerCell)
+            {
+                reason = "max_consecutive_failures";
+                return true;
+            }
+
+            if (metrics.FailedPlacementAttempts >= sweep.MaxFailuresPerCell)
+            {
+                reason = "max_failures";
+                return true;
+            }
+
+            reason = string.Empty;
+            return false;
+        }
+
+        private static bool TryRemoveEligibleBinAndRedistributeShortfall(
+            List<CellExecutionPlan> eligibleBins,
+            int eligibleIndex,
+            Dictionary<int, int> binCounts,
+            Dictionary<int, CellRunMetrics> metricsByPlacementBinId,
+            string removalReason)
+        {
+            if (eligibleBins == null) throw new ArgumentNullException(nameof(eligibleBins));
+            if (binCounts == null) throw new ArgumentNullException(nameof(binCounts));
+            if (metricsByPlacementBinId == null) throw new ArgumentNullException(nameof(metricsByPlacementBinId));
+            if (eligibleIndex < 0 || eligibleIndex >= eligibleBins.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(eligibleIndex));
+            }
+
+            CellExecutionPlan exhaustedPlan = eligibleBins[eligibleIndex];
+            int placementBinId = GetPlacementBinId(exhaustedPlan.Cell);
+            binCounts.TryGetValue(placementBinId, out int generatedCount);
+            CellRunMetrics metrics = metricsByPlacementBinId[placementBinId];
+
+            int shortfall = Math.Max(exhaustedPlan.TargetSampleCount - generatedCount, 0);
+            if (shortfall > 0)
+            {
+                exhaustedPlan.TargetSampleCount = generatedCount;
+            }
+
+            metrics.RemovedFromPool = true;
+            metrics.RemovalReason = string.IsNullOrWhiteSpace(removalReason) ? "removed" : removalReason;
+            metrics.RedistributedOut += shortfall;
+
+            eligibleBins.RemoveAt(eligibleIndex);
+            return TryRedistributeShortfallToEligibleBins(
+                eligibleBins,
+                shortfall,
+                metricsByPlacementBinId);
+        }
+
+        private static bool TryRedistributeShortfallToEligibleBins(
+            List<CellExecutionPlan> eligibleBins,
+            int shortfall,
+            Dictionary<int, CellRunMetrics> metricsByPlacementBinId)
+        {
+            if (eligibleBins == null) throw new ArgumentNullException(nameof(eligibleBins));
+            if (metricsByPlacementBinId == null) throw new ArgumentNullException(nameof(metricsByPlacementBinId));
+            if (shortfall <= 0) return true;
+
+            int recipientCount = eligibleBins.Count;
             if (recipientCount <= 0)
             {
                 return false;
             }
 
             float weightSum = 0f;
-            for (int i = startIndex; i < cellExecutionPlan.Count; i++)
+            for (int i = 0; i < eligibleBins.Count; i++)
             {
-                weightSum += Mathf.Max(cellExecutionPlan[i].AllocationWeight, 0.0001f);
+                weightSum += Mathf.Max(eligibleBins[i].AllocationWeight, 0.0001f);
             }
 
             if (weightSum <= float.Epsilon)
@@ -608,8 +893,10 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                 int evenRemainder = shortfall % recipientCount;
                 for (int i = 0; i < recipientCount; i++)
                 {
-                    CellExecutionPlan recipient = cellExecutionPlan[startIndex + i];
-                    recipient.TargetSampleCount += evenAdd + (i < evenRemainder ? 1 : 0);
+                    CellExecutionPlan recipient = eligibleBins[i];
+                    int add = evenAdd + (i < evenRemainder ? 1 : 0);
+                    recipient.TargetSampleCount += add;
+                    metricsByPlacementBinId[GetPlacementBinId(recipient.Cell)].RedistributedIn += add;
                 }
 
                 return true;
@@ -617,13 +904,14 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
             int assigned = 0;
             var fractional = new List<(int index, float frac)>(recipientCount);
-            for (int i = startIndex; i < cellExecutionPlan.Count; i++)
+            for (int i = 0; i < eligibleBins.Count; i++)
             {
-                CellExecutionPlan recipient = cellExecutionPlan[i];
+                CellExecutionPlan recipient = eligibleBins[i];
                 float weight = Mathf.Max(recipient.AllocationWeight, 0.0001f);
                 float ideal = shortfall * (weight / weightSum);
                 int add = Mathf.FloorToInt(ideal);
                 recipient.TargetSampleCount += add;
+                metricsByPlacementBinId[GetPlacementBinId(recipient.Cell)].RedistributedIn += add;
                 assigned += add;
                 fractional.Add((i, ideal - add));
             }
@@ -640,11 +928,614 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
                 for (int i = 0; i < leftover; i++)
                 {
-                    cellExecutionPlan[fractional[i].index].TargetSampleCount++;
+                    CellExecutionPlan recipient = eligibleBins[fractional[i].index];
+                    recipient.TargetSampleCount++;
+                    metricsByPlacementBinId[GetPlacementBinId(recipient.Cell)].RedistributedIn++;
                 }
             }
 
             return true;
+        }
+
+        private static InvalidOperationException BuildNoRedistributionTargetFailure(
+            int processedTotal,
+            int requestedTotalSamples,
+            int validBinCount,
+            int maxConsecutiveFailuresPerCell,
+            int maxFailuresPerCell)
+        {
+            return new InvalidOperationException(
+                "Failed to reach target sample count: a placement bin exceeded its failure budget, " +
+                "but no eligible bins remained to receive its unfilled quota. " +
+                $"generated_total={processedTotal}, target_samples={requestedTotalSamples}, " +
+                $"valid_bins={validBinCount}, " +
+                $"max_consecutive_failures_per_cell={maxConsecutiveFailuresPerCell}, " +
+                $"max_failures_per_cell={maxFailuresPerCell}.");
+        }
+
+        private static ResumeState ReadResumeState(RunConfig config)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+
+            var state = new ResumeState
+            {
+                ImageFileCount = CountImageFiles(config),
+            };
+
+            string manifestPath = GetManifestPath(config);
+            if (!File.Exists(manifestPath))
+            {
+                if (state.ImageFileCount > 0)
+                {
+                    throw new InvalidOperationException(
+                        "Cannot resume synthetic data generation: image files exist but the manifest is missing. " +
+                        $"image_files={state.ImageFileCount}, manifest_path='{manifestPath}'.");
+                }
+
+                return state;
+            }
+
+            using (var reader = new StreamReader(manifestPath, Encoding.UTF8, true))
+            {
+                string headerLine = reader.ReadLine();
+                if (headerLine == null)
+                {
+                    if (state.ImageFileCount > 0)
+                    {
+                        throw new InvalidOperationException(
+                            "Cannot resume synthetic data generation: image files exist but the manifest is empty. " +
+                            $"image_files={state.ImageFileCount}, manifest_path='{manifestPath}'.");
+                    }
+
+                    return state;
+                }
+
+                List<string> headers;
+                try
+                {
+                    headers = ParseCsvLine(headerLine);
+                }
+                catch (FormatException ex)
+                {
+                    throw new InvalidOperationException(
+                        "Cannot resume synthetic data generation: malformed manifest CSV header. " +
+                        $"manifest_path='{manifestPath}'.",
+                        ex);
+                }
+
+                var headerIndexByName = new Dictionary<string, int>(StringComparer.Ordinal);
+                for (int i = 0; i < headers.Count; i++)
+                {
+                    if (headerIndexByName.ContainsKey(headers[i]))
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot resume synthetic data generation: manifest contains duplicate column '{headers[i]}'. " +
+                            $"manifest_path='{manifestPath}'.");
+                    }
+
+                    headerIndexByName.Add(headers[i], i);
+                }
+
+                bool hasPlacementBinId = headerIndexByName.TryGetValue(
+                    ManifestRow.PlacementBinIdColumnName,
+                    out int placementBinIdColumnIndex);
+                state.HasPlacementBinId = hasPlacementBinId;
+
+                string line;
+                int lineNumber = 1;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lineNumber++;
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+
+                    state.ManifestRowCount++;
+
+                    if (!hasPlacementBinId)
+                    {
+                        continue;
+                    }
+
+                    List<string> values;
+                    try
+                    {
+                        values = ParseCsvLine(line);
+                    }
+                    catch (FormatException ex)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot resume synthetic data generation: malformed manifest CSV at line {lineNumber}. " +
+                            $"manifest_path='{manifestPath}'.",
+                        ex);
+                    }
+
+                    if (values.Count != headers.Count)
+                    {
+                        throw new InvalidOperationException(
+                            "Cannot resume synthetic data generation: manifest row column count does not match the header. " +
+                            $"line={lineNumber}, expected_columns={headers.Count}, actual_columns={values.Count}, " +
+                            $"manifest_path='{manifestPath}'.");
+                    }
+
+                    if (values.Count <= placementBinIdColumnIndex)
+                    {
+                        throw new InvalidOperationException(
+                            "Cannot resume synthetic data generation: manifest row is missing the placement bin id value. " +
+                            $"line={lineNumber}, column='{ManifestRow.PlacementBinIdColumnName}', manifest_path='{manifestPath}'.");
+                    }
+
+                    string placementBinText = values[placementBinIdColumnIndex];
+                    if (!int.TryParse(placementBinText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int placementBinId) ||
+                        placementBinId < 0)
+                    {
+                        throw new InvalidOperationException(
+                            "Cannot resume synthetic data generation: manifest row has an invalid placement bin id. " +
+                            $"line={lineNumber}, value='{placementBinText}', manifest_path='{manifestPath}'.");
+                    }
+
+                    state.BinCounts.TryGetValue(placementBinId, out int count);
+                    state.BinCounts[placementBinId] = count + 1;
+                }
+            }
+
+            if (state.ManifestRowCount != state.ImageFileCount)
+            {
+                throw new InvalidOperationException(
+                    "Cannot resume synthetic data generation: manifest row count and image file count disagree. " +
+                    $"manifest_rows={state.ManifestRowCount}, image_files={state.ImageFileCount}, " +
+                    $"manifest_path='{manifestPath}', images_path='{GetImagesDirectory(config)}'.");
+            }
+
+            if (state.ManifestRowCount == 0)
+            {
+                return state;
+            }
+
+            state.IsResume = state.HasPlacementBinId;
+            return state;
+        }
+
+        private static Dictionary<int, int> BuildInitialBinCounts(List<CellExecutionPlan> cellExecutionPlan)
+        {
+            if (cellExecutionPlan == null) throw new ArgumentNullException(nameof(cellExecutionPlan));
+
+            var binCounts = new Dictionary<int, int>(cellExecutionPlan.Count);
+            for (int i = 0; i < cellExecutionPlan.Count; i++)
+            {
+                int placementBinId = GetPlacementBinId(cellExecutionPlan[i].Cell);
+                if (binCounts.ContainsKey(placementBinId))
+                {
+                    throw new InvalidOperationException(
+                        $"Placement plan contains duplicate placement bin id {placementBinId}.");
+                }
+
+                binCounts.Add(placementBinId, 0);
+            }
+
+            return binCounts;
+        }
+
+        private static Dictionary<int, CellRunMetrics> BuildCellRunMetrics(
+            List<CellExecutionPlan> cellExecutionPlan,
+            Dictionary<int, int> binCounts)
+        {
+            if (cellExecutionPlan == null) throw new ArgumentNullException(nameof(cellExecutionPlan));
+            if (binCounts == null) throw new ArgumentNullException(nameof(binCounts));
+
+            var metrics = new Dictionary<int, CellRunMetrics>(cellExecutionPlan.Count);
+            for (int i = 0; i < cellExecutionPlan.Count; i++)
+            {
+                CellExecutionPlan plan = cellExecutionPlan[i];
+                int placementBinId = GetPlacementBinId(plan.Cell);
+                binCounts.TryGetValue(placementBinId, out int existingSamples);
+                metrics.Add(
+                    placementBinId,
+                    new CellRunMetrics
+                    {
+                        Plan = plan,
+                        ExistingSamplesAtStart = existingSamples,
+                    });
+            }
+
+            return metrics;
+        }
+
+        private static void ValidateExecutionPlanTotal(
+            List<CellExecutionPlan> cellExecutionPlan,
+            int requestedTotalSamples)
+        {
+            if (cellExecutionPlan == null) throw new ArgumentNullException(nameof(cellExecutionPlan));
+            if (cellExecutionPlan.Count == 0) throw new ArgumentException("cellExecutionPlan must not be empty.");
+
+            long plannedTotal = 0;
+            for (int i = 0; i < cellExecutionPlan.Count; i++)
+            {
+                int target = cellExecutionPlan[i].TargetSampleCount;
+                if (target < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Placement execution plan has a negative cell quota at index {i}: {target}.");
+                }
+
+                plannedTotal += target;
+            }
+
+            if (plannedTotal != requestedTotalSamples)
+            {
+                throw new InvalidOperationException(
+                    "Placement execution plan quota total does not match requested sample count. " +
+                    $"planned_total={plannedTotal}, target_samples={requestedTotalSamples}.");
+            }
+        }
+
+        private static void GetExecutionPlanQuotaRange(
+            List<CellExecutionPlan> cellExecutionPlan,
+            out int minCellQuota,
+            out int maxCellQuota)
+        {
+            if (cellExecutionPlan == null) throw new ArgumentNullException(nameof(cellExecutionPlan));
+            if (cellExecutionPlan.Count == 0)
+            {
+                minCellQuota = 0;
+                maxCellQuota = 0;
+                return;
+            }
+
+            minCellQuota = int.MaxValue;
+            maxCellQuota = int.MinValue;
+            for (int i = 0; i < cellExecutionPlan.Count; i++)
+            {
+                int target = cellExecutionPlan[i].TargetSampleCount;
+                if (target < minCellQuota) minCellQuota = target;
+                if (target > maxCellQuota) maxCellQuota = target;
+            }
+        }
+
+        private static void ApplyResumeStateToBinCounts(
+            ResumeState resumeState,
+            Dictionary<int, int> binCounts,
+            int requestedTotalSamples)
+        {
+            if (resumeState == null) throw new ArgumentNullException(nameof(resumeState));
+            if (binCounts == null) throw new ArgumentNullException(nameof(binCounts));
+
+            if (resumeState.ManifestRowCount > requestedTotalSamples)
+            {
+                throw new InvalidOperationException(
+                    "Cannot resume synthetic data generation: existing manifest already exceeds the configured target. " +
+                    $"manifest_rows={resumeState.ManifestRowCount}, target_samples={requestedTotalSamples}.");
+            }
+
+            if (resumeState.ManifestRowCount == 0 ||
+                resumeState.ManifestRowCount == requestedTotalSamples)
+            {
+                return;
+            }
+
+            if (!resumeState.IsResume)
+            {
+                throw new InvalidOperationException(
+                    "Cannot resume synthetic data generation: existing manifest has samples but no resumable bin column. " +
+                    $"required_column='{ManifestRow.PlacementBinIdColumnName}'.");
+            }
+
+            foreach (KeyValuePair<int, int> item in resumeState.BinCounts)
+            {
+                if (!binCounts.ContainsKey(item.Key))
+                {
+                    throw new InvalidOperationException(
+                        "Cannot resume synthetic data generation: manifest references a placement bin that is not feasible " +
+                        "under the current scene/configuration. " +
+                        $"placement_bin_id={item.Key}, existing_samples_in_bin={item.Value}.");
+                }
+
+                binCounts[item.Key] = item.Value;
+            }
+        }
+
+        private static List<CellExecutionPlan> BuildEligibleBins(
+            List<CellExecutionPlan> cellExecutionPlan,
+            Dictionary<int, int> binCounts)
+        {
+            if (cellExecutionPlan == null) throw new ArgumentNullException(nameof(cellExecutionPlan));
+            if (binCounts == null) throw new ArgumentNullException(nameof(binCounts));
+
+            var eligibleBins = new List<CellExecutionPlan>(cellExecutionPlan.Count);
+            for (int i = 0; i < cellExecutionPlan.Count; i++)
+            {
+                CellExecutionPlan plan = cellExecutionPlan[i];
+                int placementBinId = GetPlacementBinId(plan.Cell);
+                if (binCounts.TryGetValue(placementBinId, out int count) && count < plan.TargetSampleCount)
+                {
+                    eligibleBins.Add(plan);
+                }
+            }
+
+            return eligibleBins;
+        }
+
+        private void LogFinalCellMetrics(
+            Dictionary<int, CellRunMetrics> metricsByPlacementBinId,
+            int processedTotal,
+            int requestedTotalSamples,
+            int eligibleBinCount,
+            string runStatus)
+        {
+            if (metricsByPlacementBinId == null || metricsByPlacementBinId.Count == 0)
+            {
+                return;
+            }
+
+            var metrics = new List<CellRunMetrics>(metricsByPlacementBinId.Values);
+            metrics.Sort((a, b) => GetPlacementBinId(a.Plan.Cell).CompareTo(GetPlacementBinId(b.Plan.Cell)));
+
+            int completedCells = 0;
+            int removedCells = 0;
+            int pendingCells = 0;
+            int totalExistingSamples = 0;
+            int totalNewSamples = 0;
+            int totalFailures = 0;
+            int totalRedistributedIn = 0;
+            int totalRedistributedOut = 0;
+            int totalRemaining = 0;
+            int totalInitialTarget = 0;
+            int totalFinalTarget = 0;
+            int maxCellFailures = 0;
+            int maxCellFailureBinId = -1;
+
+            for (int i = 0; i < metrics.Count; i++)
+            {
+                CellRunMetrics item = metrics[i];
+                int placementBinId = GetPlacementBinId(item.Plan.Cell);
+                int remaining = Math.Max(item.Plan.TargetSampleCount - item.TotalGenerated, 0);
+
+                totalExistingSamples += item.ExistingSamplesAtStart;
+                totalNewSamples += item.NewSamplesWritten;
+                totalFailures += item.FailedPlacementAttempts;
+                totalRedistributedIn += item.RedistributedIn;
+                totalRedistributedOut += item.RedistributedOut;
+                totalRemaining += remaining;
+                totalInitialTarget += item.Plan.TargetSampleCount - item.RedistributedIn + item.RedistributedOut;
+                totalFinalTarget += item.Plan.TargetSampleCount;
+
+                if (item.FailedPlacementAttempts > maxCellFailures)
+                {
+                    maxCellFailures = item.FailedPlacementAttempts;
+                    maxCellFailureBinId = placementBinId;
+                }
+
+                if (item.RemovedFromPool)
+                {
+                    removedCells++;
+                }
+                else if (remaining <= 0)
+                {
+                    completedCells++;
+                }
+                else
+                {
+                    pendingCells++;
+                }
+            }
+
+            int totalPlacementAttempts = totalNewSamples + totalFailures;
+            float runAcceptanceRate = totalPlacementAttempts > 0
+                ? totalNewSamples / (float)totalPlacementAttempts
+                : 0f;
+
+            Debug.Log(
+                "Final cell metrics summary: " +
+                $"status={runStatus}, total_images={processedTotal}, target_samples={requestedTotalSamples}, " +
+                $"shortfall={Math.Max(requestedTotalSamples - processedTotal, 0)}, " +
+                $"cells={metrics.Count}, eligible_remaining={eligibleBinCount}, " +
+                $"completed_cells={completedCells}, removed_cells={removedCells}, pending_cells={pendingCells}, " +
+                $"existing_samples={totalExistingSamples}, new_samples={totalNewSamples}, " +
+                $"placement_failures={totalFailures}, placement_acceptance_rate={runAcceptanceRate:0.####}, " +
+                $"quota_initial_total={totalInitialTarget}, quota_final_total={totalFinalTarget}, " +
+                $"quota_remaining={totalRemaining}, redistributed_in={totalRedistributedIn}, " +
+                $"redistributed_out={totalRedistributedOut}, worst_failure_bin={maxCellFailureBinId}, " +
+                $"worst_failure_count={maxCellFailures}.",
+                this);
+
+            LogWorstFailureCells(metrics);
+
+            Debug.Log(
+                "Final cell metrics columns: placement_bin_id,depth_band,lateral_bin,status,existing_samples,new_samples,total_generated,initial_target,final_target,remaining,failures,max_consecutive_failures,current_consecutive_failures,acceptance_rate,redistributed_in,redistributed_out,removal_reason,last_rejection",
+                this);
+
+            for (int i = 0; i < metrics.Count; i++)
+            {
+                CellRunMetrics item = metrics[i];
+                StratifiedPlacementCell cell = item.Plan.Cell;
+                int initialTarget = item.Plan.TargetSampleCount - item.RedistributedIn + item.RedistributedOut;
+                int remaining = Math.Max(item.Plan.TargetSampleCount - item.TotalGenerated, 0);
+                int attempts = item.NewSamplesWritten + item.FailedPlacementAttempts;
+                float acceptanceRate = attempts > 0
+                    ? item.NewSamplesWritten / (float)attempts
+                    : 0f;
+
+                string status = item.RemovedFromPool
+                    ? "removed"
+                    : remaining <= 0
+                        ? "complete"
+                        : "pending";
+
+                Debug.Log(
+                    "Final cell metrics row: " +
+                    $"placement_bin_id={GetPlacementBinId(cell)}, " +
+                    $"depth_band={cell.DepthBandIndex}, lateral_bin={cell.LateralBinIndex}, " +
+                    $"status={status}, existing_samples={item.ExistingSamplesAtStart}, " +
+                    $"new_samples={item.NewSamplesWritten}, total_generated={item.TotalGenerated}, " +
+                    $"initial_target={initialTarget}, final_target={item.Plan.TargetSampleCount}, " +
+                    $"remaining={remaining}, failures={item.FailedPlacementAttempts}, " +
+                    $"max_consecutive_failures={item.MaxConsecutiveFailures}, " +
+                    $"current_consecutive_failures={item.ConsecutiveFailures}, " +
+                    $"acceptance_rate={acceptanceRate:0.####}, " +
+                    $"redistributed_in={item.RedistributedIn}, redistributed_out={item.RedistributedOut}, " +
+                    $"removal_reason='{SanitizeLogValue(item.RemovalReason)}', " +
+                    $"last_rejection='{SanitizeLogValue(item.LastRejectionReason)}'.",
+                    this);
+            }
+        }
+
+        private void LogWorstFailureCells(List<CellRunMetrics> metrics)
+        {
+            if (metrics == null || metrics.Count == 0)
+            {
+                return;
+            }
+
+            var worst = new List<CellRunMetrics>(metrics);
+            worst.Sort((a, b) =>
+            {
+                int cmp = b.FailedPlacementAttempts.CompareTo(a.FailedPlacementAttempts);
+                if (cmp != 0) return cmp;
+                return GetPlacementBinId(a.Plan.Cell).CompareTo(GetPlacementBinId(b.Plan.Cell));
+            });
+
+            int count = Math.Min(10, worst.Count);
+            var builder = new StringBuilder();
+            builder.Append("Final cell metrics worst bins by failures:");
+            for (int i = 0; i < count; i++)
+            {
+                CellRunMetrics item = worst[i];
+                int attempts = item.NewSamplesWritten + item.FailedPlacementAttempts;
+                float acceptanceRate = attempts > 0
+                    ? item.NewSamplesWritten / (float)attempts
+                    : 0f;
+
+                builder.Append(' ');
+                builder.Append('#');
+                builder.Append(i + 1);
+                builder.Append("(bin=");
+                builder.Append(GetPlacementBinId(item.Plan.Cell).ToString(CultureInfo.InvariantCulture));
+                builder.Append(",failures=");
+                builder.Append(item.FailedPlacementAttempts.ToString(CultureInfo.InvariantCulture));
+                builder.Append(",new=");
+                builder.Append(item.NewSamplesWritten.ToString(CultureInfo.InvariantCulture));
+                builder.Append(",acceptance=");
+                builder.Append(acceptanceRate.ToString("0.####", CultureInfo.InvariantCulture));
+                builder.Append(",status=");
+                builder.Append(item.RemovedFromPool ? "removed" : "active");
+                builder.Append(')');
+                if (i < count - 1)
+                {
+                    builder.Append(',');
+                }
+            }
+
+            Debug.Log(builder.ToString(), this);
+        }
+
+        private static string SanitizeLogValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value
+                .Replace("\r", " ")
+                .Replace("\n", " ")
+                .Replace("'", "\"");
+        }
+
+        private static int GetPlacementBinId(StratifiedPlacementCell cell)
+        {
+            if (cell == null) throw new ArgumentNullException(nameof(cell));
+            return cell.CellIndex;
+        }
+
+        private static int BuildResumeRandomSeed(int randomSeed, int manifestRowCount)
+        {
+            unchecked
+            {
+                int seed = randomSeed;
+                seed = (seed * 397) ^ manifestRowCount;
+                seed = (seed * 397) ^ 0x51f15e5d;
+                return seed & 0x7fffffff;
+            }
+        }
+
+        private static int CountImageFiles(RunConfig config)
+        {
+            string imagesDirectory = GetImagesDirectory(config);
+            if (!Directory.Exists(imagesDirectory))
+            {
+                return 0;
+            }
+
+            return Directory.GetFiles(imagesDirectory, "*.png", SearchOption.TopDirectoryOnly).Length;
+        }
+
+        private static string GetImagesDirectory(RunConfig config)
+        {
+            string runRoot = Path.Combine(config.Output.OutputRoot, config.RunId);
+            return Path.Combine(runRoot, config.Output.ImagesFolderName);
+        }
+
+        private static string GetManifestPath(RunConfig config)
+        {
+            string runRoot = Path.Combine(config.Output.OutputRoot, config.RunId);
+            string manifestDirectory = Path.Combine(runRoot, config.Output.ManifestFolderName);
+            return Path.Combine(manifestDirectory, config.Output.ManifestFileName);
+        }
+
+        private static List<string> ParseCsvLine(string line)
+        {
+            var values = new List<string>();
+            var value = new StringBuilder();
+            bool inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (inQuotes)
+                {
+                    if (c == '"')
+                    {
+                        if (i + 1 < line.Length && line[i + 1] == '"')
+                        {
+                            value.Append('"');
+                            i++;
+                        }
+                        else
+                        {
+                            inQuotes = false;
+                        }
+                    }
+                    else
+                    {
+                        value.Append(c);
+                    }
+
+                    continue;
+                }
+
+                if (c == ',')
+                {
+                    values.Add(value.ToString());
+                    value.Length = 0;
+                }
+                else if (c == '"')
+                {
+                    inQuotes = true;
+                }
+                else
+                {
+                    value.Append(c);
+                }
+            }
+
+            if (inQuotes)
+            {
+                throw new FormatException("CSV line ended inside a quoted field.");
+            }
+
+            values.Add(value.ToString());
+            return values;
         }
 
         private List<CellExecutionPlan> BuildCellExecutionPlan(
@@ -670,10 +1561,6 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             for (int i = 0; i < placementPlan.Cells.Count; i++)
             {
                 StratifiedPlacementCell cell = placementPlan.Cells[i];
-                if (cell.TargetSampleCount <= 0)
-                {
-                    continue;
-                }
 
                 CellProbeStats stats = ProbeCellAcceptance(
                     config,
@@ -695,7 +1582,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             {
                 throw new InvalidOperationException(
                     "No feasible placement cells found for current camera/constraints. " +
-                    "Loosen edge margin or projected-size limits, or reduce yaw range.");
+                    "Loosen edge margin or projected-size limits, or reduce vehicle/camera jitter ranges.");
             }
 
             if (probeStats.Count < placementPlan.Cells.Count)
@@ -730,7 +1617,12 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             for (int i = 0; i < probeAttempts; i++)
             {
                 Vector3 candidatePosition = placementPlanner.SamplePositionInCell(placementPlan, cell, rng);
-                PoseJitter candidateJitter = BuildYawOnlyJitter(config, rng);
+                PoseJitter candidateJitter = BuildJitter(config, rng);
+                ApplyCameraJitter(
+                    _cameraRig.GetCameraTransform(),
+                    config.CoordinateConvention.CameraPosition,
+                    config.CoordinateConvention.CameraRotationEulerDeg,
+                    candidateJitter);
                 PoseState candidatePose = BuildPoseFromPlacement(candidatePosition, baseRotationEulerDeg, candidateJitter);
 
                 _vehicleSceneController.ApplyPose(candidatePose.FinalPosition, candidatePose.FinalRotationEulerDeg);
@@ -1092,7 +1984,8 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                     FixedObjectName = config.CoordinateConvention.FixedObjectName,
                     DistanceDefinition = config.CoordinateConvention.DistanceDefinition,
                 },
-                JitterPolicy = config.JitterPolicy,
+                CameraJitter = config.CameraJitter,
+                VehicleJitter = config.VehicleJitter,
                 RandomSeed = config.RandomSeed,
                 VehicleAssetName = _vehicleSceneController.GetVehicleAssetName(),
                 CameraName = _cameraRig.GetCameraName(),
@@ -1108,6 +2001,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             PlannedSample sample,
             PoseJitter jitter,
             PoseState poseState,
+            Transform cameraTransform,
             ImageWriteResult imageWriteResult)
         {
             return
@@ -1117,6 +2011,9 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                 $"base_pos_z_m={sample.BasePosZM:0.######}, " +
                 $"jitter_pos=({jitter.PosX:0.######},{jitter.PosY:0.######},{jitter.PosZ:0.######}), " +
                 $"jitter_rot=({jitter.RotXDeg:0.######},{jitter.RotYDeg:0.######},{jitter.RotZDeg:0.######}), " +
+                $"camera_jitter_pos_y_m={jitter.CameraPosYM:0.######}, " +
+                $"camera_jitter_rot_x_deg={jitter.CameraRotXDeg:0.######}, " +
+                $"camera_pos=({cameraTransform.position.x:0.######},{cameraTransform.position.y:0.######},{cameraTransform.position.z:0.######}), " +
                 $"final_pos=({poseState.FinalPosition.x:0.######},{poseState.FinalPosition.y:0.######},{poseState.FinalPosition.z:0.######}), " +
                 $"final_rot=({poseState.FinalRotationEulerDeg.x:0.######},{poseState.FinalRotationEulerDeg.y:0.######},{poseState.FinalRotationEulerDeg.z:0.######}), " +
                 $"target_path='{imageWriteResult.FullPath}', " +

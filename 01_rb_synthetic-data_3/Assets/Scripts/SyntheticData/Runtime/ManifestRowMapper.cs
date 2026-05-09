@@ -29,6 +29,7 @@ namespace RaccoonBall.SyntheticData.Runtime
                 FrameIndex = sample.FrameIndex,
                 ImageFilename = imageWriteResult.ImageFilename,
 
+                PlacementBinId = sample.PlacementBinId,
                 PositionStepIndex = sample.PositionStepIndex,
                 SampleAtPositionIndex = sample.SampleAtPositionIndex,
 

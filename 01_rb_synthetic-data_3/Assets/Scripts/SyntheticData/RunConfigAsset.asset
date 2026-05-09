@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: RunConfigAsset
   m_EditorClassIdentifier: Assembly-CSharp::RaccoonBall.SyntheticData.Config.RunConfigAsset
   _config:
-    RunId: 26-04-11_v019-validate
-    DatasetName: def90_synth_v019-validate
+    RunId: v28-train
+    DatasetName: def90_synth_v28-train
     Output:
       OutputRoot: SyntheticDataset
       ImagesFolderName: images
@@ -25,7 +25,7 @@ MonoBehaviour:
       ImageWidthPx: 1920
       ImageHeightPx: 1200
     Sweep:
-      TotalSamples: 50000
+      TotalSamples: 250000
       MovementPlaneY: 0.5
       DepthBandCount: 12
       LateralBinCount: 10
@@ -39,13 +39,14 @@ MonoBehaviour:
       MinProjectedAreaPx: 4096
       MaxProjectedAreaPx: 0
       MaxAttemptsPerSample: 200
-      MaxAttemptsPerCell: 200000
+      MaxConsecutiveFailuresPerCell: 200
+      MaxFailuresPerCell: 20000
       FeasibilityProbeAttemptsPerCell: 2000
       AcceptanceProbeAttemptsPerCell: 2000
       MinSamplesPerFeasibleCell: 4
       MinAcceptanceRateForWeight: 0.01
       AcceptanceWeightExponent: 1
-      LogCellAcceptanceStats: 0
+      LogCellAcceptanceStats: 1
     CoordinateConvention:
       CameraPosition: {x: 0, y: 1.65, z: 0}
       CameraRotationEulerDeg: {x: 30, y: 0, z: 0}
@@ -57,13 +58,14 @@ MonoBehaviour:
       FixedObjectName: Camera
       DistanceDefinition: Euclidean distance from camera position to vehicle root
         position
-    JitterPolicy:
-      PosXMinM: -0.2
-      PosXMaxM: 0.2
-      PosZMinM: -0.2
-      PosZMaxM: 0.2
-      RotYMinDeg: -6.25
-      RotYMaxDeg: 6.25
-    RandomSeed: 13
-    Notes: Stratified camera-footprint placement over flat movement plane; yaw jitter
-      only.
+    CameraJitter:
+      PosYMinM: -0.01
+      PosYMaxM: 0.01
+      RotXMinDeg: -2
+      RotXMaxDeg: 2
+    VehicleJitter:
+      RotYMinDeg: -180
+      RotYMaxDeg: 180
+    RandomSeed: 42
+    Notes: Stratified camera-footprint placement over flat movement plane; vehicle yaw
+      jitter plus camera Y position and X rotation jitter.

@@ -25,7 +25,8 @@ namespace RaccoonBall.SyntheticData.Core
         public float MaxProjectedAreaPx = 0f;
 
         public int MaxAttemptsPerSample = 200;
-        public int MaxAttemptsPerCell = 200000;
+        public int MaxConsecutiveFailuresPerCell = 200;
+        public int MaxFailuresPerCell = 20000;
 
         public int FeasibilityProbeAttemptsPerCell = 2000;
 

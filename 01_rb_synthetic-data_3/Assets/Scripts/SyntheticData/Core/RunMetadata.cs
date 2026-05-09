@@ -12,7 +12,8 @@ namespace RaccoonBall.SyntheticData.Core
         public CaptureSettings Capture;
         public SweepSettings Sweep;
         public CoordinateConvention CoordinateConvention;
-        public JitterPolicy JitterPolicy;
+        public CameraJitterPolicy CameraJitter;
+        public VehicleJitterPolicy VehicleJitter;
 
         public int RandomSeed;
         public string VehicleAssetName;
