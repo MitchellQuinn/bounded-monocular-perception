@@ -8,7 +8,6 @@ from enum import Enum
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -20,6 +19,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
 
 
 class LiveInferenceMainWindow(QMainWindow):
@@ -42,7 +43,6 @@ class LiveInferenceMainWindow(QMainWindow):
         self._duplicate_skipped_count = 0
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
-        self._preview_source_pixmap: QPixmap | None = None
 
         self.setWindowTitle("Live Inference")
         self._build_ui()
@@ -76,15 +76,14 @@ class LiveInferenceMainWindow(QMainWindow):
         controls_layout.addStretch(1)
         root_layout.addLayout(controls_layout)
 
-        self.frame_preview_label = QLabel("No frame yet")
-        self.frame_preview_label.setObjectName("frame_preview_label")
-        self.frame_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.frame_preview_label.setMinimumSize(320, 240)
-        self.frame_preview_label.setSizePolicy(
+        self.frame_preview_widget = FramePreviewWidget()
+        self.frame_preview_widget.setObjectName("frame_preview_widget")
+        self.frame_preview_widget.setMinimumSize(320, 240)
+        self.frame_preview_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        root_layout.addWidget(self.frame_preview_label, stretch=2)
+        root_layout.addWidget(self.frame_preview_widget, stretch=2)
 
         status_grid = QGridLayout()
         status_grid.setColumnStretch(1, 1)
@@ -151,6 +150,13 @@ class LiveInferenceMainWindow(QMainWindow):
             label="Total time",
             object_name="total_time_value",
         )
+        self.debug_artifacts_value = self._add_readout(
+            status_grid,
+            row=10,
+            label="Debug artifacts",
+            object_name="debug_artifacts_value",
+        )
+        self.debug_artifacts_value.setWordWrap(True)
         root_layout.addLayout(status_grid)
 
         self.log_panel = QPlainTextEdit()
@@ -202,6 +208,7 @@ class LiveInferenceMainWindow(QMainWindow):
             {
                 "status_changed": self._on_inference_status_changed,
                 "result_ready": self._on_inference_result_ready,
+                "debug_image_ready": self._on_debug_image_ready,
                 "frame_skipped": self._on_inference_frame_skipped,
                 "warning_occurred": self._on_warning_occurred,
                 "error_occurred": self._on_error_occurred,
@@ -294,33 +301,12 @@ class LiveInferenceMainWindow(QMainWindow):
             self._append_log("WARNING", "Frame preview unavailable: missing image path.")
             return
 
-        pixmap = QPixmap(str(path))
-        if pixmap.isNull():
+        if not self.frame_preview_widget.load_image(str(path)):
             self._append_log(
                 "WARNING",
                 f"Frame preview unavailable: could not load image path={path}",
             )
             return
-
-        self._preview_source_pixmap = pixmap
-        self._set_scaled_frame_preview()
-
-    def _set_scaled_frame_preview(self) -> None:
-        if self._preview_source_pixmap is None or self._preview_source_pixmap.isNull():
-            return
-
-        target_size = self.frame_preview_label.size()
-        if target_size.width() <= 0 or target_size.height() <= 0:
-            target_size = self.frame_preview_label.minimumSize()
-        if target_size.width() <= 0 or target_size.height() <= 0:
-            return
-
-        scaled_pixmap = self._preview_source_pixmap.scaled(
-            target_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.frame_preview_label.setPixmap(scaled_pixmap)
 
     def _on_inference_status_changed(self, status: object) -> None:
         self.inference_status_value.setText(_status_display_text(status))
@@ -373,6 +359,44 @@ class LiveInferenceMainWindow(QMainWindow):
         self.total_time_value.setText(
             _format_value(_payload_value(result, "total_time_ms"), "ms", precision=1)
         )
+        self._update_preview_overlay(result)
+        self._update_debug_artifact_paths(result)
+
+    def _on_debug_image_ready(self, image: object) -> None:
+        image_kind = _text(_payload_value(image, "image_kind"), default="debug")
+        path = _text(_payload_value(image, "path"), default="n/a")
+        self._append_log("INFO", f"Debug artifact ready: kind={image_kind} path={path}")
+
+    def _update_preview_overlay(self, result: object) -> None:
+        overlay = _overlay_from_result(result)
+        if overlay is None:
+            self.frame_preview_widget.set_overlay(None)
+            return
+        if not self.frame_preview_widget.overlay_source_size_matches(
+            overlay.source_image_wh_px
+        ):
+            self.frame_preview_widget.set_overlay(None)
+            self._append_log(
+                "WARNING",
+                "Skipping ROI overlay: result source size "
+                f"{overlay.source_image_wh_px} does not match preview frame size "
+                f"{self.frame_preview_widget.source_image_size()}.",
+            )
+            return
+        self.frame_preview_widget.set_overlay(overlay)
+
+    def _update_debug_artifact_paths(self, result: object) -> None:
+        debug_paths = _mapping_payload(_payload_value(result, "debug_paths"))
+        if not debug_paths:
+            self.debug_artifacts_value.setText("n/a")
+            return
+
+        summary = " | ".join(
+            f"{key}: {_text(path, default='n/a')}"
+            for key, path in sorted(debug_paths.items())
+        )
+        self.debug_artifacts_value.setText(summary)
+        self._append_log("INFO", f"Debug artifacts: {summary}")
 
     def _on_inference_frame_skipped(self, skipped: object) -> None:
         reason = _enum_text(_payload_value(skipped, "reason")) or "unknown"
@@ -444,8 +468,8 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
-        if hasattr(self, "frame_preview_label"):
-            self._set_scaled_frame_preview()
+        if hasattr(self, "frame_preview_widget"):
+            self.frame_preview_widget.update()
 
     def _wait_for_controller(self, controller: object) -> None:
         wait = getattr(controller, "wait", None)
@@ -502,6 +526,87 @@ def _payload_value(payload: object, name: str) -> object | None:
     if isinstance(payload, Mapping):
         return payload.get(name)
     return getattr(payload, name, None)
+
+
+def _overlay_from_result(result: object) -> FramePreviewOverlay | None:
+    roi_metadata = _payload_value(result, "roi_metadata")
+    if roi_metadata is None:
+        return None
+
+    source_size = _size_tuple(_payload_value(roi_metadata, "source_image_wh_px"))
+    bbox = _xyxy_tuple(_payload_value(roi_metadata, "bbox_xyxy_px"))
+    center = _xy_tuple(_payload_value(roi_metadata, "center_xy_px"))
+    extras = _mapping_payload(_payload_value(roi_metadata, "extras"))
+    roi_bounds = _first_xyxy(
+        extras,
+        "roi_locator_bounds_xyxy_px",
+        "roi_source_xyxy_px",
+        "roi_request_xyxy_px",
+    )
+    if bbox is None and center is None and roi_bounds is None:
+        return None
+    return FramePreviewOverlay(
+        source_image_wh_px=source_size,
+        bbox_xyxy_px=bbox,
+        center_xy_px=center,
+        roi_bounds_xyxy_px=roi_bounds,
+        label="Pipeline ROI / bbox",
+    )
+
+
+def _mapping_payload(payload: object | None) -> Mapping[str, object]:
+    if isinstance(payload, Mapping):
+        return payload
+    to_dict = getattr(payload, "to_dict", None)
+    if callable(to_dict):
+        converted = to_dict()
+        if isinstance(converted, Mapping):
+            return converted
+    return {}
+
+
+def _first_xyxy(
+    payload: Mapping[str, object],
+    *keys: str,
+) -> tuple[float, float, float, float] | None:
+    for key in keys:
+        value = _xyxy_tuple(payload.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _xyxy_tuple(value: object | None) -> tuple[float, float, float, float] | None:
+    parsed = _float_tuple(value, width=4)
+    if parsed is None:
+        return None
+    return parsed[0], parsed[1], parsed[2], parsed[3]
+
+
+def _xy_tuple(value: object | None) -> tuple[float, float] | None:
+    parsed = _float_tuple(value, width=2)
+    if parsed is None:
+        return None
+    return parsed[0], parsed[1]
+
+
+def _size_tuple(value: object | None) -> tuple[int, int] | None:
+    parsed = _float_tuple(value, width=2)
+    if parsed is None:
+        return None
+    width, height = int(parsed[0]), int(parsed[1])
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
+
+
+def _float_tuple(value: object | None, *, width: int) -> tuple[float, ...] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != int(width):
+        return None
+    try:
+        return tuple(float(item) for item in value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _hash_value(frame_hash: object) -> object | None:

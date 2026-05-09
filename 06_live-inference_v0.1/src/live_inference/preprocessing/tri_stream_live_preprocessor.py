@@ -58,6 +58,17 @@ from rb_pipeline_v4.silhouette_algorithms import (  # noqa: E402
     OutlineArtifactWriterV1,
 )
 
+from .debug_artifacts import (  # noqa: E402
+    ARTIFACT_ACCEPTED_RAW_FRAME,
+    ARTIFACT_DISTANCE_IMAGE,
+    ARTIFACT_LOCATOR_INPUT,
+    ARTIFACT_ORIENTATION_IMAGE,
+    ARTIFACT_ROI_CROP,
+    DebugArtifactWriter,
+    default_debug_output_dir,
+)
+from .roi_locator import build_roi_fcn_locator_input  # noqa: E402
+
 
 @dataclass(frozen=True)
 class _SilhouetteResult:
@@ -160,6 +171,7 @@ class TriStreamLivePreprocessor:
             image_height_px=source_h,
         )
         runtime_revision = self._runtime_parameter_revision()
+        input_image_hash = _accepted_input_image_hash(request, image_bytes)
 
         metadata = {
             "preprocessing_contract_name": self._config.preprocessing_contract_name,
@@ -169,6 +181,8 @@ class TriStreamLivePreprocessor:
             "representation_kind": self._config.representation_kind,
             "geometry_schema": self._config.geometry_schema,
             "geometry_dim": int(self._config.geometry_dim),
+            "input_image_hash": input_image_hash.value,
+            "input_image_hash_algorithm": input_image_hash.algorithm,
             "source_image_width_px": source_w,
             "source_image_height_px": source_h,
             "distance_canvas_width_px": int(self._config.distance_canvas_size[0]),
@@ -203,6 +217,22 @@ class TriStreamLivePreprocessor:
             "runtime_parameter_revision": runtime_revision,
             "warnings": tuple(warnings),
         }
+        debug_paths = self._write_debug_artifacts(
+            request=request,
+            input_image_hash=input_image_hash,
+            preprocessing_parameter_revision=runtime_revision,
+            source_gray=source_gray,
+            roi_location=roi_location,
+            roi_crop=roi_source_gray,
+            distance_image=distance_image_2d,
+            orientation_image=orientation_image_2d,
+            metadata=metadata,
+        )
+        if debug_paths:
+            metadata = dict(metadata)
+            metadata["debug_paths"] = {
+                str(kind): str(path) for kind, path in debug_paths.items()
+            }
 
         return PreparedInferenceInputs(
             request_id=request.request_id,
@@ -387,6 +417,41 @@ class TriStreamLivePreprocessor:
         revision = self._runtime_parameter_revision_getter()
         return int(revision) if revision is not None else None
 
+    def _write_debug_artifacts(
+        self,
+        *,
+        request: InferenceRequest,
+        input_image_hash: contracts.FrameHash,
+        preprocessing_parameter_revision: int | None,
+        source_gray: np.ndarray,
+        roi_location: RoiLocation,
+        roi_crop: np.ndarray,
+        distance_image: np.ndarray,
+        orientation_image: np.ndarray,
+        metadata: Mapping[str, Any],
+    ) -> dict[str, Path]:
+        if not bool(request.save_debug_images):
+            return {}
+        output_dir = (
+            Path(request.debug_output_dir)
+            if request.debug_output_dir is not None
+            else default_debug_output_dir()
+        )
+        writer = DebugArtifactWriter(enabled=True, output_dir=output_dir)
+        return writer.write_preprocessing_artifacts(
+            request_id=request.request_id,
+            input_image_hash=input_image_hash,
+            preprocessing_parameter_revision=preprocessing_parameter_revision,
+            image_artifacts={
+                ARTIFACT_ACCEPTED_RAW_FRAME: source_gray,
+                ARTIFACT_ROI_CROP: roi_crop,
+                ARTIFACT_LOCATOR_INPUT: _debug_locator_input(source_gray, roi_location),
+                ARTIFACT_DISTANCE_IMAGE: distance_image,
+                ARTIFACT_ORIENTATION_IMAGE: orientation_image,
+            },
+            metadata=metadata,
+        )
+
 
 def _decode_image_bytes_to_grayscale(image_bytes: bytes) -> np.ndarray:
     if not image_bytes:
@@ -563,6 +628,32 @@ def _coerce_center_xy(location: RoiLocation) -> tuple[float, float]:
     return center
 
 
+def _debug_locator_input(
+    source_gray: np.ndarray,
+    roi_location: RoiLocation,
+) -> np.ndarray | None:
+    metadata = roi_location.metadata
+    canvas_width = _optional_positive_int(metadata.get("locator_canvas_width_px"))
+    canvas_height = _optional_positive_int(metadata.get("locator_canvas_height_px"))
+    if canvas_width is None or canvas_height is None:
+        return None
+    return build_roi_fcn_locator_input(
+        source_gray,
+        canvas_width_px=canvas_width,
+        canvas_height_px=canvas_height,
+    ).locator_image
+
+
+def _optional_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 def _array_xyxy_to_tuple(values: np.ndarray) -> tuple[float, float, float, float]:
     array = np.asarray(values, dtype=np.float32).reshape(4)
     return (
@@ -570,6 +661,34 @@ def _array_xyxy_to_tuple(values: np.ndarray) -> tuple[float, float, float, float
         float(array[1]),
         float(array[2]),
         float(array[3]),
+    )
+
+
+def _accepted_input_image_hash(
+    request: InferenceRequest,
+    image_bytes: bytes,
+) -> contracts.FrameHash:
+    frame_hash = request.frame.frame_hash
+    algorithm = (
+        frame_hash.algorithm
+        if frame_hash is not None
+        else contracts.DEFAULT_FRAME_HASH_ALGORITHM
+    )
+    digest_size = (
+        int(frame_hash.digest_size_bytes)
+        if frame_hash is not None
+        else contracts.DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES
+    )
+    if not str(algorithm).startswith("blake2b"):
+        if frame_hash is not None:
+            return frame_hash
+        algorithm = contracts.DEFAULT_FRAME_HASH_ALGORITHM
+        digest_size = contracts.DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES
+    digest = hashlib.blake2b(image_bytes, digest_size=int(digest_size)).hexdigest()
+    return contracts.FrameHash(
+        value=digest,
+        algorithm=str(algorithm),
+        digest_size_bytes=int(digest_size),
     )
 
 

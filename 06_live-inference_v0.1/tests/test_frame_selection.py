@@ -252,6 +252,27 @@ class InferenceFrameSelectorTests(unittest.TestCase):
             self.assertIsNotNone(second.selected)
             self.assertIsNone(second.skipped)
 
+    def test_selected_request_inherits_debug_artifact_settings(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            config = self._config(tmp_dir)
+            debug_dir = Path(tmp_dir) / "debug"
+            AtomicFrameHandoffWriter(config).publish_frame(
+                b"frame-bytes",
+                FrameMetadata(frame_id="frame-1"),
+            )
+            selector = self._selector(
+                LatestFrameHandoffReader(config),
+                save_debug_images=True,
+                debug_output_dir=debug_dir,
+            )
+
+            result = selector.select_latest()
+
+            self.assertIsNotNone(result.selected)
+            assert result.selected is not None
+            self.assertTrue(result.selected.request.save_debug_images)
+            self.assertEqual(result.selected.request.debug_output_dir, debug_dir)
+
     def test_frame_selection_module_keeps_heavy_runtime_imports_out(self) -> None:
         module_path = SRC_ROOT / "live_inference" / "frame_selection.py"
         tree = ast.parse(module_path.read_text(encoding="utf-8"))

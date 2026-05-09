@@ -89,6 +89,8 @@ def build_live_inference_gui_context(
     camera_name: str = DEFAULT_CAMERA_NAME,
     log_v4l2_controls_at_startup: bool = False,
     device: str | None = None,
+    save_debug_images: bool = False,
+    debug_output_dir: Path | None = None,
     frame_interval_ms: int = DEFAULT_FRAME_INTERVAL_MS,
     inference_poll_interval_ms: int = DEFAULT_INFERENCE_POLL_INTERVAL_MS,
     dependency_loader: Callable[[], _RuntimeDependencies] | None = None,
@@ -101,6 +103,7 @@ def build_live_inference_gui_context(
     resolved_selection_path = _resolve_path(
         model_selection_path or selection_path or default_model_selection_path()
     )
+    resolved_debug_output_dir = _resolve_debug_output_dir(project_root, debug_output_dir)
     synthetic_base_dir = project_root
     resolved_camera_config_path: Path | None = None
     synthetic_config: object | None = None
@@ -128,6 +131,8 @@ def build_live_inference_gui_context(
             latest_frame_filename=synthetic_config.latest_frame_filename,
             temp_frame_filename=synthetic_config.temp_frame_filename,
             inference_poll_interval_ms=inference_poll_interval_ms,
+            save_debug_images=bool(save_debug_images),
+            debug_output_dir=resolved_debug_output_dir,
         )
     else:
         camera_frame_dir = _resolve_camera_frame_dir(project_root, output_dir)
@@ -137,6 +142,8 @@ def build_live_inference_gui_context(
             latest_frame_filename=f"latest_frame.{camera_extension}",
             temp_frame_filename=f"latest_frame.tmp.{camera_extension}",
             inference_poll_interval_ms=inference_poll_interval_ms,
+            save_debug_images=bool(save_debug_images),
+            debug_output_dir=resolved_debug_output_dir,
         )
         writer = deps.atomic_frame_handoff_writer_cls(live_config)
         publisher = deps.opencv_v4l2_camera_publisher_cls(
@@ -171,6 +178,8 @@ def build_live_inference_gui_context(
     selector = deps.inference_frame_selector_cls(
         reader,
         duplicate_hash_skip_enabled=live_config.duplicate_hash_skip_enabled,
+        save_debug_images=live_config.save_debug_images,
+        debug_output_dir=live_config.debug_output_dir,
     )
     roi_locator = deps.roi_fcn_locator_cls(selection.roi_fcn_root, device=roi_fcn_device)
     preprocessor = deps.tri_stream_live_preprocessor_cls(
@@ -232,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
             camera_name=args.camera_name,
             log_v4l2_controls_at_startup=args.log_v4l2_controls_at_startup,
             device=args.device,
+            save_debug_images=args.save_debug_images,
+            debug_output_dir=args.debug_output_dir,
             frame_interval_ms=args.frame_interval_ms,
             inference_poll_interval_ms=args.inference_poll_interval_ms,
         )
@@ -345,6 +356,17 @@ def _argument_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         help="Print launch details and allow startup exceptions to show tracebacks.",
+    )
+    parser.add_argument(
+        "--save-debug-images",
+        action="store_true",
+        help="Write hash-matched preprocessing debug artifacts for processed frames.",
+    )
+    parser.add_argument(
+        "--debug-output-dir",
+        type=Path,
+        default=None,
+        help="Directory for --save-debug-images artifacts.",
     )
     parser.add_argument(
         "--device",
@@ -476,6 +498,13 @@ def _resolve_path(path: Path) -> Path:
     return Path(path).expanduser().resolve(strict=False)
 
 
+def _resolve_debug_output_dir(project_root: Path, path: Path | None) -> Path:
+    resolved = Path("live_debug") if path is None else Path(path)
+    if resolved.is_absolute():
+        return resolved.expanduser().resolve(strict=False)
+    return (project_root / resolved).expanduser().resolve(strict=False)
+
+
 def _resolve_synthetic_camera_config_path(path: Path | None) -> Path | None:
     if path is None:
         default_path = default_synthetic_camera_config_path()
@@ -528,6 +557,16 @@ def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     )
     print(
         f"  camera_frame_dir = {getattr(context.live_inference_config, 'frame_dir', 'n/a')}",
+        file=sys.stderr,
+    )
+    print(
+        "  save_debug_images = "
+        f"{getattr(context.live_inference_config, 'save_debug_images', 'n/a')}",
+        file=sys.stderr,
+    )
+    print(
+        "  debug_output_dir = "
+        f"{getattr(context.live_inference_config, 'debug_output_dir', 'n/a')}",
         file=sys.stderr,
     )
     print(

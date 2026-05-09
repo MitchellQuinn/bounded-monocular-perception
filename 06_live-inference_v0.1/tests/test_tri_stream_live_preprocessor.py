@@ -36,6 +36,13 @@ from live_inference.preprocessing import (  # noqa: E402
     RoiLocation,
     TriStreamLivePreprocessor,
 )
+from live_inference.preprocessing.debug_artifacts import (  # noqa: E402
+    ARTIFACT_ACCEPTED_RAW_FRAME,
+    ARTIFACT_DISTANCE_IMAGE,
+    ARTIFACT_LOCATOR_INPUT,
+    ARTIFACT_ORIENTATION_IMAGE,
+    ARTIFACT_ROI_OVERLAY_METADATA,
+)
 
 
 REQUESTED_AT = "2026-05-04T12:00:00Z"
@@ -120,10 +127,11 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
 
     def test_metadata_includes_contract_geometry_orientation_and_roi_information(self) -> None:
         image_bytes = _fixture_image_bytes()
+        request = _request(image_bytes)
         prepared = TriStreamLivePreprocessor(
             model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
             roi_locator=FakeRoiLocator(),
-        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+        ).prepare_model_inputs(request, image_bytes)
 
         metadata = prepared.preprocessing_metadata
 
@@ -134,6 +142,7 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertEqual(metadata["geometry_schema"], contracts.TRI_STREAM_GEOMETRY_SCHEMA)
         self.assertEqual(metadata["geometry_dim"], 10)
         self.assertEqual(metadata["orientation_source_mode"], ORIENTATION_SOURCE_RAW_GRAYSCALE)
+        self.assertEqual(metadata["input_image_hash"], request.frame.frame_hash.value)
         self.assertIn("roi_request_xyxy_px", metadata)
         self.assertIn("roi_source_xyxy_px", metadata)
         self.assertIn("silhouette_bbox_xyxy_px", metadata)
@@ -214,6 +223,55 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
             )
         )
 
+    def test_debug_enabled_populates_paths_and_writes_valid_images(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        with TemporaryDirectory() as tmp_dir:
+            request = _request(
+                image_bytes,
+                save_debug_images=True,
+                debug_output_dir=Path(tmp_dir),
+            )
+
+            prepared = TriStreamLivePreprocessor(
+                model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+                roi_locator=FakeDebugRoiLocator(),
+            ).prepare_model_inputs(request, image_bytes)
+
+            paths = prepared.preprocessing_metadata["debug_paths"]
+            for key in (
+                ARTIFACT_ACCEPTED_RAW_FRAME,
+                ARTIFACT_LOCATOR_INPUT,
+                ARTIFACT_DISTANCE_IMAGE,
+                ARTIFACT_ORIENTATION_IMAGE,
+            ):
+                self.assertIn(key, paths)
+                self.assertIsNotNone(cv2.imread(str(paths[key]), cv2.IMREAD_UNCHANGED))
+
+            metadata_path = Path(paths[ARTIFACT_ROI_OVERLAY_METADATA])
+            self.assertTrue(metadata_path.is_file())
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertEqual(metadata["request_id"], request.request_id)
+            self.assertEqual(metadata["input_image_hash"], request.frame.frame_hash.value)
+            self.assertEqual(metadata["orientation_source_mode"], ORIENTATION_SOURCE_RAW_GRAYSCALE)
+
+    def test_debug_disabled_does_not_write_debug_paths(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        with TemporaryDirectory() as tmp_dir:
+            prepared = TriStreamLivePreprocessor(
+                model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+                roi_locator=FakeDebugRoiLocator(),
+            ).prepare_model_inputs(
+                _request(
+                    image_bytes,
+                    save_debug_images=False,
+                    debug_output_dir=Path(tmp_dir),
+                ),
+                image_bytes,
+            )
+
+            self.assertNotIn("debug_paths", prepared.preprocessing_metadata)
+            self.assertEqual(list(Path(tmp_dir).iterdir()), [])
+
     def test_generic_core_modules_remain_heavy_import_free(self) -> None:
         module_paths = (
             SRC_ROOT / "interfaces/contracts.py",
@@ -257,6 +315,19 @@ class FakeRoiLocator:
         )
 
 
+class FakeDebugRoiLocator:
+    def locate(self, source_gray_image: object) -> RoiLocation:
+        return RoiLocation(
+            center_xy_px=(240.0, 150.0),
+            roi_bounds_xyxy_px=(90.0, 0.0, 390.0, 300.0),
+            metadata={
+                "locator": "fake",
+                "locator_canvas_width_px": 480,
+                "locator_canvas_height_px": 300,
+            },
+        )
+
+
 def _fixture_image_bytes() -> bytes:
     image = np.full((300, 480), 255, dtype=np.uint8)
     cv2.rectangle(image, (210, 115), (270, 185), 30, -1)
@@ -271,6 +342,8 @@ def _request(
     image_bytes: bytes,
     *,
     frame_hash: FrameHash | None = None,
+    save_debug_images: bool = False,
+    debug_output_dir: Path | None = None,
 ) -> InferenceRequest:
     frame_hash = frame_hash or compute_frame_hash(image_bytes)
     frame = FrameReference(
@@ -289,6 +362,8 @@ def _request(
         request_id="request-1",
         frame=frame,
         requested_at_utc=REQUESTED_AT,
+        save_debug_images=save_debug_images,
+        debug_output_dir=debug_output_dir,
     )
 
 
