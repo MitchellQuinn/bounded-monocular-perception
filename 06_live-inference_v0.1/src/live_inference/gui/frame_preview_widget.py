@@ -10,7 +10,13 @@ from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 import numpy as np
 
-from live_inference.masking import FrameMaskSnapshot
+from live_inference.masking import (
+    BackgroundSnapshot,
+    FrameMaskSnapshot,
+    apply_fill_to_mask,
+    combine_ignore_masks,
+    compute_background_removal_mask,
+)
 
 
 @dataclass(frozen=True)
@@ -50,10 +56,16 @@ class FramePreviewWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pixmap: QPixmap | None = None
+        self._raw_image: QImage | None = None
+        self._raw_pixmap: QPixmap | None = None
+        self._raw_rgb: np.ndarray | None = None
+        self._raw_gray: np.ndarray | None = None
         self._placeholder_text = "No frame yet"
         self._overlay: FramePreviewOverlay | None = None
         self._committed_mask: np.ndarray | None = None
         self._committed_mask_size: tuple[int, int] | None = None
+        self._background_snapshot: BackgroundSnapshot | None = None
+        self._mask_fill_value = 255
         self._draft_mask: np.ndarray | None = None
         self._edit_mode: str | None = None
         self._is_painting = False
@@ -71,14 +83,38 @@ class FramePreviewWidget(QWidget):
         self.update()
 
     def load_image(self, path: Path | str) -> bool:
-        pixmap = QPixmap(str(path))
-        if pixmap.isNull():
+        image = QImage(str(path))
+        if image.isNull():
             return False
-        self.set_pixmap(pixmap)
+        self.set_image(image)
         return True
 
     def set_pixmap(self, pixmap: QPixmap) -> None:
-        self._pixmap = QPixmap(pixmap)
+        if pixmap.isNull():
+            self._pixmap = None
+            self._raw_image = None
+            self._raw_pixmap = None
+            self._raw_rgb = None
+            self._raw_gray = None
+            self.update()
+            return
+        self.set_image(pixmap.toImage())
+
+    def set_image(self, image: QImage) -> None:
+        if image.isNull():
+            self._pixmap = None
+            self._raw_image = None
+            self._raw_pixmap = None
+            self._raw_rgb = None
+            self._raw_gray = None
+            self.update()
+            return
+        safe_image = image.copy()
+        self._raw_image = safe_image
+        self._raw_rgb = None
+        self._raw_gray = None
+        self._raw_pixmap = QPixmap.fromImage(safe_image)
+        self._refresh_effective_pixmap()
         if self._edit_mode is not None:
             self._ensure_draft_mask_for_current_source()
         self.update()
@@ -86,7 +122,27 @@ class FramePreviewWidget(QWidget):
     def pixmap(self) -> QPixmap | None:
         return self._pixmap
 
+    def raw_pixmap(self) -> QPixmap | None:
+        if self._raw_pixmap is None:
+            return None
+        return QPixmap(self._raw_pixmap)
+
+    def raw_source_gray(self) -> np.ndarray | None:
+        raw_gray = self._raw_gray_array()
+        if raw_gray is None:
+            return None
+        return np.array(raw_gray, dtype=np.uint8, copy=True)
+
+    def effective_preview_image(self) -> np.ndarray | None:
+        if self._pixmap is None or self._pixmap.isNull():
+            return None
+        return _qimage_to_rgb_array(self._pixmap.toImage())
+
     def source_image_size(self) -> tuple[int, int] | None:
+        if self._raw_image is not None and not self._raw_image.isNull():
+            return int(self._raw_image.width()), int(self._raw_image.height())
+        if self._raw_gray is not None:
+            return int(self._raw_gray.shape[1]), int(self._raw_gray.shape[0])
         if self._pixmap is None or self._pixmap.isNull():
             return None
         return int(self._pixmap.width()), int(self._pixmap.height())
@@ -99,6 +155,8 @@ class FramePreviewWidget(QWidget):
         return self._overlay
 
     def set_committed_mask_snapshot(self, snapshot: FrameMaskSnapshot | None) -> None:
+        if snapshot is not None:
+            self._mask_fill_value = int(snapshot.fill_value)
         if snapshot is None or not snapshot.enabled or not snapshot.has_geometry:
             self._committed_mask = None
             self._committed_mask_size = None
@@ -108,6 +166,27 @@ class FramePreviewWidget(QWidget):
         self._committed_overlay_pixmap = None
         if self._edit_mode is not None:
             self._ensure_draft_mask_for_current_source()
+        self._refresh_effective_pixmap()
+        self.update()
+
+    def set_background_snapshot(self, snapshot: BackgroundSnapshot | None) -> None:
+        previous_key = _background_snapshot_key(self._background_snapshot)
+        next_key = _background_snapshot_key(snapshot)
+        self._background_snapshot = snapshot
+        if previous_key == next_key:
+            return
+        self._refresh_effective_pixmap()
+        self.update()
+
+    def background_snapshot(self) -> BackgroundSnapshot | None:
+        return self._background_snapshot
+
+    def set_mask_fill_value(self, fill_value: int) -> None:
+        value = int(fill_value)
+        if value not in {0, 255}:
+            raise ValueError(f"Mask fill value must be 0 or 255; got {fill_value!r}.")
+        self._mask_fill_value = value
+        self._refresh_effective_pixmap()
         self.update()
 
     def clear_masks(self) -> None:
@@ -120,6 +199,7 @@ class FramePreviewWidget(QWidget):
         self._committed_overlay_pixmap = None
         self._draft_overlay_pixmap = None
         self.setMouseTracking(False)
+        self._refresh_effective_pixmap()
         self.update()
 
     def begin_mask_edit(self, mode: str) -> None:
@@ -149,6 +229,7 @@ class FramePreviewWidget(QWidget):
                 self._committed_mask = np.array(self._draft_mask, dtype=bool, copy=True)
                 self._committed_mask_size = (width, height)
                 self._committed_overlay_pixmap = None
+                self._refresh_effective_pixmap()
         self._edit_mode = None
         self._draft_mask = None
         self._draft_overlay_pixmap = None
@@ -417,6 +498,74 @@ class FramePreviewWidget(QWidget):
         width, height = source_size
         return self._committed_mask.shape == (height, width)
 
+    def _effective_manual_mask(self) -> np.ndarray | None:
+        if not self._committed_mask_matches_current_source():
+            return None
+        if self._committed_mask is None:
+            return None
+        return self._committed_mask
+
+    def _refresh_effective_pixmap(self) -> None:
+        if self._raw_pixmap is None or self._raw_pixmap.isNull():
+            self._pixmap = None
+            return
+        manual_mask = self._effective_manual_mask()
+        if manual_mask is None and not self._background_removal_matches_current_source():
+            self._pixmap = QPixmap(self._raw_pixmap)
+            return
+
+        raw_rgb = self._raw_rgb_array()
+        if raw_rgb is None:
+            self._pixmap = QPixmap(self._raw_pixmap)
+            return
+        source_h, source_w = int(raw_rgb.shape[0]), int(raw_rgb.shape[1])
+
+        background_mask: np.ndarray | None = None
+        raw_gray = self._raw_gray_array()
+        if raw_gray is not None:
+            background_result = compute_background_removal_mask(
+                raw_gray,
+                self._background_snapshot,
+            )
+            background_mask = background_result.mask
+
+        if manual_mask is None and background_mask is None:
+            self._pixmap = QPixmap(self._raw_pixmap)
+            return
+
+        combined_mask = combine_ignore_masks(
+            shape=(source_h, source_w),
+            manual_mask=manual_mask,
+            background_mask=background_mask,
+        )
+        effective_rgb = apply_fill_to_mask(
+            raw_rgb,
+            combined_mask,
+            fill_value=self._mask_fill_value,
+        )
+        self._pixmap = _rgb_array_to_pixmap(effective_rgb)
+
+    def _raw_rgb_array(self) -> np.ndarray | None:
+        if self._raw_rgb is None and self._raw_image is not None and not self._raw_image.isNull():
+            self._raw_rgb = _qimage_to_rgb_array(self._raw_image)
+        return self._raw_rgb
+
+    def _raw_gray_array(self) -> np.ndarray | None:
+        if self._raw_gray is None and self._raw_image is not None and not self._raw_image.isNull():
+            self._raw_gray = _qimage_to_gray_array(self._raw_image)
+        return self._raw_gray
+
+    def _background_removal_matches_current_source(self) -> bool:
+        snapshot = self._background_snapshot
+        source_size = self.source_image_size()
+        if snapshot is None or source_size is None:
+            return False
+        return (
+            bool(snapshot.captured)
+            and bool(snapshot.enabled)
+            and snapshot.dimensions_match(source_size[0], source_size[1])
+        )
+
     def _draw_brush_cursor(self, painter: QPainter) -> None:
         if self._edit_mode is None or self._cursor_source_xy is None:
             return
@@ -554,6 +703,56 @@ def _mask_overlay_pixmap(mask: np.ndarray, *, rgba: tuple[int, int, int, int]) -
         QImage.Format.Format_RGBA8888,
     ).copy()
     return QPixmap.fromImage(image)
+
+
+def _background_snapshot_key(
+    snapshot: BackgroundSnapshot | None,
+) -> tuple[int, bool, bool, int, int, int] | None:
+    if snapshot is None:
+        return None
+    return (
+        int(snapshot.revision),
+        bool(snapshot.captured),
+        bool(snapshot.enabled),
+        int(snapshot.threshold),
+        int(snapshot.width_px),
+        int(snapshot.height_px),
+    )
+
+
+def _qimage_to_rgb_array(image: QImage) -> np.ndarray:
+    rgb_image = image.convertToFormat(QImage.Format.Format_RGB888)
+    width = int(rgb_image.width())
+    height = int(rgb_image.height())
+    bytes_per_line = int(rgb_image.bytesPerLine())
+    buffer = rgb_image.bits()
+    array = np.frombuffer(buffer, dtype=np.uint8).reshape(height, bytes_per_line)
+    return np.array(array[:, : width * 3].reshape(height, width, 3), copy=True)
+
+
+def _qimage_to_gray_array(image: QImage) -> np.ndarray:
+    gray_image = image.convertToFormat(QImage.Format.Format_Grayscale8)
+    width = int(gray_image.width())
+    height = int(gray_image.height())
+    bytes_per_line = int(gray_image.bytesPerLine())
+    buffer = gray_image.bits()
+    array = np.frombuffer(buffer, dtype=np.uint8).reshape(height, bytes_per_line)
+    return np.array(array[:, :width], dtype=np.uint8, copy=True)
+
+
+def _rgb_array_to_pixmap(image: np.ndarray) -> QPixmap:
+    rgb = np.ascontiguousarray(np.asarray(image, dtype=np.uint8))
+    if rgb.ndim != 3 or rgb.shape[2] != 3:
+        raise ValueError(f"Expected RGB image with shape (H, W, 3), got {rgb.shape}.")
+    height, width = int(rgb.shape[0]), int(rgb.shape[1])
+    qimage = QImage(
+        rgb.data,
+        width,
+        height,
+        int(rgb.strides[0]),
+        QImage.Format.Format_RGB888,
+    ).copy()
+    return QPixmap.fromImage(qimage)
 
 
 __all__ = ["FrameMaskEditResult", "FramePreviewOverlay", "FramePreviewWidget"]

@@ -90,6 +90,24 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         )
         self.assertIsNotNone(self.window.findChild(QLabel, "mask_fill_value_label"))
 
+    def test_background_controls_exist(self) -> None:
+        _, QPushButton, _, _ = _gui_imports()
+        from PySide6.QtWidgets import QCheckBox, QLabel, QSpinBox
+
+        self.assertIsNotNone(
+            self.window.findChild(QPushButton, "capture_background_button")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QCheckBox, "enable_background_removal_checkbox")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QPushButton, "clear_background_button")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QSpinBox, "background_threshold_input")
+        )
+        self.assertIsNotNone(self.window.findChild(QLabel, "background_status_label"))
+
     def test_fill_checkbox_updates_label_and_mask_state_fill_value(self) -> None:
         from PySide6.QtWidgets import QCheckBox, QLabel
 
@@ -124,6 +142,78 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
 
         preview = self._preview_widget()
         self.assertTrue(_widget_has_pixmap(preview))
+
+    def test_capture_background_requires_inference_stopped(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+
+        self.window.start_inference_button.click()
+        self.window.capture_background_button.click()
+        _process_events(self.app)
+
+        self.assertFalse(self.window.background_state.get_snapshot().captured)
+        self.assertIn(
+            "Stop inference before capturing background",
+            self.window.log_panel.toPlainText(),
+        )
+
+    def test_capture_background_updates_status_and_preview_state(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+
+        self.window.capture_background_button.click()
+        _process_events(self.app)
+
+        snapshot = self.window.background_state.get_snapshot()
+        self.assertTrue(snapshot.captured)
+        self.assertEqual(snapshot.width_px, 80)
+        self.assertEqual(snapshot.height_px, 48)
+        self.assertEqual(self.window.background_status_label.text(), "Background: captured")
+        preview_snapshot = self._preview_widget().background_snapshot()
+        self.assertIsNotNone(preview_snapshot)
+        assert preview_snapshot is not None
+        self.assertEqual(preview_snapshot.revision, snapshot.revision)
+
+    def test_enable_background_removal_toggles_state(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        self.window.capture_background_button.click()
+        _process_events(self.app)
+
+        self.window.enable_background_removal_checkbox.setChecked(True)
+        _process_events(self.app)
+
+        self.assertTrue(self.window.background_state.get_snapshot().enabled)
+        self.assertEqual(self.window.background_status_label.text(), "Background: enabled")
+
+    def test_clear_background_resets_state_and_status(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        self.window.capture_background_button.click()
+        self.window.enable_background_removal_checkbox.setChecked(True)
+        _process_events(self.app)
+
+        self.window.clear_background_button.click()
+        _process_events(self.app)
+
+        snapshot = self.window.background_state.get_snapshot()
+        self.assertFalse(snapshot.captured)
+        self.assertFalse(snapshot.enabled)
+        self.assertFalse(self.window.enable_background_removal_checkbox.isChecked())
+        self.assertEqual(self.window.background_status_label.text(), "Background: not captured")
+
+    def test_background_threshold_control_updates_state(self) -> None:
+        from PySide6.QtWidgets import QSpinBox
+
+        threshold = self.window.findChild(QSpinBox, "background_threshold_input")
+        assert threshold is not None
+
+        threshold.setValue(42)
+        _process_events(self.app)
+
+        self.assertEqual(self.window.background_state.get_snapshot().threshold, 42)
 
     def test_frame_written_log_spam_is_suppressed(self) -> None:
         image_path = self._write_temp_frame_image()

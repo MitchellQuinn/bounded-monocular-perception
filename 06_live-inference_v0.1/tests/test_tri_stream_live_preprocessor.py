@@ -27,7 +27,7 @@ from interfaces import (  # noqa: E402
     RawImagePreprocessor,
 )
 from live_inference.frame_handoff import compute_frame_hash  # noqa: E402
-from live_inference.masking import FrameMaskState  # noqa: E402
+from live_inference.masking import BackgroundState, FrameMaskState  # noqa: E402
 from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
@@ -129,6 +129,19 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertFalse(metadata["frame_mask_applied"])
         self.assertIsNone(metadata["frame_mask_revision"])
         self.assertEqual(metadata["frame_mask_pixel_count"], 0)
+
+    def test_no_background_state_leaves_roi_locator_input_unchanged(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+
+        TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
 
     def test_mask_state_with_no_mask_leaves_roi_locator_input_unchanged(self) -> None:
         image_bytes = _fixture_image_bytes()
@@ -244,6 +257,122 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
                 model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
                 roi_locator=FakeRoiLocator(),
                 mask_state=mask_state,
+            ).prepare_model_inputs(
+                _request(image_bytes, image_path=frame_path),
+                image_bytes,
+            )
+
+            self.assertEqual(frame_path.read_bytes(), image_bytes)
+
+    def test_captured_but_disabled_background_does_not_alter_roi_locator_input(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        background_state = BackgroundState()
+        gray = _decode_gray(image_bytes)
+        background_state.capture_background(_background_matching_one_pixel(gray, 130, 220))
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
+        self.assertTrue(prepared.preprocessing_metadata["background_captured"])
+        self.assertFalse(prepared.preprocessing_metadata["background_removal_enabled"])
+        self.assertFalse(prepared.preprocessing_metadata["background_removal_applied"])
+
+    def test_enabled_background_applies_before_roi_locator(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        background_state = BackgroundState()
+        gray = _decode_gray(image_bytes)
+        background_state.capture_background(_background_matching_one_pixel(gray, 130, 220))
+        background_state.set_enabled(True)
+        background_state.set_threshold(25)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 255)
+        metadata = prepared.preprocessing_metadata
+        self.assertTrue(metadata["background_captured"])
+        self.assertTrue(metadata["background_removal_enabled"])
+        self.assertTrue(metadata["background_removal_applied"])
+        self.assertEqual(metadata["background_threshold"], 25)
+        self.assertEqual(metadata["background_remove_pixel_count"], 1)
+        self.assertEqual(metadata["combined_ignore_pixel_count"], 1)
+        self.assertEqual(metadata["frame_mask_fill_value"], 255)
+
+    def test_manual_mask_and_background_removal_combine_with_or(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+        manual_mask = np.zeros((300, 480), dtype=bool)
+        manual_mask[0, 0] = True
+        mask_state.commit_mask(manual_mask, 480, 300, 0)
+        background_state = BackgroundState()
+        gray = _decode_gray(image_bytes)
+        background_state.capture_background(_background_matching_one_pixel(gray, 130, 220))
+        background_state.set_enabled(True)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[0, 0]), 0)
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 0)
+        self.assertEqual(prepared.preprocessing_metadata["combined_ignore_pixel_count"], 2)
+
+    def test_background_size_mismatch_skips_removal_and_records_warning(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        background_state = BackgroundState()
+        background_state.capture_background(np.zeros((10, 10), dtype=np.uint8))
+        background_state.set_enabled(True)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
+        metadata = prepared.preprocessing_metadata
+        self.assertFalse(metadata["background_removal_applied"])
+        self.assertIn("background removal skipped", metadata["background_warning"])
+        self.assertTrue(
+            any("background removal skipped" in item for item in metadata["warnings"])
+        )
+
+    def test_background_removal_does_not_alter_latest_frame_on_disk(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        background_state = BackgroundState()
+        gray = _decode_gray(image_bytes)
+        background_state.capture_background(_background_matching_one_pixel(gray, 130, 220))
+        background_state.set_enabled(True)
+        with TemporaryDirectory() as tmp_dir:
+            frame_path = Path(tmp_dir) / "latest_frame.png"
+            frame_path.write_bytes(image_bytes)
+
+            TriStreamLivePreprocessor(
+                model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+                roi_locator=FakeRoiLocator(),
+                background_state=background_state,
             ).prepare_model_inputs(
                 _request(image_bytes, image_path=frame_path),
                 image_bytes,
@@ -503,6 +632,19 @@ def _fixture_image_bytes() -> bytes:
     if not ok:
         raise RuntimeError("Failed to encode fixture image")
     return encoded.tobytes()
+
+
+def _decode_gray(image_bytes: bytes) -> np.ndarray:
+    decoded = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if decoded is None:
+        raise RuntimeError("Failed to decode fixture image")
+    return decoded
+
+
+def _background_matching_one_pixel(gray: np.ndarray, y: int, x: int) -> np.ndarray:
+    background = np.where(gray < 128, 255, 0).astype(np.uint8)
+    background[int(y), int(x)] = int(gray[int(y), int(x)])
+    return background
 
 
 def _request(

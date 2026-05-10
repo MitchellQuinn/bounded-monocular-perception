@@ -150,6 +150,7 @@ class GuiAppCompositionTests(unittest.TestCase):
         self.assertEqual(records["engine_device"], "cpu")
         self.assertEqual(records["inference_poll_interval_ms"], 17)
         self.assertIs(records["preprocessor_mask_state"], context.frame_mask_state)
+        self.assertIs(records["preprocessor_background_state"], context.background_state)
 
     def test_real_camera_composition_uses_fake_real_camera_publisher(self) -> None:
         records: dict[str, Any] = {}
@@ -290,10 +291,12 @@ class _FakePreprocessor:
         model_manifest: object,
         roi_locator: _FakeRoiLocator,
         mask_state: object | None = None,
+        background_state: object | None = None,
     ) -> None:
         self.model_manifest = model_manifest
         self.roi_locator = roi_locator
         self.mask_state = mask_state
+        self.background_state = background_state
 
 
 class _FakeEngine:
@@ -416,13 +419,16 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
             model_manifest: object,
             roi_locator: _FakeRoiLocator,
             mask_state: object | None = None,
+            background_state: object | None = None,
         ) -> None:
             super().__init__(
                 model_manifest=model_manifest,
                 roi_locator=roi_locator,
                 mask_state=mask_state,
+                background_state=background_state,
             )
             records["preprocessor_mask_state"] = mask_state
+            records["preprocessor_background_state"] = background_state
 
     class RecordingEngine(_FakeEngine):
         def __init__(self, *, model_root: Path, model_manifest: object, device: str) -> None:

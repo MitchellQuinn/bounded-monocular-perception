@@ -9,6 +9,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from typing import Any
 
+import numpy as np
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -96,9 +98,138 @@ class FramePreviewWidgetTests(unittest.TestCase):
             self.assertIsNotNone(self.widget.pixmap())
             self.assertEqual(self.widget.source_image_size(), (80, 48))
 
+    def test_preview_renders_raw_frame_without_masks_or_background(self) -> None:
+        _, QPixmap, _, _ = _gui_imports()
+        self.widget.set_pixmap(QPixmap.fromImage(_image(20, 10)))
+
+        effective = self.widget.effective_preview_image()
+
+        self.assertIsNotNone(effective)
+        assert effective is not None
+        self.assertEqual(tuple(int(v) for v in effective[5, 10]), (40, 120, 200))
+
+    def test_preview_renders_background_removed_pixels_with_white_fill(self) -> None:
+        _, QPixmap, _, _ = _gui_imports()
+        from live_inference.masking import BackgroundSnapshot
+
+        self.widget.set_pixmap(QPixmap.fromImage(_image(20, 10)))
+        gray = self.widget.raw_source_gray()
+        assert gray is not None
+        self.widget.set_background_snapshot(
+            BackgroundSnapshot(
+                revision=1,
+                width_px=20,
+                height_px=10,
+                grayscale_background=gray,
+                enabled=True,
+                threshold=1,
+                captured_at_utc="2026-05-10T12:00:00Z",
+            )
+        )
+        self.widget.set_mask_fill_value(255)
+
+        effective = self.widget.effective_preview_image()
+
+        self.assertIsNotNone(effective)
+        assert effective is not None
+        self.assertEqual(tuple(int(v) for v in effective[5, 10]), (255, 255, 255))
+
+    def test_preview_renders_background_removed_pixels_with_black_fill(self) -> None:
+        _, QPixmap, _, _ = _gui_imports()
+        from live_inference.masking import BackgroundSnapshot
+
+        self.widget.set_pixmap(QPixmap.fromImage(_image(20, 10)))
+        gray = self.widget.raw_source_gray()
+        assert gray is not None
+        self.widget.set_background_snapshot(
+            BackgroundSnapshot(
+                revision=1,
+                width_px=20,
+                height_px=10,
+                grayscale_background=gray,
+                enabled=True,
+                threshold=1,
+                captured_at_utc="2026-05-10T12:00:00Z",
+            )
+        )
+        self.widget.set_mask_fill_value(0)
+
+        effective = self.widget.effective_preview_image()
+
+        self.assertIsNotNone(effective)
+        assert effective is not None
+        self.assertEqual(tuple(int(v) for v in effective[5, 10]), (0, 0, 0))
+
+    def test_changing_threshold_changes_effective_preview_result(self) -> None:
+        _, QPixmap, _, _ = _gui_imports()
+        from live_inference.masking import BackgroundSnapshot
+
+        self.widget.set_pixmap(QPixmap.fromImage(_image(20, 10)))
+        gray = self.widget.raw_source_gray()
+        assert gray is not None
+        background = np.clip(gray.astype(np.int16) + 10, 0, 255).astype(np.uint8)
+        self.widget.set_mask_fill_value(255)
+        self.widget.set_background_snapshot(
+            BackgroundSnapshot(
+                revision=1,
+                width_px=20,
+                height_px=10,
+                grayscale_background=background,
+                enabled=True,
+                threshold=5,
+                captured_at_utc="2026-05-10T12:00:00Z",
+            )
+        )
+        low_threshold = self.widget.effective_preview_image()
+
+        self.widget.set_background_snapshot(
+            BackgroundSnapshot(
+                revision=2,
+                width_px=20,
+                height_px=10,
+                grayscale_background=background,
+                enabled=True,
+                threshold=15,
+                captured_at_utc="2026-05-10T12:00:00Z",
+            )
+        )
+        high_threshold = self.widget.effective_preview_image()
+
+        self.assertIsNotNone(low_threshold)
+        self.assertIsNotNone(high_threshold)
+        assert low_threshold is not None
+        assert high_threshold is not None
+        self.assertEqual(tuple(int(v) for v in low_threshold[5, 10]), (40, 120, 200))
+        self.assertEqual(tuple(int(v) for v in high_threshold[5, 10]), (255, 255, 255))
+
     def test_draw_mode_click_adds_mask_pixels_to_draft_mask(self) -> None:
         _, QPixmap, _, _ = _gui_imports()
         self.widget.set_pixmap(QPixmap.fromImage(_image(200, 100)))
+        self.widget.set_brush_diameter_px(20)
+
+        self.widget.begin_mask_edit("draw")
+        _mouse_click(self.widget, 200, 200)
+
+        self.assertGreater(self.widget.draft_mask_pixel_count(), 0)
+
+    def test_manual_mask_editing_still_works_with_background_removal_enabled(self) -> None:
+        _, QPixmap, _, _ = _gui_imports()
+        from live_inference.masking import BackgroundSnapshot
+
+        self.widget.set_pixmap(QPixmap.fromImage(_image(200, 100)))
+        gray = self.widget.raw_source_gray()
+        assert gray is not None
+        self.widget.set_background_snapshot(
+            BackgroundSnapshot(
+                revision=1,
+                width_px=200,
+                height_px=100,
+                grayscale_background=gray,
+                enabled=True,
+                threshold=1,
+                captured_at_utc="2026-05-10T12:00:00Z",
+            )
+        )
         self.widget.set_brush_diameter_px(20)
 
         self.widget.begin_mask_edit("draw")
