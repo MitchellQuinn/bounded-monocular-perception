@@ -13,7 +13,15 @@ from typing import Any
 
 import interfaces.contracts as contracts
 from interfaces.contracts import InferenceRequest, PreparedInferenceInputs
-from live_inference.masking import FrameMaskSnapshot, FrameMaskState
+from live_inference.masking import (
+    BackgroundSnapshot,
+    BackgroundState,
+    FrameMaskSnapshot,
+    FrameMaskState,
+    apply_fill_to_mask,
+    combine_ignore_masks,
+    compute_background_removal_mask,
+)
 from live_inference.model_registry.model_manifest import (
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
@@ -95,6 +103,7 @@ class TriStreamLivePreprocessor:
         config: TriStreamPreprocessingConfig | None = None,
         runtime_parameter_revision_getter: Callable[[], int | None] | None = None,
         mask_state: FrameMaskState | None = None,
+        background_state: BackgroundState | None = None,
     ) -> None:
         if config is None:
             if model_manifest is None:
@@ -107,6 +116,7 @@ class TriStreamLivePreprocessor:
         self._roi_locator = roi_locator
         self._runtime_parameter_revision_getter = runtime_parameter_revision_getter
         self._mask_state = mask_state
+        self._background_state = background_state
 
     @property
     def config(self) -> TriStreamPreprocessingConfig:
@@ -119,14 +129,15 @@ class TriStreamLivePreprocessor:
     ) -> PreparedInferenceInputs:
         """Decode raw bytes and reproduce the v0.4 tri-stream preprocessing contract."""
         decoded_source_gray = _decode_image_bytes_to_grayscale(image_bytes)
-        source_gray, mask_metadata, roi_exclusion_mask = self._apply_frame_mask(
+        source_gray, mask_metadata, roi_exclusion_mask = self._apply_preprocessing_masks(
             decoded_source_gray
         )
         source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
         warnings = _hash_warnings(request, image_bytes)
-        mask_warning = mask_metadata.get("frame_mask_warning")
-        if mask_warning:
-            warnings.append(str(mask_warning))
+        for warning_key in ("frame_mask_warning", "background_warning"):
+            warning = mask_metadata.get(warning_key)
+            if warning:
+                warnings.append(str(warning))
 
         roi_location = self._locate_roi(
             source_gray,
@@ -287,49 +298,90 @@ class TriStreamLivePreprocessor:
             )
         return location
 
-    def _apply_frame_mask(
+    def _apply_preprocessing_masks(
         self,
         source_gray: np.ndarray,
     ) -> tuple[np.ndarray, dict[str, Any], np.ndarray | None]:
         source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
-        if self._mask_state is None:
-            return (
-                source_gray,
-                _frame_mask_metadata(
-                    snapshot=None,
-                    source_width_px=source_w,
-                    source_height_px=source_h,
-                    applied=False,
-                ),
-                None,
-            )
-
-        snapshot = self._mask_state.get_snapshot()
+        frame_snapshot = (
+            self._mask_state.get_snapshot() if self._mask_state is not None else None
+        )
+        background_snapshot = (
+            self._background_state.get_snapshot()
+            if self._background_state is not None
+            else None
+        )
+        fill_value = int(frame_snapshot.fill_value) if frame_snapshot is not None else 255
         metadata = _frame_mask_metadata(
-            snapshot=snapshot,
+            snapshot=frame_snapshot,
             source_width_px=source_w,
             source_height_px=source_h,
             applied=False,
+            fill_value=fill_value,
         )
-        if not snapshot.enabled or not snapshot.has_geometry or snapshot.pixel_count <= 0:
-            return source_gray, metadata, None
-
-        if not snapshot.dimensions_match(source_w, source_h):
-            warning = (
-                "frame mask skipped: mask size "
-                f"{(snapshot.width_px, snapshot.height_px)} does not match source image "
-                f"size {(source_w, source_h)}."
+        metadata.update(
+            _background_metadata(
+                snapshot=background_snapshot,
+                applied=False,
+                remove_pixel_count=0,
+                warning=None,
             )
-            metadata["frame_mask_warning"] = warning
+        )
+
+        manual_mask: np.ndarray | None = None
+        if (
+            frame_snapshot is not None
+            and frame_snapshot.enabled
+            and frame_snapshot.has_geometry
+            and frame_snapshot.pixel_count > 0
+        ):
+            if not frame_snapshot.dimensions_match(source_w, source_h):
+                warning = (
+                    "frame mask skipped: mask size "
+                    f"{(frame_snapshot.width_px, frame_snapshot.height_px)} "
+                    f"does not match source image size {(source_w, source_h)}."
+                )
+                metadata["frame_mask_warning"] = warning
+            else:
+                manual_mask = frame_snapshot.mask
+                metadata["frame_mask_applied"] = True
+
+        background_result = compute_background_removal_mask(source_gray, background_snapshot)
+        if background_result.warning:
+            metadata["background_warning"] = background_result.warning
+        metadata.update(
+            _background_metadata(
+                snapshot=background_snapshot,
+                applied=background_result.applied,
+                remove_pixel_count=background_result.pixel_count,
+                warning=background_result.warning,
+            )
+        )
+
+        combined_ignore_mask = combine_ignore_masks(
+            shape=(source_h, source_w),
+            manual_mask=manual_mask,
+            background_mask=background_result.mask,
+        )
+        combined_count = (
+            int(np.count_nonzero(combined_ignore_mask))
+            if combined_ignore_mask is not None
+            else 0
+        )
+        metadata["combined_ignore_pixel_count"] = combined_count
+        metadata["combined_ignore_excluded_from_roi_locator"] = False
+        if combined_ignore_mask is None:
             return source_gray, metadata, None
 
-        masked = np.array(source_gray, dtype=np.uint8, copy=True)
-        masked[snapshot.mask] = int(snapshot.fill_value)
-        metadata["frame_mask_applied"] = True
-        metadata["frame_mask_excluded_from_roi_locator"] = _locator_accepts_exclusion_mask(
-            self._roi_locator
+        masked = apply_fill_to_mask(
+            source_gray,
+            combined_ignore_mask,
+            fill_value=fill_value,
         )
-        return masked, metadata, snapshot.mask
+        excluded = _locator_accepts_exclusion_mask(self._roi_locator)
+        metadata["frame_mask_excluded_from_roi_locator"] = excluded
+        metadata["combined_ignore_excluded_from_roi_locator"] = excluded
+        return masked, metadata, combined_ignore_mask
 
     def _render_silhouette(
         self,
@@ -540,6 +592,7 @@ def _frame_mask_metadata(
     source_width_px: int,
     source_height_px: int,
     applied: bool,
+    fill_value: int | None = None,
 ) -> dict[str, Any]:
     if snapshot is None:
         return {
@@ -548,7 +601,7 @@ def _frame_mask_metadata(
             "frame_mask_width_px": None,
             "frame_mask_height_px": None,
             "frame_mask_pixel_count": 0,
-            "frame_mask_fill_value": None,
+            "frame_mask_fill_value": fill_value,
             "frame_mask_excluded_from_roi_locator": False,
         }
     return {
@@ -561,6 +614,34 @@ def _frame_mask_metadata(
         "frame_mask_source_width_px": int(source_width_px),
         "frame_mask_source_height_px": int(source_height_px),
         "frame_mask_excluded_from_roi_locator": False,
+    }
+
+
+def _background_metadata(
+    *,
+    snapshot: BackgroundSnapshot | None,
+    applied: bool,
+    remove_pixel_count: int,
+    warning: str | None,
+) -> dict[str, Any]:
+    if snapshot is None:
+        return {
+            "background_captured": False,
+            "background_removal_enabled": False,
+            "background_removal_applied": False,
+            "background_revision": None,
+            "background_threshold": None,
+            "background_remove_pixel_count": int(remove_pixel_count),
+            "background_warning": warning,
+        }
+    return {
+        "background_captured": bool(snapshot.captured),
+        "background_removal_enabled": bool(snapshot.enabled),
+        "background_removal_applied": bool(applied),
+        "background_revision": int(snapshot.revision) if snapshot.captured else None,
+        "background_threshold": int(snapshot.threshold),
+        "background_remove_pixel_count": int(remove_pixel_count),
+        "background_warning": warning,
     }
 
 

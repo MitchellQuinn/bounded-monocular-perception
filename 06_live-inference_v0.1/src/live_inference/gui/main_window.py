@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from enum import Enum
+from time import monotonic
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -24,7 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
-from live_inference.masking import FrameMaskState
+from live_inference.masking import (
+    DEFAULT_BACKGROUND_THRESHOLD,
+    BackgroundState,
+    FrameMaskState,
+)
 
 
 class LiveInferenceMainWindow(QMainWindow):
@@ -36,6 +41,7 @@ class LiveInferenceMainWindow(QMainWindow):
         camera_controller: object,
         inference_controller: object,
         mask_state: FrameMaskState | None = None,
+        background_state: BackgroundState | None = None,
         stop_wait_ms: int = 1000,
         parent: QWidget | None = None,
     ) -> None:
@@ -43,14 +49,21 @@ class LiveInferenceMainWindow(QMainWindow):
         self.camera_controller = camera_controller
         self.inference_controller = inference_controller
         self.mask_state = mask_state or FrameMaskState()
+        self.background_state = background_state or BackgroundState()
         self._stop_wait_ms = int(stop_wait_ms)
         self._frames_written_count = 0
         self._frames_processed_count = 0
         self._duplicate_skipped_count = 0
         self._frame_written_summary_interval = 100
+        self._preview_update_interval_seconds = 1.0 / 15.0
+        self._background_preview_update_interval_seconds = 1.0 / 5.0
+        self._last_preview_update_seconds = 0.0
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
         self._last_result_warning_logged: str | None = None
+        self._last_inference_state_text = ""
+        self._inference_start_requested = False
+        self._preview_background_revision: int | None = None
 
         self.setWindowTitle("Live Inference")
         self._build_ui()
@@ -70,6 +83,7 @@ class LiveInferenceMainWindow(QMainWindow):
             QSizePolicy.Policy.Expanding,
         )
         self.frame_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self._apply_background_snapshot_to_preview(self.background_state.get_snapshot())
         preview_layout.addWidget(self.frame_preview_widget, stretch=1)
         root_layout.addLayout(preview_layout, stretch=3)
 
@@ -134,6 +148,37 @@ class LiveInferenceMainWindow(QMainWindow):
         mask_layout.addWidget(self.mask_fill_white_checkbox, 4, 0)
         mask_layout.addWidget(self.mask_fill_value_label, 4, 1)
         panel_layout.addWidget(mask_group)
+
+        background_group = QGroupBox("Background")
+        background_layout = QGridLayout(background_group)
+        self.capture_background_button = QPushButton("Capture Background")
+        self.capture_background_button.setObjectName("capture_background_button")
+        self.enable_background_removal_checkbox = QCheckBox("Enable Background Removal")
+        self.enable_background_removal_checkbox.setObjectName(
+            "enable_background_removal_checkbox"
+        )
+        self.clear_background_button = QPushButton("Clear Background")
+        self.clear_background_button.setObjectName("clear_background_button")
+        self.background_threshold_input = QSpinBox()
+        self.background_threshold_input.setObjectName("background_threshold_input")
+        self.background_threshold_input.setRange(0, 255)
+        self.background_threshold_input.setSingleStep(1)
+        self.background_threshold_input.setValue(
+            self.background_state.get_snapshot().threshold
+            if self.background_state.get_snapshot().threshold is not None
+            else DEFAULT_BACKGROUND_THRESHOLD
+        )
+        self.background_status_label = QLabel("Background: not captured")
+        self.background_status_label.setObjectName("background_status_label")
+        self.background_status_label.setWordWrap(True)
+
+        background_layout.addWidget(self.capture_background_button, 0, 0, 1, 2)
+        background_layout.addWidget(self.enable_background_removal_checkbox, 1, 0, 1, 2)
+        background_layout.addWidget(QLabel("Threshold:"), 2, 0)
+        background_layout.addWidget(self.background_threshold_input, 2, 1)
+        background_layout.addWidget(self.clear_background_button, 3, 0, 1, 2)
+        background_layout.addWidget(self.background_status_label, 4, 0, 1, 2)
+        panel_layout.addWidget(background_group)
 
         status_grid = QGridLayout()
         status_grid.setColumnStretch(1, 1)
@@ -218,6 +263,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         self._set_mask_button_state(None)
+        self._sync_background_controls_from_state()
 
     def _add_readout(
         self,
@@ -250,6 +296,14 @@ class LiveInferenceMainWindow(QMainWindow):
         self.clear_mask_button.clicked.connect(self.clear_mask)
         self.mask_brush_diameter_input.valueChanged.connect(self._on_brush_diameter_changed)
         self.mask_fill_white_checkbox.toggled.connect(self._on_mask_fill_toggled)
+        self.capture_background_button.clicked.connect(self.capture_background)
+        self.enable_background_removal_checkbox.toggled.connect(
+            self._on_background_enabled_toggled
+        )
+        self.clear_background_button.clicked.connect(self.clear_background)
+        self.background_threshold_input.valueChanged.connect(
+            self._on_background_threshold_changed
+        )
 
     def _connect_worker_signals(self) -> None:
         self._connect_signals(
@@ -297,6 +351,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def start_inference(self) -> None:
         self._call_controller(self.inference_controller, "start", "Inference start")
+        self._inference_start_requested = True
 
     def stop_inference(self) -> None:
         self._call_controller(
@@ -304,6 +359,7 @@ class LiveInferenceMainWindow(QMainWindow):
             "request_stop",
             "Inference stop",
         )
+        self._inference_start_requested = False
 
     def stop_all(self) -> None:
         self._call_controller(self.camera_controller, "request_stop", "Camera stop")
@@ -312,6 +368,7 @@ class LiveInferenceMainWindow(QMainWindow):
             "request_stop",
             "Inference stop",
         )
+        self._inference_start_requested = False
 
     def start_draw_mask(self) -> None:
         self.frame_preview_widget.set_brush_diameter_px(
@@ -384,9 +441,123 @@ class LiveInferenceMainWindow(QMainWindow):
             "INFO",
             f"Mask fill value changed: {fill_name} ({fill_value}), revision={revision}.",
         )
+        self.frame_preview_widget.set_mask_fill_value(fill_value)
 
     def _current_mask_fill_value(self) -> int:
         return 255 if self.mask_fill_white_checkbox.isChecked() else 0
+
+    def capture_background(self) -> None:
+        if self._inference_is_running_or_requested():
+            message = "Stop inference before capturing background"
+            self._append_log("WARNING", message)
+            self._sync_background_controls_from_state()
+            return
+
+        gray = self.frame_preview_widget.raw_source_gray()
+        if gray is None:
+            self._append_log(
+                "WARNING",
+                "Cannot capture background: no preview frame is loaded.",
+            )
+            self._sync_background_controls_from_state()
+            return
+
+        revision = self.background_state.capture_background(gray)
+        snapshot = self.background_state.get_snapshot()
+        self._apply_background_snapshot_to_preview(snapshot)
+        self._sync_background_controls_from_state(snapshot)
+        self._append_log(
+            "INFO",
+            "Background captured: "
+            f"revision={revision} size={snapshot.width_px}x{snapshot.height_px}.",
+        )
+
+    def clear_background(self) -> None:
+        revision = self.background_state.clear()
+        snapshot = self.background_state.get_snapshot()
+        self._apply_background_snapshot_to_preview(snapshot)
+        self._sync_background_controls_from_state(snapshot)
+        self._append_log("INFO", f"Background cleared: revision={revision}.")
+
+    def _on_background_enabled_toggled(self, checked: bool) -> None:
+        revision = self.background_state.set_enabled(bool(checked))
+        snapshot = self.background_state.get_snapshot()
+        self._apply_background_snapshot_to_preview(snapshot)
+        self._sync_background_controls_from_state(snapshot)
+        state = "enabled" if checked else "disabled"
+        self._append_log("INFO", f"Background removal {state}: revision={revision}.")
+
+    def _on_background_threshold_changed(self, value: int) -> None:
+        self.background_state.set_threshold(int(value))
+        snapshot = self.background_state.get_snapshot()
+        self._apply_background_snapshot_to_preview(snapshot)
+        self._sync_background_controls_from_state(snapshot)
+
+    def _sync_background_controls_from_state(self, snapshot: object | None = None) -> None:
+        if snapshot is None:
+            snapshot = self.background_state.get_snapshot()
+        self.enable_background_removal_checkbox.blockSignals(True)
+        self.enable_background_removal_checkbox.setChecked(bool(snapshot.enabled))
+        self.enable_background_removal_checkbox.blockSignals(False)
+        self.background_threshold_input.blockSignals(True)
+        self.background_threshold_input.setValue(int(snapshot.threshold))
+        self.background_threshold_input.blockSignals(False)
+        self.background_status_label.setText(self._background_status_text(snapshot))
+
+    def _apply_background_snapshot_to_preview(self, snapshot: object) -> None:
+        self.frame_preview_widget.set_background_snapshot(snapshot)
+        self._preview_background_revision = int(getattr(snapshot, "revision", 0))
+
+    def _sync_preview_background_if_changed(self) -> None:
+        revision = self._background_revision()
+        if self._preview_background_revision == revision:
+            return
+        snapshot = self.background_state.get_snapshot()
+        self._apply_background_snapshot_to_preview(snapshot)
+        self._sync_background_controls_from_state(snapshot)
+
+    def _background_revision(self) -> int:
+        revision = getattr(self.background_state, "revision", None)
+        if callable(revision):
+            try:
+                return int(revision())
+            except Exception as exc:
+                self._append_log(
+                    "WARNING",
+                    f"Background revision check failed: {exc}",
+                )
+        return int(getattr(self.background_state.get_snapshot(), "revision", 0))
+
+    def _background_status_text(self, snapshot: object) -> str:
+        captured = bool(getattr(snapshot, "captured", False))
+        if not captured:
+            return "Background: not captured"
+        current_size = self.frame_preview_widget.source_image_size()
+        captured_size = (
+            int(getattr(snapshot, "width_px", 0)),
+            int(getattr(snapshot, "height_px", 0)),
+        )
+        if bool(getattr(snapshot, "enabled", False)):
+            if current_size is not None and current_size != captured_size:
+                return "Background: size mismatch"
+            return "Background: enabled"
+        return "Background: captured"
+
+    def _inference_is_running_or_requested(self) -> bool:
+        is_running = getattr(self.inference_controller, "is_running", None)
+        if callable(is_running):
+            try:
+                if bool(is_running()):
+                    return True
+            except Exception as exc:
+                self._append_log(
+                    "WARNING",
+                    f"Inference running-state check failed: {exc}",
+                )
+        if self._inference_start_requested:
+            return True
+        state = self._last_inference_state_text.strip().lower()
+        return state in {"starting", "running", "stopping"}
 
     def _set_mask_button_state(self, edit_mode: str | None) -> None:
         self.draw_mask_button.setEnabled(edit_mode != "draw")
@@ -422,7 +593,9 @@ class LiveInferenceMainWindow(QMainWindow):
         self._frames_written_count += 1
         self.frames_written_value.setText(str(self._frames_written_count))
         path = _payload_value(frame, "image_path")
-        self._display_frame_preview(path)
+        if self._should_update_frame_preview():
+            self._display_frame_preview(path)
+            self._last_preview_update_seconds = monotonic()
         if (
             self._frame_written_summary_interval > 0
             and self._frames_written_count % self._frame_written_summary_interval == 0
@@ -443,8 +616,29 @@ class LiveInferenceMainWindow(QMainWindow):
                 f"Frame preview unavailable: could not load image path={path}",
             )
             return
+        self._sync_preview_background_if_changed()
+
+    def _should_update_frame_preview(self) -> bool:
+        now = monotonic()
+        interval_seconds = self._current_preview_update_interval_seconds()
+        if now - self._last_preview_update_seconds < interval_seconds:
+            return False
+        return True
+
+    def _current_preview_update_interval_seconds(self) -> float:
+        snapshot = self.frame_preview_widget.background_snapshot()
+        if (
+            snapshot is not None
+            and bool(getattr(snapshot, "captured", False))
+            and bool(getattr(snapshot, "enabled", False))
+        ):
+            return self._background_preview_update_interval_seconds
+        return self._preview_update_interval_seconds
 
     def _on_inference_status_changed(self, status: object) -> None:
+        self._last_inference_state_text = _enum_text(_payload_value(status, "state"))
+        if self._last_inference_state_text.lower() in {"stopped", "error"}:
+            self._inference_start_requested = False
         self.inference_status_value.setText(_status_display_text(status))
         counters = _payload_value(status, "counters")
         frames_processed = _counter_int(counters, "frames_processed")
@@ -539,7 +733,7 @@ class LiveInferenceMainWindow(QMainWindow):
         warnings = _sequence_payload(_payload_value(result, "warnings"))
         for warning in warnings:
             text = str(warning)
-            if "frame mask skipped" not in text:
+            if "frame mask skipped" not in text and "background removal skipped" not in text:
                 continue
             if text == self._last_result_warning_logged:
                 return

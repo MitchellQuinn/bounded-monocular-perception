@@ -40,6 +40,7 @@ class LiveInferenceGuiContext:
     distance_orientation_device: str
     roi_fcn_device: str
     frame_mask_state: object
+    background_state: object
 
 
 @dataclass(frozen=True)
@@ -98,10 +99,11 @@ def build_live_inference_gui_context(
 ) -> LiveInferenceGuiContext:
     """Build the selected camera to tri-stream inference pipeline."""
     deps = (dependency_loader or _load_runtime_dependencies)()
-    from live_inference.masking import FrameMaskState  # noqa: PLC0415
+    from live_inference.masking import BackgroundState, FrameMaskState  # noqa: PLC0415
 
     resolved_camera_source = _camera_source(camera_source)
     frame_mask_state = FrameMaskState()
+    background_state = BackgroundState()
     project_root = _live_project_root()
     resolved_selection_path = _resolve_path(
         model_selection_path or selection_path or default_model_selection_path()
@@ -189,6 +191,7 @@ def build_live_inference_gui_context(
         model_manifest=manifest,
         roi_locator=roi_locator,
         mask_state=frame_mask_state,
+        background_state=background_state,
     )
     engine = deps.torch_tri_stream_inference_engine_cls(
         model_root=selection.distance_orientation_root,
@@ -214,6 +217,7 @@ def build_live_inference_gui_context(
         distance_orientation_device=distance_orientation_device,
         roi_fcn_device=roi_fcn_device,
         frame_mask_state=frame_mask_state,
+        background_state=background_state,
     )
 
 
@@ -258,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
             camera_controller=context.camera_controller,
             inference_controller=context.inference_controller,
             mask_state=context.frame_mask_state,
+            background_state=context.background_state,
         )
         app.aboutToQuit.connect(window.stop_all)
         window.resize(960, 600)
