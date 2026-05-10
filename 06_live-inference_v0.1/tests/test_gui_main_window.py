@@ -29,6 +29,9 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             inference_controller=self.inference_controller,
             stop_wait_ms=0,
         )
+        self.window.resize(900, 600)
+        self.window.show()
+        _process_events(self.app)
 
     def tearDown(self) -> None:
         self.window.hide()
@@ -48,6 +51,58 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             "stop_all_button",
         ):
             self.assertIsNotNone(self.window.findChild(QPushButton, object_name))
+
+    def test_right_side_control_panel_contains_camera_and_inference_buttons(self) -> None:
+        _, QPushButton, _, _ = _gui_imports()
+        from PySide6.QtWidgets import QWidget
+
+        panel = self.window.findChild(QWidget, "right_control_panel")
+        self.assertIsNotNone(panel)
+        assert panel is not None
+        for object_name in (
+            "start_camera_button",
+            "stop_camera_button",
+            "start_inference_button",
+            "stop_inference_button",
+            "stop_all_button",
+        ):
+            button = self.window.findChild(QPushButton, object_name)
+            self.assertIsNotNone(button)
+            self.assertTrue(_is_descendant(button, panel))
+
+    def test_mask_controls_exist(self) -> None:
+        _, QPushButton, _, _ = _gui_imports()
+        from PySide6.QtWidgets import QCheckBox, QLabel, QSpinBox
+
+        for object_name in (
+            "draw_mask_button",
+            "apply_mask_button",
+            "erase_mask_button",
+            "apply_erase_button",
+            "clear_mask_button",
+        ):
+            self.assertIsNotNone(self.window.findChild(QPushButton, object_name))
+        self.assertIsNotNone(
+            self.window.findChild(QSpinBox, "mask_brush_diameter_input")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QCheckBox, "mask_fill_white_checkbox")
+        )
+        self.assertIsNotNone(self.window.findChild(QLabel, "mask_fill_value_label"))
+
+    def test_fill_checkbox_updates_label_and_mask_state_fill_value(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QLabel
+
+        checkbox = self.window.findChild(QCheckBox, "mask_fill_white_checkbox")
+        label = self.window.findChild(QLabel, "mask_fill_value_label")
+        assert checkbox is not None
+        assert label is not None
+
+        checkbox.setChecked(False)
+        _process_events(self.app)
+
+        self.assertEqual(label.text(), "Mask fill: Black (0)")
+        self.assertEqual(self.window.mask_state.get_snapshot().fill_value, 0)
 
     def test_main_window_has_image_preview_widget(self) -> None:
         preview = self._preview_widget()
@@ -69,6 +124,18 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
 
         preview = self._preview_widget()
         self.assertTrue(_widget_has_pixmap(preview))
+
+    def test_frame_written_log_spam_is_suppressed(self) -> None:
+        image_path = self._write_temp_frame_image()
+
+        for _ in range(3):
+            self.camera_controller.signals.frame_written.emit(
+                _FramePayload(image_path=image_path)
+            )
+        _process_events(self.app)
+
+        self.assertEqual(self.window.frames_written_value.text(), "3")
+        self.assertNotIn("Frame written:", self.window.log_panel.toPlainText())
 
     def test_frame_written_with_missing_image_path_logs_warning_without_crashing(self) -> None:
         missing_path = Path(tempfile.mkdtemp()) / "missing-frame.png"
@@ -103,6 +170,63 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(self.window.inference_time_value.text(), "8.0 ms")
         self.assertEqual(self.window.preprocessing_time_value.text(), "3.0 ms")
         self.assertEqual(self.window.total_time_value.text(), "11.0 ms")
+
+    def test_clicking_draw_mask_enables_preview_draw_mode(self) -> None:
+        self.window.draw_mask_button.click()
+        _process_events(self.app)
+
+        preview = self._preview_widget()
+        self.assertTrue(preview.is_mask_editing())
+        self.assertEqual(preview.mask_edit_mode(), "draw")
+
+    def test_clicking_stop_apply_commits_mask(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+
+        self.window.mask_brush_diameter_input.setValue(20)
+        self.window.draw_mask_button.click()
+        _mouse_click(self._preview_widget(), 450, 300)
+        self.window.apply_mask_button.click()
+        _process_events(self.app)
+
+        snapshot = self.window.mask_state.get_snapshot()
+        self.assertTrue(snapshot.enabled)
+        self.assertGreater(snapshot.pixel_count, 0)
+        self.assertIn("Mask committed", self.window.log_panel.toPlainText())
+
+    def test_clicking_erase_and_apply_subtraction_commits_erased_mask(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+        self.window.mask_brush_diameter_input.setValue(40)
+        self.window.draw_mask_button.click()
+        _mouse_click(self._preview_widget(), 450, 300)
+        self.window.apply_mask_button.click()
+        before = self.window.mask_state.get_snapshot().pixel_count
+
+        self.window.erase_mask_button.click()
+        _mouse_click(self._preview_widget(), 450, 300)
+        self.window.apply_erase_button.click()
+        _process_events(self.app)
+
+        after = self.window.mask_state.get_snapshot().pixel_count
+        self.assertLess(after, before)
+
+    def test_clear_mask_clears_committed_and_draft_display(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+        self.window.mask_brush_diameter_input.setValue(20)
+        self.window.draw_mask_button.click()
+        _mouse_click(self._preview_widget(), 450, 300)
+        self.window.apply_mask_button.click()
+
+        self.window.clear_mask_button.click()
+        _process_events(self.app)
+
+        self.assertFalse(self.window.mask_state.get_snapshot().enabled)
+        self.assertEqual(self._preview_widget().committed_mask_pixel_count(), 0)
 
     def test_start_camera_button_calls_camera_controller_start(self) -> None:
         self.window.start_camera_button.click()
@@ -395,6 +519,23 @@ def _process_events(app: object) -> None:
 def _widget_has_pixmap(widget: object) -> bool:
     pixmap = widget.pixmap()
     return pixmap is not None and not pixmap.isNull()
+
+
+def _is_descendant(child: object, ancestor: object) -> bool:
+    current = child
+    while current is not None:
+        if current is ancestor:
+            return True
+        parent = getattr(current, "parentWidget", lambda: None)()
+        current = parent
+    return False
+
+
+def _mouse_click(widget: Any, x: int, y: int) -> None:
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    QTest.mouseClick(widget, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(x, y))
 
 
 def _imported_roots(module_path: Path) -> set[str]:

@@ -9,18 +9,22 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
+from live_inference.masking import FrameMaskState
 
 
 class LiveInferenceMainWindow(QMainWindow):
@@ -31,18 +35,22 @@ class LiveInferenceMainWindow(QMainWindow):
         *,
         camera_controller: object,
         inference_controller: object,
+        mask_state: FrameMaskState | None = None,
         stop_wait_ms: int = 1000,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.camera_controller = camera_controller
         self.inference_controller = inference_controller
+        self.mask_state = mask_state or FrameMaskState()
         self._stop_wait_ms = int(stop_wait_ms)
         self._frames_written_count = 0
         self._frames_processed_count = 0
         self._duplicate_skipped_count = 0
+        self._frame_written_summary_interval = 100
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
+        self._last_result_warning_logged: str | None = None
 
         self.setWindowTitle("Live Inference")
         self._build_ui()
@@ -51,9 +59,26 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget(self)
-        root_layout = QVBoxLayout(central)
+        root_layout = QHBoxLayout(central)
 
-        controls_layout = QHBoxLayout()
+        preview_layout = QVBoxLayout()
+        self.frame_preview_widget = FramePreviewWidget()
+        self.frame_preview_widget.setObjectName("frame_preview_widget")
+        self.frame_preview_widget.setMinimumSize(320, 240)
+        self.frame_preview_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.frame_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        preview_layout.addWidget(self.frame_preview_widget, stretch=1)
+        root_layout.addLayout(preview_layout, stretch=3)
+
+        self.right_control_panel = QWidget()
+        self.right_control_panel.setObjectName("right_control_panel")
+        panel_layout = QVBoxLayout(self.right_control_panel)
+
+        controls_group = QGroupBox("Controls")
+        controls_layout = QVBoxLayout(controls_group)
         self.start_camera_button = QPushButton("Start Camera")
         self.start_camera_button.setObjectName("start_camera_button")
         self.stop_camera_button = QPushButton("Stop Camera")
@@ -73,17 +98,42 @@ class LiveInferenceMainWindow(QMainWindow):
             self.stop_all_button,
         ):
             controls_layout.addWidget(button)
-        controls_layout.addStretch(1)
-        root_layout.addLayout(controls_layout)
+        panel_layout.addWidget(controls_group)
 
-        self.frame_preview_widget = FramePreviewWidget()
-        self.frame_preview_widget.setObjectName("frame_preview_widget")
-        self.frame_preview_widget.setMinimumSize(320, 240)
-        self.frame_preview_widget.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Expanding,
-        )
-        root_layout.addWidget(self.frame_preview_widget, stretch=2)
+        mask_group = QGroupBox("Mask")
+        mask_layout = QGridLayout(mask_group)
+        self.draw_mask_button = QPushButton("Draw Mask")
+        self.draw_mask_button.setObjectName("draw_mask_button")
+        self.apply_mask_button = QPushButton("Stop Mask / Apply Mask")
+        self.apply_mask_button.setObjectName("apply_mask_button")
+        self.erase_mask_button = QPushButton("Erase Mask")
+        self.erase_mask_button.setObjectName("erase_mask_button")
+        self.apply_erase_button = QPushButton("Apply Erase")
+        self.apply_erase_button.setObjectName("apply_erase_button")
+        self.clear_mask_button = QPushButton("Clear Mask")
+        self.clear_mask_button.setObjectName("clear_mask_button")
+        self.mask_brush_diameter_input = QSpinBox()
+        self.mask_brush_diameter_input.setObjectName("mask_brush_diameter_input")
+        self.mask_brush_diameter_input.setRange(1, 1000)
+        self.mask_brush_diameter_input.setSingleStep(5)
+        self.mask_brush_diameter_input.setValue(100)
+        self.mask_brush_diameter_input.setSuffix(" px")
+        self.mask_fill_white_checkbox = QCheckBox("White")
+        self.mask_fill_white_checkbox.setObjectName("mask_fill_white_checkbox")
+        self.mask_fill_white_checkbox.setChecked(True)
+        self.mask_fill_value_label = QLabel("Mask fill: White (255)")
+        self.mask_fill_value_label.setObjectName("mask_fill_value_label")
+
+        mask_layout.addWidget(self.draw_mask_button, 0, 0)
+        mask_layout.addWidget(self.apply_mask_button, 0, 1)
+        mask_layout.addWidget(self.erase_mask_button, 1, 0)
+        mask_layout.addWidget(self.apply_erase_button, 1, 1)
+        mask_layout.addWidget(self.clear_mask_button, 2, 0, 1, 2)
+        mask_layout.addWidget(QLabel("Brush diameter px:"), 3, 0)
+        mask_layout.addWidget(self.mask_brush_diameter_input, 3, 1)
+        mask_layout.addWidget(self.mask_fill_white_checkbox, 4, 0)
+        mask_layout.addWidget(self.mask_fill_value_label, 4, 1)
+        panel_layout.addWidget(mask_group)
 
         status_grid = QGridLayout()
         status_grid.setColumnStretch(1, 1)
@@ -157,15 +207,17 @@ class LiveInferenceMainWindow(QMainWindow):
             object_name="debug_artifacts_value",
         )
         self.debug_artifacts_value.setWordWrap(True)
-        root_layout.addLayout(status_grid)
+        panel_layout.addLayout(status_grid)
 
         self.log_panel = QPlainTextEdit()
         self.log_panel.setObjectName("log_panel")
         self.log_panel.setReadOnly(True)
         self.log_panel.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        root_layout.addWidget(self.log_panel, stretch=1)
+        panel_layout.addWidget(self.log_panel, stretch=1)
+        root_layout.addWidget(self.right_control_panel, stretch=1)
 
         self.setCentralWidget(central)
+        self._set_mask_button_state(None)
 
     def _add_readout(
         self,
@@ -191,6 +243,13 @@ class LiveInferenceMainWindow(QMainWindow):
         self.start_inference_button.clicked.connect(self.start_inference)
         self.stop_inference_button.clicked.connect(self.stop_inference)
         self.stop_all_button.clicked.connect(self.stop_all)
+        self.draw_mask_button.clicked.connect(self.start_draw_mask)
+        self.apply_mask_button.clicked.connect(self.apply_draw_mask)
+        self.erase_mask_button.clicked.connect(self.start_erase_mask)
+        self.apply_erase_button.clicked.connect(self.apply_erase_mask)
+        self.clear_mask_button.clicked.connect(self.clear_mask)
+        self.mask_brush_diameter_input.valueChanged.connect(self._on_brush_diameter_changed)
+        self.mask_fill_white_checkbox.toggled.connect(self._on_mask_fill_toggled)
 
     def _connect_worker_signals(self) -> None:
         self._connect_signals(
@@ -254,6 +313,88 @@ class LiveInferenceMainWindow(QMainWindow):
             "Inference stop",
         )
 
+    def start_draw_mask(self) -> None:
+        self.frame_preview_widget.set_brush_diameter_px(
+            self.mask_brush_diameter_input.value()
+        )
+        self.frame_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self.frame_preview_widget.begin_mask_edit("draw")
+        self._set_mask_button_state("draw")
+
+    def apply_draw_mask(self) -> None:
+        self._commit_preview_mask("mask")
+
+    def start_erase_mask(self) -> None:
+        self.frame_preview_widget.set_brush_diameter_px(
+            self.mask_brush_diameter_input.value()
+        )
+        self.frame_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self.frame_preview_widget.begin_mask_edit("erase")
+        self._set_mask_button_state("erase")
+
+    def apply_erase_mask(self) -> None:
+        self._commit_preview_mask("erase")
+
+    def clear_mask(self) -> None:
+        revision = self.mask_state.clear()
+        self.frame_preview_widget.clear_masks()
+        self._set_mask_button_state(None)
+        self._append_log("INFO", f"Mask cleared: revision={revision}.")
+
+    def _commit_preview_mask(self, edit_label: str) -> None:
+        result = self.frame_preview_widget.finish_mask_edit(commit=True)
+        self._set_mask_button_state(None)
+        if result is None:
+            self._append_log(
+                "WARNING",
+                f"Could not apply {edit_label}: no preview frame is loaded.",
+            )
+            return
+        revision = self.mask_state.commit_mask(
+            result.mask,
+            width_px=result.width_px,
+            height_px=result.height_px,
+            fill_value=self._current_mask_fill_value(),
+        )
+        snapshot = self.mask_state.get_snapshot()
+        self.frame_preview_widget.set_committed_mask_snapshot(snapshot)
+        self._append_log(
+            "INFO",
+            "Mask committed: "
+            f"revision={revision} "
+            f"size={result.width_px}x{result.height_px} "
+            f"pixels={snapshot.pixel_count} "
+            f"fill={snapshot.fill_value}.",
+        )
+
+    def _on_brush_diameter_changed(self, value: int) -> None:
+        self.frame_preview_widget.set_brush_diameter_px(int(value))
+
+    def _on_mask_fill_toggled(self, checked: bool) -> None:
+        fill_value = 255 if checked else 0
+        fill_name = "White" if checked else "Black"
+        self.mask_fill_value_label.setText(f"Mask fill: {fill_name} ({fill_value})")
+        previous = self.mask_state.get_snapshot()
+        revision = self.mask_state.set_fill_value(fill_value)
+        if previous.enabled:
+            self.frame_preview_widget.set_committed_mask_snapshot(
+                self.mask_state.get_snapshot()
+            )
+        self._append_log(
+            "INFO",
+            f"Mask fill value changed: {fill_name} ({fill_value}), revision={revision}.",
+        )
+
+    def _current_mask_fill_value(self) -> int:
+        return 255 if self.mask_fill_white_checkbox.isChecked() else 0
+
+    def _set_mask_button_state(self, edit_mode: str | None) -> None:
+        self.draw_mask_button.setEnabled(edit_mode != "draw")
+        self.apply_mask_button.setEnabled(edit_mode == "draw")
+        self.erase_mask_button.setEnabled(edit_mode != "erase")
+        self.apply_erase_button.setEnabled(edit_mode == "erase")
+        self.clear_mask_button.setEnabled(True)
+
     def _call_controller(
         self,
         controller: object,
@@ -282,19 +423,14 @@ class LiveInferenceMainWindow(QMainWindow):
         self.frames_written_value.setText(str(self._frames_written_count))
         path = _payload_value(frame, "image_path")
         self._display_frame_preview(path)
-        frame_hash = _hash_value(_payload_value(frame, "frame_hash"))
-        timestamp = (
-            _payload_value(frame, "completed_at_utc")
-            or _payload_value(_payload_value(frame, "metadata"), "written_at_utc")
-            or "n/a"
-        )
-        self._append_log(
-            "INFO",
-            "Frame written: "
-            f"path={_text(path, default='n/a')} "
-            f"hash={_text(frame_hash, default='n/a')} "
-            f"time={_text(timestamp, default='n/a')}",
-        )
+        if (
+            self._frame_written_summary_interval > 0
+            and self._frames_written_count % self._frame_written_summary_interval == 0
+        ):
+            self._append_log(
+                "INFO",
+                f"Frames written: {self._frames_written_count} latest={_text(path, default='n/a')}",
+            )
 
     def _display_frame_preview(self, path: object | None) -> None:
         if path is None:
@@ -361,6 +497,7 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         self._update_preview_overlay(result)
         self._update_debug_artifact_paths(result)
+        self._log_result_warnings(result)
 
     def _on_debug_image_ready(self, image: object) -> None:
         image_kind = _text(_payload_value(image, "image_kind"), default="debug")
@@ -397,6 +534,17 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         self.debug_artifacts_value.setText(summary)
         self._append_log("INFO", f"Debug artifacts: {summary}")
+
+    def _log_result_warnings(self, result: object) -> None:
+        warnings = _sequence_payload(_payload_value(result, "warnings"))
+        for warning in warnings:
+            text = str(warning)
+            if "frame mask skipped" not in text:
+                continue
+            if text == self._last_result_warning_logged:
+                return
+            self._last_result_warning_logged = text
+            self._append_log("WARNING", text)
 
     def _on_inference_frame_skipped(self, skipped: object) -> None:
         reason = _enum_text(_payload_value(skipped, "reason")) or "unknown"
@@ -565,6 +713,18 @@ def _mapping_payload(payload: object | None) -> Mapping[str, object]:
     return {}
 
 
+def _sequence_payload(payload: object | None) -> tuple[object, ...]:
+    if payload is None:
+        return ()
+    if isinstance(payload, str):
+        return (payload,)
+    if isinstance(payload, tuple):
+        return payload
+    if isinstance(payload, list):
+        return tuple(payload)
+    return ()
+
+
 def _first_xyxy(
     payload: Mapping[str, object],
     *keys: str,
@@ -607,14 +767,6 @@ def _float_tuple(value: object | None, *, width: int) -> tuple[float, ...] | Non
         return tuple(float(item) for item in value)
     except (TypeError, ValueError):
         return None
-
-
-def _hash_value(frame_hash: object) -> object | None:
-    if frame_hash is None:
-        return None
-    if isinstance(frame_hash, Mapping):
-        return frame_hash.get("value")
-    return getattr(frame_hash, "value", frame_hash)
 
 
 def _format_value(value: object, unit: str, *, precision: int) -> str:

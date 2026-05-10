@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import hashlib
+import inspect
 import math
 from pathlib import Path
 import sys
@@ -12,6 +13,7 @@ from typing import Any
 
 import interfaces.contracts as contracts
 from interfaces.contracts import InferenceRequest, PreparedInferenceInputs
+from live_inference.masking import FrameMaskSnapshot, FrameMaskState
 from live_inference.model_registry.model_manifest import (
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
@@ -92,6 +94,7 @@ class TriStreamLivePreprocessor:
         model_manifest: LiveModelManifest | None = None,
         config: TriStreamPreprocessingConfig | None = None,
         runtime_parameter_revision_getter: Callable[[], int | None] | None = None,
+        mask_state: FrameMaskState | None = None,
     ) -> None:
         if config is None:
             if model_manifest is None:
@@ -103,6 +106,7 @@ class TriStreamLivePreprocessor:
         self._config = config
         self._roi_locator = roi_locator
         self._runtime_parameter_revision_getter = runtime_parameter_revision_getter
+        self._mask_state = mask_state
 
     @property
     def config(self) -> TriStreamPreprocessingConfig:
@@ -114,11 +118,20 @@ class TriStreamLivePreprocessor:
         image_bytes: bytes,
     ) -> PreparedInferenceInputs:
         """Decode raw bytes and reproduce the v0.4 tri-stream preprocessing contract."""
-        source_gray = _decode_image_bytes_to_grayscale(image_bytes)
+        decoded_source_gray = _decode_image_bytes_to_grayscale(image_bytes)
+        source_gray, mask_metadata, roi_exclusion_mask = self._apply_frame_mask(
+            decoded_source_gray
+        )
         source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
         warnings = _hash_warnings(request, image_bytes)
+        mask_warning = mask_metadata.get("frame_mask_warning")
+        if mask_warning:
+            warnings.append(str(mask_warning))
 
-        roi_location = self._locate_roi(source_gray)
+        roi_location = self._locate_roi(
+            source_gray,
+            excluded_source_mask=roi_exclusion_mask,
+        )
         center_x_px, center_y_px = _coerce_center_xy(roi_location)
         silhouette_w = int(self._config.silhouette_config.normalized_roi_canvas_width_px())
         silhouette_h = int(self._config.silhouette_config.normalized_roi_canvas_height_px())
@@ -217,6 +230,7 @@ class TriStreamLivePreprocessor:
             "runtime_parameter_revision": runtime_revision,
             "warnings": tuple(warnings),
         }
+        metadata.update(mask_metadata)
         debug_paths = self._write_debug_artifacts(
             request=request,
             input_image_hash=input_image_hash,
@@ -251,14 +265,71 @@ class TriStreamLivePreprocessor:
             preprocessing_metadata=metadata,
         )
 
-    def _locate_roi(self, source_gray: np.ndarray) -> RoiLocation:
-        location = self._roi_locator.locate(source_gray)
+    def _locate_roi(
+        self,
+        source_gray: np.ndarray,
+        *,
+        excluded_source_mask: np.ndarray | None = None,
+    ) -> RoiLocation:
+        if excluded_source_mask is not None and _locator_accepts_exclusion_mask(
+            self._roi_locator
+        ):
+            location = self._roi_locator.locate(
+                source_gray,
+                excluded_source_mask=excluded_source_mask,
+            )
+        else:
+            location = self._roi_locator.locate(source_gray)
         if not isinstance(location, RoiLocation):
             raise TypeError(
                 "ROI locator must return live_inference.preprocessing.RoiLocation; "
                 f"got {type(location).__name__}."
             )
         return location
+
+    def _apply_frame_mask(
+        self,
+        source_gray: np.ndarray,
+    ) -> tuple[np.ndarray, dict[str, Any], np.ndarray | None]:
+        source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
+        if self._mask_state is None:
+            return (
+                source_gray,
+                _frame_mask_metadata(
+                    snapshot=None,
+                    source_width_px=source_w,
+                    source_height_px=source_h,
+                    applied=False,
+                ),
+                None,
+            )
+
+        snapshot = self._mask_state.get_snapshot()
+        metadata = _frame_mask_metadata(
+            snapshot=snapshot,
+            source_width_px=source_w,
+            source_height_px=source_h,
+            applied=False,
+        )
+        if not snapshot.enabled or not snapshot.has_geometry or snapshot.pixel_count <= 0:
+            return source_gray, metadata, None
+
+        if not snapshot.dimensions_match(source_w, source_h):
+            warning = (
+                "frame mask skipped: mask size "
+                f"{(snapshot.width_px, snapshot.height_px)} does not match source image "
+                f"size {(source_w, source_h)}."
+            )
+            metadata["frame_mask_warning"] = warning
+            return source_gray, metadata, None
+
+        masked = np.array(source_gray, dtype=np.uint8, copy=True)
+        masked[snapshot.mask] = int(snapshot.fill_value)
+        metadata["frame_mask_applied"] = True
+        metadata["frame_mask_excluded_from_roi_locator"] = _locator_accepts_exclusion_mask(
+            self._roi_locator
+        )
+        return masked, metadata, snapshot.mask
 
     def _render_silhouette(
         self,
@@ -461,6 +532,52 @@ def _decode_image_bytes_to_grayscale(image_bytes: bytes) -> np.ndarray:
     if decoded is None:
         raise ValueError("Could not decode image bytes as a supported image.")
     return to_grayscale_uint8(decoded)
+
+
+def _frame_mask_metadata(
+    *,
+    snapshot: FrameMaskSnapshot | None,
+    source_width_px: int,
+    source_height_px: int,
+    applied: bool,
+) -> dict[str, Any]:
+    if snapshot is None:
+        return {
+            "frame_mask_applied": False,
+            "frame_mask_revision": None,
+            "frame_mask_width_px": None,
+            "frame_mask_height_px": None,
+            "frame_mask_pixel_count": 0,
+            "frame_mask_fill_value": None,
+            "frame_mask_excluded_from_roi_locator": False,
+        }
+    return {
+        "frame_mask_applied": bool(applied),
+        "frame_mask_revision": int(snapshot.revision),
+        "frame_mask_width_px": int(snapshot.width_px),
+        "frame_mask_height_px": int(snapshot.height_px),
+        "frame_mask_pixel_count": int(snapshot.pixel_count),
+        "frame_mask_fill_value": int(snapshot.fill_value),
+        "frame_mask_source_width_px": int(source_width_px),
+        "frame_mask_source_height_px": int(source_height_px),
+        "frame_mask_excluded_from_roi_locator": False,
+    }
+
+
+def _locator_accepts_exclusion_mask(locator: RoiLocator) -> bool:
+    locate = getattr(locator, "locate", None)
+    if locate is None:
+        return False
+    try:
+        signature = inspect.signature(locate)
+    except (TypeError, ValueError):
+        return False
+    for parameter in signature.parameters.values():
+        if parameter.kind is inspect.Parameter.VAR_KEYWORD:
+            return True
+        if parameter.name == "excluded_source_mask":
+            return True
+    return False
 
 
 def _extract_centered_canvas(

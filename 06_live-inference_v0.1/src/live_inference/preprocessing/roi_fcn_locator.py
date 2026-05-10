@@ -20,6 +20,7 @@ from live_inference.runtime.device import (
 from .roi_locator import (
     RoiFcnLocatorInput,
     RoiLocation,
+    build_roi_fcn_exclusion_mask,
     build_roi_fcn_locator_input,
 )
 
@@ -85,7 +86,12 @@ class RoiFcnLocator:
     def model_loaded(self) -> bool:
         return self._model is not None
 
-    def locate(self, source_gray_image: Any) -> RoiLocation:
+    def locate(
+        self,
+        source_gray_image: Any,
+        *,
+        excluded_source_mask: np.ndarray | None = None,
+    ) -> RoiLocation:
         """Run ROI-FCN on one grayscale source image and return source-space ROI."""
         if self._model is None:
             raise RuntimeError(
@@ -103,6 +109,7 @@ class RoiFcnLocator:
         return decode_roi_fcn_heatmap(
             heatmap,
             locator_input=locator_input,
+            excluded_source_mask=excluded_source_mask,
             canvas_width_px=self._metadata.canvas_width_px,
             canvas_height_px=self._metadata.canvas_height_px,
             roi_width_px=self._metadata.roi_width_px,
@@ -259,6 +266,7 @@ def decode_roi_fcn_heatmap(
     heatmap: np.ndarray,
     *,
     locator_input: RoiFcnLocatorInput,
+    excluded_source_mask: np.ndarray | None = None,
     canvas_width_px: int,
     canvas_height_px: int,
     roi_width_px: int,
@@ -272,8 +280,22 @@ def decode_roi_fcn_heatmap(
         derive_roi_bounds,
     )
 
+    heatmap_array = np.asarray(heatmap)
+    excluded_count = 0
+    if excluded_source_mask is not None:
+        excluded_heatmap_mask = build_roi_fcn_exclusion_mask(
+            np.asarray(excluded_source_mask, dtype=bool),
+            locator_input=locator_input,
+            output_hw=tuple(int(value) for value in heatmap_array.shape),
+        )
+        excluded_count = int(np.count_nonzero(excluded_heatmap_mask))
+        if excluded_count >= int(excluded_heatmap_mask.size):
+            raise ValueError("ROI-FCN exclusion mask covers the entire output heatmap.")
+        heatmap_array = np.array(heatmap_array, copy=True)
+        heatmap_array[excluded_heatmap_mask] = -np.inf
+
     decoded = decode_heatmap_argmax(
-        np.asarray(heatmap),
+        heatmap_array,
         canvas_hw=(int(canvas_height_px), int(canvas_width_px)),
         resize_scale=float(locator_input.resize_scale),
         pad_left_px=float(locator_input.padding_ltrb_px[0]),
@@ -298,9 +320,11 @@ def decode_roi_fcn_heatmap(
             "resized_image_wh_px": tuple(int(value) for value in locator_input.resized_image_wh_px.tolist()),
             "padding_ltrb_px": tuple(int(value) for value in locator_input.padding_ltrb_px.tolist()),
             "resize_scale": float(locator_input.resize_scale),
-            "heatmap_shape": tuple(int(value) for value in np.asarray(heatmap).shape),
+            "heatmap_shape": tuple(int(value) for value in heatmap_array.shape),
             "decoded_heatmap": decoded.to_dict(),
             "heatmap_peak_confidence": float(decoded.confidence),
+            "heatmap_exclusion_mask_applied": excluded_source_mask is not None,
+            "heatmap_exclusion_pixel_count": excluded_count,
         }
     )
     return RoiLocation(

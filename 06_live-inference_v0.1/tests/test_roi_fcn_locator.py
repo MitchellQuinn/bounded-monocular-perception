@@ -21,6 +21,7 @@ import numpy as np  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     RoiFcnLocator,
     RoiLocator,
+    build_roi_fcn_exclusion_mask,
     build_roi_fcn_locator_input,
     decode_roi_fcn_heatmap,
     load_roi_fcn_artifact_metadata,
@@ -140,6 +141,52 @@ class RoiFcnLocatorGeometryTests(unittest.TestCase):
         self.assertEqual(location.roi_bounds_xyxy_px, (90.0, 0.0, 390.0, 300.0))
         self.assertEqual(location.metadata["heatmap_shape"], (300, 480))
         self.assertEqual(location.metadata["heatmap_peak_confidence"], 1.0)
+
+    def test_heatmap_decode_ignores_peak_inside_excluded_source_mask(self) -> None:
+        source_gray = _generated_source_image(width=480, height=300)
+        locator_input = build_roi_fcn_locator_input(
+            source_gray,
+            canvas_width_px=480,
+            canvas_height_px=300,
+        )
+        heatmap = np.zeros((300, 480), dtype=np.float32)
+        heatmap[150, 240] = 1.0
+        heatmap[120, 200] = 0.5
+        excluded_mask = np.zeros((300, 480), dtype=bool)
+        excluded_mask[145:156, 235:246] = True
+
+        location = decode_roi_fcn_heatmap(
+            heatmap,
+            locator_input=locator_input,
+            excluded_source_mask=excluded_mask,
+            canvas_width_px=480,
+            canvas_height_px=300,
+            roi_width_px=300,
+            roi_height_px=300,
+        )
+
+        self.assertEqual(location.center_xy_px, (200.0, 120.0))
+        self.assertTrue(location.metadata["heatmap_exclusion_mask_applied"])
+        self.assertGreater(location.metadata["heatmap_exclusion_pixel_count"], 0)
+
+    def test_build_exclusion_mask_maps_source_mask_to_heatmap_space(self) -> None:
+        source_gray = _generated_source_image(width=960, height=600)
+        locator_input = build_roi_fcn_locator_input(
+            source_gray,
+            canvas_width_px=480,
+            canvas_height_px=300,
+        )
+        excluded_mask = np.zeros((600, 960), dtype=bool)
+        excluded_mask[298:303, 478:483] = True
+
+        heatmap_mask = build_roi_fcn_exclusion_mask(
+            excluded_mask,
+            locator_input=locator_input,
+            output_hw=(300, 480),
+        )
+
+        self.assertEqual(heatmap_mask.shape, (300, 480))
+        self.assertTrue(bool(heatmap_mask[150, 240]))
 
 
 class RoiFcnLocatorRuntimeTests(unittest.TestCase):
