@@ -35,7 +35,12 @@ class RoiLocation:
 class RoiLocator(Protocol):
     """Locates the source-image crop center for live preprocessing."""
 
-    def locate(self, source_gray_image: Any) -> RoiLocation:
+    def locate(
+        self,
+        source_gray_image: Any,
+        *,
+        excluded_source_mask: np.ndarray | None = None,
+    ) -> RoiLocation:
         ...
 
 
@@ -100,9 +105,55 @@ def build_roi_fcn_locator_input(
     )
 
 
+def build_roi_fcn_exclusion_mask(
+    excluded_source_mask: np.ndarray,
+    *,
+    locator_input: RoiFcnLocatorInput,
+    output_hw: tuple[int, int],
+) -> np.ndarray:
+    """Map a source-space exclusion mask into ROI-FCN output heatmap space."""
+    source_mask = np.asarray(excluded_source_mask, dtype=bool)
+    src_w, src_h = (int(value) for value in locator_input.source_image_wh_px.tolist())
+    if source_mask.shape != (src_h, src_w):
+        raise ValueError(
+            "Excluded source mask shape must match the source image: "
+            f"shape={source_mask.shape}, expected={(src_h, src_w)}."
+        )
+
+    output_h, output_w = int(output_hw[0]), int(output_hw[1])
+    if output_h <= 0 or output_w <= 0:
+        raise ValueError(f"Invalid ROI-FCN output shape: {(output_h, output_w)}.")
+
+    canvas_h, canvas_w = (int(value) for value in locator_input.locator_image.shape[-2:])
+    resized_w, resized_h = (
+        int(value) for value in locator_input.resized_image_wh_px.tolist()
+    )
+    pad_left, pad_top, _, _ = (
+        int(value) for value in locator_input.padding_ltrb_px.tolist()
+    )
+
+    resized_mask = cv2.resize(
+        source_mask.astype(np.uint8),
+        (resized_w, resized_h),
+        interpolation=cv2.INTER_NEAREST,
+    ).astype(bool)
+    canvas_mask = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
+    canvas_mask[pad_top : pad_top + resized_h, pad_left : pad_left + resized_w] = (
+        resized_mask.astype(np.uint8)
+    )
+    if (output_h, output_w) == (canvas_h, canvas_w):
+        return canvas_mask.astype(bool)
+    return cv2.resize(
+        canvas_mask,
+        (output_w, output_h),
+        interpolation=cv2.INTER_NEAREST,
+    ).astype(bool)
+
+
 __all__ = [
     "RoiFcnLocatorInput",
     "RoiLocation",
     "RoiLocator",
+    "build_roi_fcn_exclusion_mask",
     "build_roi_fcn_locator_input",
 ]

@@ -27,6 +27,7 @@ from interfaces import (  # noqa: E402
     RawImagePreprocessor,
 )
 from live_inference.frame_handoff import compute_frame_hash  # noqa: E402
+from live_inference.masking import FrameMaskState  # noqa: E402
 from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
@@ -115,6 +116,140 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
             np.float32,
         )
         self.assertEqual(prepared.preprocessing_metadata["runtime_parameter_revision"], 7)
+
+    def test_no_mask_state_reports_unapplied_mask_metadata(self) -> None:
+        image_bytes = _fixture_image_bytes()
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=FakeRoiLocator(),
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertFalse(metadata["frame_mask_applied"])
+        self.assertIsNone(metadata["frame_mask_revision"])
+        self.assertEqual(metadata["frame_mask_pixel_count"], 0)
+
+    def test_mask_state_with_no_mask_leaves_roi_locator_input_unchanged(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+
+        TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
+
+    def test_mask_is_applied_before_roi_locator_with_white_fill(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+        mask = np.zeros((300, 480), dtype=bool)
+        mask[130, 220] = True
+        mask_state.commit_mask(mask, 480, 300, 255)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 255)
+        self.assertTrue(prepared.preprocessing_metadata["frame_mask_applied"])
+        self.assertEqual(prepared.preprocessing_metadata["frame_mask_revision"], 1)
+        self.assertEqual(prepared.preprocessing_metadata["frame_mask_pixel_count"], 1)
+        self.assertEqual(prepared.preprocessing_metadata["frame_mask_fill_value"], 255)
+
+    def test_mask_is_applied_before_roi_locator_with_black_fill(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+        mask = np.zeros((300, 480), dtype=bool)
+        mask[0, 0] = True
+        mask_state.commit_mask(mask, 480, 300, 0)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[0, 0]), 0)
+        self.assertTrue(prepared.preprocessing_metadata["frame_mask_applied"])
+        self.assertEqual(prepared.preprocessing_metadata["frame_mask_fill_value"], 0)
+
+    def test_applied_mask_is_passed_as_roi_locator_exclusion_when_supported(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = ExclusionAwareRoiLocator()
+        mask_state = FrameMaskState()
+        mask = np.zeros((300, 480), dtype=bool)
+        mask[130, 220] = True
+        mask_state.commit_mask(mask, 480, 300, 0)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_excluded_source_mask)
+        assert locator.last_excluded_source_mask is not None
+        self.assertTrue(bool(locator.last_excluded_source_mask[130, 220]))
+        self.assertTrue(
+            prepared.preprocessing_metadata["frame_mask_excluded_from_roi_locator"]
+        )
+
+    def test_mismatched_mask_size_skips_mask_and_records_warning(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+        mask_state.commit_mask(np.ones((10, 10), dtype=bool), 10, 10, 0)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[0, 0]), 255)
+        metadata = prepared.preprocessing_metadata
+        self.assertFalse(metadata["frame_mask_applied"])
+        self.assertIn("frame mask skipped", metadata["frame_mask_warning"])
+        self.assertTrue(
+            any("frame mask skipped" in item for item in metadata["warnings"])
+        )
+
+    def test_masked_pixels_do_not_alter_latest_frame_on_disk(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        mask_state = FrameMaskState()
+        mask = np.zeros((300, 480), dtype=bool)
+        mask[130, 220] = True
+        mask_state.commit_mask(mask, 480, 300, 255)
+        with TemporaryDirectory() as tmp_dir:
+            frame_path = Path(tmp_dir) / "latest_frame.png"
+            frame_path.write_bytes(image_bytes)
+
+            TriStreamLivePreprocessor(
+                model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+                roi_locator=FakeRoiLocator(),
+                mask_state=mask_state,
+            ).prepare_model_inputs(
+                _request(image_bytes, image_path=frame_path),
+                image_bytes,
+            )
+
+            self.assertEqual(frame_path.read_bytes(), image_bytes)
 
     def test_invalid_image_bytes_fail_clearly(self) -> None:
         preprocessor = TriStreamLivePreprocessor(
@@ -328,6 +463,38 @@ class FakeDebugRoiLocator:
         )
 
 
+class InspectingRoiLocator:
+    def __init__(self) -> None:
+        self.last_source_gray: np.ndarray | None = None
+
+    def locate(self, source_gray_image: object) -> RoiLocation:
+        self.last_source_gray = np.array(source_gray_image, copy=True)
+        return RoiLocation(
+            center_xy_px=(240.0, 150.0),
+            roi_bounds_xyxy_px=(90.0, 0.0, 390.0, 300.0),
+            metadata={"locator": "inspecting"},
+        )
+
+
+class ExclusionAwareRoiLocator:
+    def __init__(self) -> None:
+        self.last_excluded_source_mask: np.ndarray | None = None
+
+    def locate(
+        self,
+        source_gray_image: object,
+        *,
+        excluded_source_mask: np.ndarray | None = None,
+    ) -> RoiLocation:
+        if excluded_source_mask is not None:
+            self.last_excluded_source_mask = np.array(excluded_source_mask, copy=True)
+        return RoiLocation(
+            center_xy_px=(240.0, 150.0),
+            roi_bounds_xyxy_px=(90.0, 0.0, 390.0, 300.0),
+            metadata={"locator": "exclusion-aware"},
+        )
+
+
 def _fixture_image_bytes() -> bytes:
     image = np.full((300, 480), 255, dtype=np.uint8)
     cv2.rectangle(image, (210, 115), (270, 185), 30, -1)
@@ -344,10 +511,11 @@ def _request(
     frame_hash: FrameHash | None = None,
     save_debug_images: bool = False,
     debug_output_dir: Path | None = None,
+    image_path: Path = Path("live_frames/latest_frame.png"),
 ) -> InferenceRequest:
     frame_hash = frame_hash or compute_frame_hash(image_bytes)
     frame = FrameReference(
-        image_path=Path("live_frames/latest_frame.png"),
+        image_path=image_path,
         metadata=FrameMetadata(
             width_px=480,
             height_px=300,

@@ -149,6 +149,7 @@ class GuiAppCompositionTests(unittest.TestCase):
         self.assertEqual(records["roi_device"], "cpu")
         self.assertEqual(records["engine_device"], "cpu")
         self.assertEqual(records["inference_poll_interval_ms"], 17)
+        self.assertIs(records["preprocessor_mask_state"], context.frame_mask_state)
 
     def test_real_camera_composition_uses_fake_real_camera_publisher(self) -> None:
         records: dict[str, Any] = {}
@@ -283,9 +284,16 @@ class _FakeRoiLocator:
 
 
 class _FakePreprocessor:
-    def __init__(self, *, model_manifest: object, roi_locator: _FakeRoiLocator) -> None:
+    def __init__(
+        self,
+        *,
+        model_manifest: object,
+        roi_locator: _FakeRoiLocator,
+        mask_state: object | None = None,
+    ) -> None:
         self.model_manifest = model_manifest
         self.roi_locator = roi_locator
+        self.mask_state = mask_state
 
 
 class _FakeEngine:
@@ -401,6 +409,21 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
             super().__init__(roi_root, device=device)
             records["roi_device"] = device
 
+    class RecordingPreprocessor(_FakePreprocessor):
+        def __init__(
+            self,
+            *,
+            model_manifest: object,
+            roi_locator: _FakeRoiLocator,
+            mask_state: object | None = None,
+        ) -> None:
+            super().__init__(
+                model_manifest=model_manifest,
+                roi_locator=roi_locator,
+                mask_state=mask_state,
+            )
+            records["preprocessor_mask_state"] = mask_state
+
     class RecordingEngine(_FakeEngine):
         def __init__(self, *, model_root: Path, model_manifest: object, device: str) -> None:
             super().__init__(
@@ -429,7 +452,7 @@ def _fake_dependencies(records: dict[str, Any]) -> gui_app._RuntimeDependencies:
         load_live_model_manifest=load_manifest,
         load_model_selection=load_model_selection,
         roi_fcn_locator_cls=RecordingRoiLocator,
-        tri_stream_live_preprocessor_cls=_FakePreprocessor,
+        tri_stream_live_preprocessor_cls=RecordingPreprocessor,
         camera_worker_cls=_FakeCameraWorker,
         inference_worker_cls=RecordingInferenceWorker,
         worker_thread_controller_cls=_FakeWorkerThreadController,

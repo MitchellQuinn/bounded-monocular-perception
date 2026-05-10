@@ -11,7 +11,13 @@ from .roi_fcn_locator import (
     load_roi_fcn_artifact_metadata,
     resolve_roi_fcn_checkpoint,
 )
-from .roi_locator import RoiFcnLocatorInput, RoiLocation, RoiLocator, build_roi_fcn_locator_input
+from .roi_locator import (
+    RoiFcnLocatorInput,
+    RoiLocation,
+    RoiLocator,
+    build_roi_fcn_exclusion_mask,
+    build_roi_fcn_locator_input,
+)
 from .tri_stream_live_preprocessor import TriStreamLivePreprocessor
 
 __all__ = [
@@ -23,6 +29,7 @@ __all__ = [
     "RoiLocator",
     "TriStreamLivePreprocessor",
     "TriStreamPreprocessingConfig",
+    "build_roi_fcn_exclusion_mask",
     "build_roi_fcn_locator_input",
     "decode_roi_fcn_heatmap",
     "load_roi_fcn_artifact_metadata",
