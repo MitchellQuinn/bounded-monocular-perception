@@ -275,6 +275,10 @@ class LiveInferenceContractTests(unittest.TestCase):
             contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED,
             contracts.BACKGROUND_REMOVAL_METADATA_KEYS,
         )
+        self.assertIn(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_EXCLUDED_FROM_FOREGROUND,
+            contracts.BACKGROUND_REMOVAL_METADATA_KEYS,
+        )
         self.assertEqual(
             contracts.ROI_OVERLAY_BOUNDS_METADATA_KEYS,
             (

@@ -336,6 +336,35 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
             0,
         )
 
+    def test_background_removed_pixels_become_white_in_inverted_model_input(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        background_state = BackgroundState()
+        gray = _decode_gray(image_bytes)
+        background_state.capture_background(_background_matching_one_pixel(gray, 130, 220))
+        background_state.set_enabled(True)
+        background_state.set_threshold(25)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE),
+            roi_locator=FakeRoiLocator(),
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        distance = prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
+        self.assertTrue(
+            metadata[
+                contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_EXCLUDED_FROM_FOREGROUND
+            ]
+        )
+        self.assertEqual(
+            metadata[
+                contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_FOREGROUND_REMOVE_PIXEL_COUNT
+            ],
+            1,
+        )
+        self.assertEqual(float(distance[130, 130]), 1.0)
+
     def test_manual_mask_and_background_removal_combine_with_or(self) -> None:
         image_bytes = _fixture_image_bytes()
         locator = InspectingRoiLocator()

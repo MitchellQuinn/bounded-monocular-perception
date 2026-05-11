@@ -11,6 +11,8 @@ import tempfile
 import unittest
 from typing import Any
 
+import numpy as np
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -107,6 +109,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             self.window.findChild(QSpinBox, "background_threshold_input")
         )
         self.assertIsNotNone(self.window.findChild(QLabel, "background_status_label"))
+        self.assertIsNotNone(self._background_preview_widget())
 
     def test_fill_checkbox_updates_label_and_mask_state_fill_value(self) -> None:
         from PySide6.QtWidgets import QCheckBox, QLabel
@@ -172,6 +175,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(snapshot.height_px, 48)
         self.assertEqual(self.window.background_status_label.text(), "Background: captured")
         self.assertIsNone(self._preview_widget().background_snapshot())
+        self.assertTrue(_widget_has_pixmap(self._background_preview_widget()))
 
     def test_enable_background_removal_toggles_state(self) -> None:
         image_path = self._write_temp_frame_image()
@@ -184,6 +188,13 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
 
         self.assertTrue(self.window.background_state.get_snapshot().enabled)
         self.assertEqual(self.window.background_status_label.text(), "Background: enabled")
+        self.assertIsNone(self._preview_widget().background_snapshot())
+        background_preview = self._background_preview_widget()
+        self.assertIsNotNone(background_preview.background_snapshot())
+        effective = background_preview.effective_preview_image()
+        self.assertIsNotNone(effective)
+        assert effective is not None
+        self.assertEqual(tuple(int(value) for value in effective[24, 40]), (255, 255, 255))
 
     def test_clear_background_resets_state_and_status(self) -> None:
         image_path = self._write_temp_frame_image()
@@ -211,6 +222,41 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         _process_events(self.app)
 
         self.assertEqual(self.window.background_state.get_snapshot().threshold, 42)
+
+    def test_background_threshold_updates_background_preview_image(self) -> None:
+        from PySide6.QtWidgets import QSpinBox
+
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        _process_events(self.app)
+        gray = self._preview_widget().raw_source_gray()
+        assert gray is not None
+        background = np.clip(gray.astype(np.int16) + 10, 0, 255).astype(np.uint8)
+
+        threshold = self.window.findChild(QSpinBox, "background_threshold_input")
+        assert threshold is not None
+        threshold.setValue(5)
+        self.window.background_state.capture_background(background)
+        self.window.enable_background_removal_checkbox.setChecked(True)
+        _process_events(self.app)
+        low_threshold = self._background_preview_widget().effective_preview_image()
+
+        threshold.setValue(15)
+        _process_events(self.app)
+        high_threshold = self._background_preview_widget().effective_preview_image()
+
+        self.assertIsNotNone(low_threshold)
+        self.assertIsNotNone(high_threshold)
+        assert low_threshold is not None
+        assert high_threshold is not None
+        self.assertEqual(
+            tuple(int(value) for value in low_threshold[24, 40]),
+            (20, 120, 200),
+        )
+        self.assertEqual(
+            tuple(int(value) for value in high_threshold[24, 40]),
+            (255, 255, 255),
+        )
 
     def test_frame_written_log_spam_is_suppressed(self) -> None:
         image_path = self._write_temp_frame_image()
@@ -465,6 +511,13 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         from live_inference.gui.frame_preview_widget import FramePreviewWidget
 
         preview = self.window.findChild(FramePreviewWidget, "frame_preview_widget")
+        self.assertIsNotNone(preview)
+        return preview
+
+    def _background_preview_widget(self) -> object:
+        from live_inference.gui.frame_preview_widget import FramePreviewWidget
+
+        preview = self.window.findChild(FramePreviewWidget, "background_preview_widget")
         self.assertIsNotNone(preview)
         return preview
 

@@ -59,6 +59,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._duplicate_skipped_count = 0
         self._frame_written_summary_interval = 100
         self._preview_update_interval_seconds = 1.0 / 15.0
+        self._background_preview_max_size = (480, 300)
         self._last_preview_update_seconds = 0.0
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
@@ -199,6 +200,14 @@ class LiveInferenceMainWindow(QMainWindow):
         self.background_status_label = QLabel("Background: not captured")
         self.background_status_label.setObjectName("background_status_label")
         self.background_status_label.setWordWrap(True)
+        self.background_preview_widget = FramePreviewWidget()
+        self.background_preview_widget.setObjectName("background_preview_widget")
+        self.background_preview_widget.set_placeholder_text("No background preview yet")
+        self.background_preview_widget.setMinimumSize(180, 110)
+        self.background_preview_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         background_layout.addWidget(self.capture_background_button, 0, 0, 1, 2)
         background_layout.addWidget(self.enable_background_removal_checkbox, 1, 0, 1, 2)
@@ -206,6 +215,7 @@ class LiveInferenceMainWindow(QMainWindow):
         background_layout.addWidget(self.background_threshold_input, 2, 1)
         background_layout.addWidget(self.clear_background_button, 3, 0, 1, 2)
         background_layout.addWidget(self.background_status_label, 4, 0, 1, 2)
+        background_layout.addWidget(self.background_preview_widget, 5, 0, 1, 2)
         self.control_tabs.addTab(background_tab, "Background")
 
         roi_fcn_tab = QWidget()
@@ -571,6 +581,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def _apply_background_snapshot_to_preview(self, snapshot: object) -> None:
         self._preview_background_revision = int(getattr(snapshot, "revision", 0))
+        self._refresh_background_preview(snapshot)
 
     def _sync_preview_background_if_changed(self) -> None:
         revision = self._background_revision()
@@ -579,6 +590,24 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.background_state.get_snapshot()
         self._apply_background_snapshot_to_preview(snapshot)
         self._sync_background_controls_from_state(snapshot)
+
+    def _refresh_background_preview(self, snapshot: object | None = None) -> None:
+        widget = getattr(self, "background_preview_widget", None)
+        if widget is None:
+            return
+        source_image = self.frame_preview_widget.raw_image()
+        if source_image is None:
+            return
+        if snapshot is None:
+            snapshot = self.background_state.get_snapshot()
+        max_width, max_height = self._background_preview_max_size
+        widget.set_background_preview_image(
+            source_image,
+            snapshot,
+            max_width_px=max_width,
+            max_height_px=max_height,
+            fill_value=255,
+        )
 
     def _background_revision(self) -> int:
         revision = getattr(self.background_state, "revision", None)
@@ -681,6 +710,7 @@ class LiveInferenceMainWindow(QMainWindow):
             )
             return
         self._sync_preview_background_if_changed()
+        self._refresh_background_preview()
 
     def _should_update_frame_preview(self) -> bool:
         now = monotonic()
