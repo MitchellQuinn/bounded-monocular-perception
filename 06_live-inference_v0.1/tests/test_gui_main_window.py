@@ -171,10 +171,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(snapshot.width_px, 80)
         self.assertEqual(snapshot.height_px, 48)
         self.assertEqual(self.window.background_status_label.text(), "Background: captured")
-        preview_snapshot = self._preview_widget().background_snapshot()
-        self.assertIsNotNone(preview_snapshot)
-        assert preview_snapshot is not None
-        self.assertEqual(preview_snapshot.revision, snapshot.revision)
+        self.assertIsNone(self._preview_widget().background_snapshot())
 
     def test_enable_background_removal_toggles_state(self) -> None:
         image_path = self._write_temp_frame_image()
@@ -276,7 +273,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
 
         self.window.mask_brush_diameter_input.setValue(20)
         self.window.draw_mask_button.click()
-        _mouse_click(self._preview_widget(), 450, 300)
+        _mouse_click_center(self._preview_widget())
         self.window.apply_mask_button.click()
         _process_events(self.app)
 
@@ -291,12 +288,12 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         _process_events(self.app)
         self.window.mask_brush_diameter_input.setValue(40)
         self.window.draw_mask_button.click()
-        _mouse_click(self._preview_widget(), 450, 300)
+        _mouse_click_center(self._preview_widget())
         self.window.apply_mask_button.click()
         before = self.window.mask_state.get_snapshot().pixel_count
 
         self.window.erase_mask_button.click()
-        _mouse_click(self._preview_widget(), 450, 300)
+        _mouse_click_center(self._preview_widget())
         self.window.apply_erase_button.click()
         _process_events(self.app)
 
@@ -309,7 +306,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         _process_events(self.app)
         self.window.mask_brush_diameter_input.setValue(20)
         self.window.draw_mask_button.click()
-        _mouse_click(self._preview_widget(), 450, 300)
+        _mouse_click_center(self._preview_widget())
         self.window.apply_mask_button.click()
 
         self.window.clear_mask_button.click()
@@ -626,6 +623,10 @@ def _mouse_click(widget: Any, x: int, y: int) -> None:
     from PySide6.QtTest import QTest
 
     QTest.mouseClick(widget, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(x, y))
+
+
+def _mouse_click_center(widget: Any) -> None:
+    _mouse_click(widget, max(1, widget.width() // 2), max(1, widget.height() // 2))
 
 
 def _imported_roots(module_path: Path) -> set[str]:

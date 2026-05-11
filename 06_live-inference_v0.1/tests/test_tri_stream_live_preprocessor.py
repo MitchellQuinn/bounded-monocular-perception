@@ -284,7 +284,7 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertFalse(prepared.preprocessing_metadata["background_removal_enabled"])
         self.assertFalse(prepared.preprocessing_metadata["background_removal_applied"])
 
-    def test_enabled_background_applies_before_roi_locator(self) -> None:
+    def test_enabled_background_applies_to_regression_roi_not_full_source(self) -> None:
         image_bytes = _fixture_image_bytes()
         locator = InspectingRoiLocator()
         background_state = BackgroundState()
@@ -301,15 +301,40 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
 
         self.assertIsNotNone(locator.last_source_gray)
         assert locator.last_source_gray is not None
-        self.assertEqual(int(locator.last_source_gray[130, 220]), 255)
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
         metadata = prepared.preprocessing_metadata
         self.assertTrue(metadata["background_captured"])
         self.assertTrue(metadata["background_removal_enabled"])
         self.assertTrue(metadata["background_removal_applied"])
         self.assertEqual(metadata["background_threshold"], 25)
         self.assertEqual(metadata["background_remove_pixel_count"], 1)
-        self.assertEqual(metadata["combined_ignore_pixel_count"], 1)
+        self.assertEqual(metadata["background_roi_crop_remove_pixel_count"], 1)
+        self.assertTrue(metadata["background_roi_crop_applied"])
+        self.assertFalse(metadata["background_roi_fcn_applied"])
+        self.assertEqual(metadata["combined_ignore_pixel_count"], 0)
         self.assertEqual(metadata["frame_mask_fill_value"], 255)
+
+    def test_background_removal_cannot_empty_silhouette_foreground(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        background_state = BackgroundState()
+        background_state.capture_background(_decode_gray(image_bytes))
+        background_state.set_enabled(True)
+        background_state.set_threshold(1)
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=FakeRoiLocator(),
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertTrue(metadata["background_roi_crop_applied"])
+        self.assertGreater(metadata["background_roi_crop_remove_pixel_count"], 0)
+        self.assertGreater(metadata["silhouette_area_px"], 0)
+        self.assertGreater(
+            metadata["brightness_normalization"]["ForegroundPixelCount"],
+            0,
+        )
 
     def test_manual_mask_and_background_removal_combine_with_or(self) -> None:
         image_bytes = _fixture_image_bytes()
@@ -333,8 +358,12 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertIsNotNone(locator.last_source_gray)
         assert locator.last_source_gray is not None
         self.assertEqual(int(locator.last_source_gray[0, 0]), 0)
-        self.assertEqual(int(locator.last_source_gray[130, 220]), 0)
-        self.assertEqual(prepared.preprocessing_metadata["combined_ignore_pixel_count"], 2)
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
+        self.assertEqual(prepared.preprocessing_metadata["combined_ignore_pixel_count"], 1)
+        self.assertEqual(
+            prepared.preprocessing_metadata["background_roi_crop_remove_pixel_count"],
+            1,
+        )
 
     def test_background_size_mismatch_skips_removal_and_records_warning(self) -> None:
         image_bytes = _fixture_image_bytes()

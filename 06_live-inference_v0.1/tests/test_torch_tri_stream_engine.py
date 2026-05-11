@@ -150,6 +150,31 @@ class TorchTriStreamInferenceEngineUnitTests(unittest.TestCase):
         self.assertEqual(result.roi_metadata.source_image_wh_px, (480, 300))
         self.assertEqual(result.roi_metadata.geometry_schema, contracts.TRI_STREAM_GEOMETRY_SCHEMA)
 
+    def test_background_metadata_is_carried_in_roi_metadata_extras(self) -> None:
+        prepared = _prepared_inputs(
+            preprocessing_metadata_overrides={
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED: True,
+                contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED: True,
+                contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_FCN_APPLIED: True,
+                contracts.PREPROCESSING_METADATA_BACKGROUND_APPLICATION_SPACE: (
+                    contracts.BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP
+                ),
+            }
+        )
+
+        result = _fake_engine().run_inference(prepared)
+
+        self.assertIsNotNone(result.roi_metadata)
+        assert result.roi_metadata is not None
+        extras = result.roi_metadata.extras
+        self.assertTrue(
+            extras[contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED]
+        )
+        self.assertEqual(
+            extras[contracts.PREPROCESSING_METADATA_BACKGROUND_APPLICATION_SPACE],
+            contracts.BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP,
+        )
+
     def test_preprocessing_parameter_revision_is_preserved(self) -> None:
         result = _fake_engine().run_inference(_prepared_inputs(parameter_revision=9))
 
@@ -164,7 +189,7 @@ class TorchTriStreamInferenceEngineUnitTests(unittest.TestCase):
                 contracts.DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME,
                 contracts.TRI_STREAM_DISTANCE_IMAGE_KEY,
                 contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY,
-                "roi_overlay_metadata",
+                contracts.DISPLAY_ARTIFACT_ROI_OVERLAY_METADATA,
             },
         )
         self.assertEqual(
@@ -344,6 +369,7 @@ def _prepared_inputs(
     frame_hash: FrameHash | None = None,
     omit: str | None = None,
     overrides: dict[str, object] | None = None,
+    preprocessing_metadata_overrides: dict[str, object] | None = None,
     parameter_revision: int = 7,
 ) -> PreparedInferenceInputs:
     model_inputs: dict[str, object] = {
@@ -361,28 +387,36 @@ def _prepared_inputs(
         frame_hash=frame_hash or FrameHash("hash-1"),
         metadata=FrameMetadata(width_px=480, height_px=300),
     )
+    preprocessing_metadata: dict[str, object] = {
+        contracts.PREPROCESSING_METADATA_RUNTIME_PARAMETER_REVISION: parameter_revision,
+        contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WIDTH_PX: 480,
+        contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_HEIGHT_PX: 300,
+        contracts.PREPROCESSING_METADATA_DISTANCE_CANVAS_WIDTH_PX: 4,
+        contracts.PREPROCESSING_METADATA_DISTANCE_CANVAS_HEIGHT_PX: 4,
+        contracts.PREPROCESSING_METADATA_ORIENTATION_CANVAS_WIDTH_PX: 4,
+        contracts.PREPROCESSING_METADATA_ORIENTATION_CANVAS_HEIGHT_PX: 4,
+        contracts.PREPROCESSING_METADATA_PREDICTED_ROI_CENTER_XY_PX: (60.0, 120.0),
+        contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_XYXY_PX: (
+            10.0,
+            20.0,
+            110.0,
+            220.0,
+        ),
+        contracts.PREPROCESSING_METADATA_GEOMETRY_SCHEMA: contracts.TRI_STREAM_GEOMETRY_SCHEMA,
+        contracts.PREPROCESSING_METADATA_DEBUG_PATHS: {
+            contracts.DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME: "debug/raw.png",
+            contracts.TRI_STREAM_DISTANCE_IMAGE_KEY: "debug/x_distance.png",
+            contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY: "debug/x_orientation.png",
+            contracts.DISPLAY_ARTIFACT_ROI_OVERLAY_METADATA: "debug/metadata.json",
+        },
+    }
+    if preprocessing_metadata_overrides:
+        preprocessing_metadata.update(preprocessing_metadata_overrides)
     return PreparedInferenceInputs(
         request_id=request_id,
         source_frame=frame,
         model_inputs=model_inputs,
-        preprocessing_metadata={
-            "runtime_parameter_revision": parameter_revision,
-            "source_image_width_px": 480,
-            "source_image_height_px": 300,
-            "distance_canvas_width_px": 4,
-            "distance_canvas_height_px": 4,
-            "orientation_canvas_width_px": 4,
-            "orientation_canvas_height_px": 4,
-            "predicted_roi_center_xy_px": (60.0, 120.0),
-            "silhouette_bbox_xyxy_px": (10.0, 20.0, 110.0, 220.0),
-            "geometry_schema": contracts.TRI_STREAM_GEOMETRY_SCHEMA,
-            "debug_paths": {
-                contracts.DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME: "debug/raw.png",
-                contracts.TRI_STREAM_DISTANCE_IMAGE_KEY: "debug/x_distance.png",
-                contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY: "debug/x_orientation.png",
-                "roi_overlay_metadata": "debug/metadata.json",
-            },
-        },
+        preprocessing_metadata=preprocessing_metadata,
     )
 
 

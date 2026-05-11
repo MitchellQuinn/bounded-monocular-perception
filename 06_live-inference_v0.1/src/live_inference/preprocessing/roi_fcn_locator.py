@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import importlib
 import json
 from pathlib import Path
 import sys
 from typing import Any
 
+import interfaces.contracts as contracts
 import numpy as np
 
+from live_inference.masking import (
+    BackgroundSnapshot,
+    compute_background_removal_mask_from_arrays,
+)
 from live_inference.runtime.device import (
     normalize_torch_device_policy,
     resolve_torch_device,
@@ -77,6 +82,7 @@ class RoiFcnLocator:
             _eval_model(self._model)
         elif load_model:
             self._model = self._load_model()
+        self._background_locator_cache: tuple[tuple[int, int, int, int, int], np.ndarray] | None = None
 
     @property
     def metadata(self) -> RoiFcnArtifactMetadata:
@@ -91,6 +97,8 @@ class RoiFcnLocator:
         source_gray_image: Any,
         *,
         excluded_source_mask: np.ndarray | None = None,
+        background_snapshot: BackgroundSnapshot | None = None,
+        background_fill_value: int = 255,
     ) -> RoiLocation:
         """Run ROI-FCN on one grayscale source image and return source-space ROI."""
         if self._model is None:
@@ -104,6 +112,11 @@ class RoiFcnLocator:
             source_gray,
             canvas_width_px=self._metadata.canvas_width_px,
             canvas_height_px=self._metadata.canvas_height_px,
+        )
+        locator_input, background_metadata = self._apply_background_to_locator_input(
+            locator_input,
+            background_snapshot=background_snapshot,
+            fill_value=background_fill_value,
         )
         heatmap = self._run_model(locator_input)
         return decode_roi_fcn_heatmap(
@@ -122,8 +135,77 @@ class RoiFcnLocator:
                 "device_policy": self._device_policy,
                 "topology_id": self._metadata.topology_id,
                 "topology_variant": self._metadata.topology_variant,
+                **background_metadata,
             },
         )
+
+    def _apply_background_to_locator_input(
+        self,
+        locator_input: RoiFcnLocatorInput,
+        *,
+        background_snapshot: BackgroundSnapshot | None,
+        fill_value: int,
+    ) -> tuple[RoiFcnLocatorInput, dict[str, Any]]:
+        metadata = {
+            contracts.PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVAL_APPLIED: False,
+            contracts.PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVE_PIXEL_COUNT: 0,
+            contracts.PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_WARNING: None,
+        }
+        snapshot = background_snapshot
+        if snapshot is None or not snapshot.captured or not snapshot.enabled:
+            return locator_input, metadata
+
+        src_w, src_h = (int(value) for value in locator_input.source_image_wh_px.tolist())
+        if not snapshot.dimensions_match(src_w, src_h):
+            metadata[contracts.PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_WARNING] = (
+                "background removal skipped for ROI-FCN input: background size "
+                f"{(snapshot.width_px, snapshot.height_px)} does not match source image "
+                f"size {(src_w, src_h)}."
+            )
+            return locator_input, metadata
+
+        current_u8 = _locator_image_uint8(locator_input.locator_image)
+        background_u8 = self._background_locator_image(snapshot, locator_input)
+        mask = compute_background_removal_mask_from_arrays(
+            current_u8,
+            background_u8,
+            threshold=snapshot.threshold,
+        )
+        masked_locator_image = np.array(locator_input.locator_image, dtype=np.float32, copy=True)
+        masked_locator_image[0][mask] = float(_coerce_fill_value(fill_value)) / 255.0
+        metadata[
+            contracts.PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVAL_APPLIED
+        ] = True
+        metadata[
+            contracts.PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVE_PIXEL_COUNT
+        ] = int(np.count_nonzero(mask))
+        return replace(locator_input, locator_image=masked_locator_image), metadata
+
+    def _background_locator_image(
+        self,
+        snapshot: BackgroundSnapshot,
+        locator_input: RoiFcnLocatorInput,
+    ) -> np.ndarray:
+        canvas_h, canvas_w = (int(value) for value in locator_input.locator_image.shape[-2:])
+        key = (
+            int(snapshot.revision),
+            int(snapshot.width_px),
+            int(snapshot.height_px),
+            canvas_w,
+            canvas_h,
+        )
+        if self._background_locator_cache is not None:
+            cache_key, cached = self._background_locator_cache
+            if cache_key == key:
+                return cached
+        background_input = build_roi_fcn_locator_input(
+            snapshot.grayscale_background,
+            canvas_width_px=canvas_w,
+            canvas_height_px=canvas_h,
+        )
+        background_u8 = _locator_image_uint8(background_input.locator_image)
+        self._background_locator_cache = (key, background_u8)
+        return background_u8
 
     def _load_model(self) -> Any:
         torch = _import_torch()
@@ -196,14 +278,14 @@ def load_roi_fcn_artifact_metadata(
     canvas_width_px = _positive_int(
         geometry.get("canvas_width_px"),
         output_hw.get("width"),
-        run_config.get("locator_canvas_width_px"),
+        run_config.get(contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_WIDTH_PX),
         default=480,
         field_name="locator canvas width",
     )
     canvas_height_px = _positive_int(
         geometry.get("canvas_height_px"),
         output_hw.get("height"),
-        run_config.get("locator_canvas_height_px"),
+        run_config.get(contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX),
         default=300,
         field_name="locator canvas height",
     )
@@ -311,12 +393,14 @@ def decode_roi_fcn_heatmap(
     metadata_payload: dict[str, Any] = dict(metadata or {})
     metadata_payload.update(
         {
-            "locator_canvas_width_px": int(canvas_width_px),
-            "locator_canvas_height_px": int(canvas_height_px),
-            "roi_width_px": int(roi_width_px),
-            "roi_height_px": int(roi_height_px),
+            contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_WIDTH_PX: int(canvas_width_px),
+            contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX: int(canvas_height_px),
+            contracts.PREPROCESSING_METADATA_ROI_WIDTH_PX: int(roi_width_px),
+            contracts.PREPROCESSING_METADATA_ROI_HEIGHT_PX: int(roi_height_px),
             "locator_input_shape": tuple(int(value) for value in locator_input.locator_image.shape),
-            "source_image_wh_px": tuple(int(value) for value in locator_input.source_image_wh_px.tolist()),
+            contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX: tuple(
+                int(value) for value in locator_input.source_image_wh_px.tolist()
+            ),
             "resized_image_wh_px": tuple(int(value) for value in locator_input.resized_image_wh_px.tolist()),
             "padding_ltrb_px": tuple(int(value) for value in locator_input.padding_ltrb_px.tolist()),
             "resize_scale": float(locator_input.resize_scale),
@@ -371,6 +455,22 @@ def _coerce_source_gray(source_gray_image: Any) -> np.ndarray:
     if source_gray.dtype != np.uint8:
         source_gray = np.clip(source_gray, 0, 255).astype(np.uint8)
     return source_gray
+
+
+def _locator_image_uint8(locator_image: np.ndarray) -> np.ndarray:
+    image = np.asarray(locator_image, dtype=np.float32)
+    if image.ndim == 3 and int(image.shape[0]) == 1:
+        image = image[0]
+    if image.ndim != 2:
+        raise ValueError(f"Expected ROI-FCN locator image shape (1, H, W), got {image.shape}.")
+    return np.ascontiguousarray(np.clip(image * 255.0, 0.0, 255.0).astype(np.uint8))
+
+
+def _coerce_fill_value(fill_value: int) -> int:
+    value = int(fill_value)
+    if value not in {0, 255}:
+        raise ValueError(f"background_fill_value must be 0 or 255; got {fill_value!r}.")
+    return value
 
 
 def _read_json(path: Path) -> Mapping[str, Any]:

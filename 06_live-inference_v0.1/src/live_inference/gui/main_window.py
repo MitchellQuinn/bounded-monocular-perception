@@ -20,9 +20,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
+
+import interfaces.contracts as contracts
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
 from live_inference.masking import (
@@ -56,7 +59,6 @@ class LiveInferenceMainWindow(QMainWindow):
         self._duplicate_skipped_count = 0
         self._frame_written_summary_interval = 100
         self._preview_update_interval_seconds = 1.0 / 15.0
-        self._background_preview_update_interval_seconds = 1.0 / 5.0
         self._last_preview_update_seconds = 0.0
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
@@ -74,7 +76,15 @@ class LiveInferenceMainWindow(QMainWindow):
         central = QWidget(self)
         root_layout = QHBoxLayout(central)
 
-        preview_layout = QVBoxLayout()
+        output_layout = QVBoxLayout()
+
+        camera_output_group = QGroupBox("Camera Output Area")
+        camera_output_group.setObjectName("camera_output_group")
+        camera_output_layout = QHBoxLayout(camera_output_group)
+
+        full_frame_group = QGroupBox("1. Full frame preview")
+        full_frame_group.setObjectName("full_frame_preview_group")
+        full_frame_layout = QVBoxLayout(full_frame_group)
         self.frame_preview_widget = FramePreviewWidget()
         self.frame_preview_widget.setObjectName("frame_preview_widget")
         self.frame_preview_widget.setMinimumSize(320, 240)
@@ -84,8 +94,23 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         self.frame_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
         self._apply_background_snapshot_to_preview(self.background_state.get_snapshot())
-        preview_layout.addWidget(self.frame_preview_widget, stretch=1)
-        root_layout.addLayout(preview_layout, stretch=3)
+        full_frame_layout.addWidget(self.frame_preview_widget, stretch=1)
+        camera_output_layout.addWidget(full_frame_group, stretch=3)
+
+        roi_crop_group = QGroupBox("2. ROI crop preview")
+        roi_crop_group.setObjectName("roi_crop_preview_group")
+        roi_crop_layout = QVBoxLayout(roi_crop_group)
+        self.roi_crop_preview_widget = FramePreviewWidget()
+        self.roi_crop_preview_widget.setObjectName("roi_crop_preview_widget")
+        self.roi_crop_preview_widget.set_placeholder_text("No ROI crop yet")
+        self.roi_crop_preview_widget.setMinimumSize(240, 240)
+        self.roi_crop_preview_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        roi_crop_layout.addWidget(self.roi_crop_preview_widget, stretch=1)
+        camera_output_layout.addWidget(roi_crop_group, stretch=2)
+        output_layout.addWidget(camera_output_group, stretch=3)
 
         self.right_control_panel = QWidget()
         self.right_control_panel.setObjectName("right_control_panel")
@@ -114,8 +139,11 @@ class LiveInferenceMainWindow(QMainWindow):
             controls_layout.addWidget(button)
         panel_layout.addWidget(controls_group)
 
-        mask_group = QGroupBox("Mask")
-        mask_layout = QGridLayout(mask_group)
+        self.control_tabs = QTabWidget()
+        self.control_tabs.setObjectName("control_tabs")
+
+        mask_tab = QWidget()
+        mask_layout = QGridLayout(mask_tab)
         self.draw_mask_button = QPushButton("Draw Mask")
         self.draw_mask_button.setObjectName("draw_mask_button")
         self.apply_mask_button = QPushButton("Stop Mask / Apply Mask")
@@ -147,10 +175,10 @@ class LiveInferenceMainWindow(QMainWindow):
         mask_layout.addWidget(self.mask_brush_diameter_input, 3, 1)
         mask_layout.addWidget(self.mask_fill_white_checkbox, 4, 0)
         mask_layout.addWidget(self.mask_fill_value_label, 4, 1)
-        panel_layout.addWidget(mask_group)
+        self.control_tabs.addTab(mask_tab, "Mask")
 
-        background_group = QGroupBox("Background")
-        background_layout = QGridLayout(background_group)
+        background_tab = QWidget()
+        background_layout = QGridLayout(background_tab)
         self.capture_background_button = QPushButton("Capture Background")
         self.capture_background_button.setObjectName("capture_background_button")
         self.enable_background_removal_checkbox = QCheckBox("Enable Background Removal")
@@ -178,7 +206,29 @@ class LiveInferenceMainWindow(QMainWindow):
         background_layout.addWidget(self.background_threshold_input, 2, 1)
         background_layout.addWidget(self.clear_background_button, 3, 0, 1, 2)
         background_layout.addWidget(self.background_status_label, 4, 0, 1, 2)
-        panel_layout.addWidget(background_group)
+        self.control_tabs.addTab(background_tab, "Background")
+
+        roi_fcn_tab = QWidget()
+        roi_fcn_layout = QVBoxLayout(roi_fcn_tab)
+        self.roi_size_value = QLabel("ROI size: n/a")
+        self.roi_size_value.setObjectName("roi_size_value")
+        self.roi_locator_canvas_value = QLabel("ROI-FCN canvas: n/a")
+        self.roi_locator_canvas_value.setObjectName("roi_locator_canvas_value")
+        roi_fcn_layout.addWidget(self.roi_size_value)
+        roi_fcn_layout.addWidget(self.roi_locator_canvas_value)
+        roi_fcn_layout.addStretch(1)
+        self.control_tabs.addTab(roi_fcn_tab, "ROI / FCN")
+
+        debug_tab = QWidget()
+        debug_layout = QVBoxLayout(debug_tab)
+        self.debug_summary_value = QLabel("Debug artifacts: n/a")
+        self.debug_summary_value.setObjectName("debug_summary_value")
+        self.debug_summary_value.setWordWrap(True)
+        debug_layout.addWidget(self.debug_summary_value)
+        debug_layout.addStretch(1)
+        self.control_tabs.addTab(debug_tab, "Debug")
+
+        panel_layout.addWidget(self.control_tabs, stretch=1)
 
         status_grid = QGridLayout()
         status_grid.setColumnStretch(1, 1)
@@ -252,13 +302,28 @@ class LiveInferenceMainWindow(QMainWindow):
             object_name="debug_artifacts_value",
         )
         self.debug_artifacts_value.setWordWrap(True)
-        panel_layout.addLayout(status_grid)
 
         self.log_panel = QPlainTextEdit()
         self.log_panel.setObjectName("log_panel")
         self.log_panel.setReadOnly(True)
         self.log_panel.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        panel_layout.addWidget(self.log_panel, stretch=1)
+
+        text_output_group = QGroupBox("Text Outputs")
+        text_output_group.setObjectName("text_output_group")
+        text_output_layout = QHBoxLayout(text_output_group)
+        telemetry_group = QGroupBox("Telemetry")
+        telemetry_group.setObjectName("telemetry_group")
+        telemetry_group.setLayout(status_grid)
+        text_output_layout.addWidget(telemetry_group, stretch=2)
+        log_group = QGroupBox("Log")
+        log_group.setObjectName("log_group")
+        log_layout = QVBoxLayout(log_group)
+        log_layout.addWidget(self.log_panel, stretch=1)
+        text_output_layout.addWidget(log_group, stretch=3)
+        output_layout.addWidget(text_output_group, stretch=2)
+
+        root_layout.addLayout(output_layout, stretch=4)
+        panel_layout.addStretch(1)
         root_layout.addWidget(self.right_control_panel, stretch=1)
 
         self.setCentralWidget(central)
@@ -505,7 +570,6 @@ class LiveInferenceMainWindow(QMainWindow):
         self.background_status_label.setText(self._background_status_text(snapshot))
 
     def _apply_background_snapshot_to_preview(self, snapshot: object) -> None:
-        self.frame_preview_widget.set_background_snapshot(snapshot)
         self._preview_background_revision = int(getattr(snapshot, "revision", 0))
 
     def _sync_preview_background_if_changed(self) -> None:
@@ -626,13 +690,6 @@ class LiveInferenceMainWindow(QMainWindow):
         return True
 
     def _current_preview_update_interval_seconds(self) -> float:
-        snapshot = self.frame_preview_widget.background_snapshot()
-        if (
-            snapshot is not None
-            and bool(getattr(snapshot, "captured", False))
-            and bool(getattr(snapshot, "enabled", False))
-        ):
-            return self._background_preview_update_interval_seconds
         return self._preview_update_interval_seconds
 
     def _on_inference_status_changed(self, status: object) -> None:
@@ -690,12 +747,14 @@ class LiveInferenceMainWindow(QMainWindow):
             _format_value(_payload_value(result, "total_time_ms"), "ms", precision=1)
         )
         self._update_preview_overlay(result)
+        self._update_roi_fcn_readouts(result)
         self._update_debug_artifact_paths(result)
         self._log_result_warnings(result)
 
     def _on_debug_image_ready(self, image: object) -> None:
         image_kind = _text(_payload_value(image, "image_kind"), default="debug")
         path = _text(_payload_value(image, "path"), default="n/a")
+        self._load_debug_preview(image_kind, path)
         self._append_log("INFO", f"Debug artifact ready: kind={image_kind} path={path}")
 
     def _update_preview_overlay(self, result: object) -> None:
@@ -716,10 +775,35 @@ class LiveInferenceMainWindow(QMainWindow):
             return
         self.frame_preview_widget.set_overlay(overlay)
 
+    def _update_roi_fcn_readouts(self, result: object) -> None:
+        roi_metadata = _payload_value(result, "roi_metadata")
+        distance_wh = _size_tuple(_payload_value(roi_metadata, "distance_canvas_wh_px"))
+        if distance_wh is not None:
+            self.roi_size_value.setText(f"ROI size: {distance_wh[0]} x {distance_wh[1]}")
+        extras = _mapping_payload(_payload_value(roi_metadata, "extras"))
+        locator_metadata = _mapping_payload(
+            extras.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA)
+        )
+        canvas_w = _optional_int(
+            locator_metadata.get(
+                contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_WIDTH_PX
+            )
+        )
+        canvas_h = _optional_int(
+            locator_metadata.get(
+                contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX
+            )
+        )
+        if canvas_w is not None and canvas_h is not None:
+            self.roi_locator_canvas_value.setText(
+                f"ROI-FCN canvas: {canvas_w} x {canvas_h}"
+            )
+
     def _update_debug_artifact_paths(self, result: object) -> None:
         debug_paths = _mapping_payload(_payload_value(result, "debug_paths"))
         if not debug_paths:
             self.debug_artifacts_value.setText("n/a")
+            self.debug_summary_value.setText("Debug artifacts: n/a")
             return
 
         summary = " | ".join(
@@ -727,7 +811,21 @@ class LiveInferenceMainWindow(QMainWindow):
             for key, path in sorted(debug_paths.items())
         )
         self.debug_artifacts_value.setText(summary)
+        self.debug_summary_value.setText(summary)
+        self._load_debug_previews(debug_paths)
         self._append_log("INFO", f"Debug artifacts: {summary}")
+
+    def _load_debug_previews(self, debug_paths: Mapping[str, object]) -> None:
+        for image_kind in (contracts.DISPLAY_ARTIFACT_ROI_CROP,):
+            path = debug_paths.get(image_kind)
+            if path is not None:
+                self._load_debug_preview(image_kind, path)
+
+    def _load_debug_preview(self, image_kind: object, path: object) -> None:
+        if str(image_kind) != contracts.DISPLAY_ARTIFACT_ROI_CROP:
+            return
+        if not self.roi_crop_preview_widget.load_image(str(path)):
+            self._append_log("WARNING", f"ROI crop preview unavailable: {path}")
 
     def _log_result_warnings(self, result: object) -> None:
         warnings = _sequence_payload(_payload_value(result, "warnings"))
@@ -881,9 +979,7 @@ def _overlay_from_result(result: object) -> FramePreviewOverlay | None:
     extras = _mapping_payload(_payload_value(roi_metadata, "extras"))
     roi_bounds = _first_xyxy(
         extras,
-        "roi_locator_bounds_xyxy_px",
-        "roi_source_xyxy_px",
-        "roi_request_xyxy_px",
+        *contracts.ROI_OVERLAY_BOUNDS_METADATA_KEYS,
     )
     if bbox is None and center is None and roi_bounds is None:
         return None
@@ -952,6 +1048,16 @@ def _size_tuple(value: object | None) -> tuple[int, int] | None:
     if width <= 0 or height <= 0:
         return None
     return width, height
+
+
+def _optional_int(value: object | None) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _float_tuple(value: object | None, *, width: int) -> tuple[float, ...] | None:

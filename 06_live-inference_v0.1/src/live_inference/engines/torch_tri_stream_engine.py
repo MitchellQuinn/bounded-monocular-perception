@@ -153,7 +153,7 @@ class TorchTriStreamInferenceEngine:
             preprocessing_time_ms=preprocessing_time_ms,
             preprocessing_parameter_revision=_optional_int(
                 preprocessing_metadata,
-                "runtime_parameter_revision",
+                contracts.PREPROCESSING_METADATA_RUNTIME_PARAMETER_REVISION,
                 "preprocessing_parameter_revision",
                 "parameter_revision",
             ),
@@ -443,15 +443,15 @@ def _source_traceability(
 def _roi_metadata_from_preprocessing(metadata: Mapping[str, Any]) -> RoiMetadata | None:
     bbox = _optional_float_tuple(
         metadata,
-        "silhouette_bbox_xyxy_px",
-        "roi_locator_bounds_xyxy_px",
-        "roi_source_xyxy_px",
+        contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_XYXY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_BOUNDS_XYXY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
         width=4,
     )
     center = _optional_float_tuple(
         metadata,
-        "predicted_roi_center_xy_px",
-        "roi_center_xy_px",
+        contracts.PREPROCESSING_METADATA_PREDICTED_ROI_CENTER_XY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CENTER_XY_PX,
         width=2,
     )
     if center is None and bbox is not None:
@@ -460,32 +460,21 @@ def _roi_metadata_from_preprocessing(metadata: Mapping[str, Any]) -> RoiMetadata
     source_wh = _source_wh(metadata)
     distance_wh = _canvas_wh(
         metadata,
-        width_key="distance_canvas_width_px",
-        height_key="distance_canvas_height_px",
+        width_key=contracts.PREPROCESSING_METADATA_DISTANCE_CANVAS_WIDTH_PX,
+        height_key=contracts.PREPROCESSING_METADATA_DISTANCE_CANVAS_HEIGHT_PX,
     )
     orientation_wh = _canvas_wh(
         metadata,
-        width_key="orientation_canvas_width_px",
-        height_key="orientation_canvas_height_px",
+        width_key=contracts.PREPROCESSING_METADATA_ORIENTATION_CANVAS_WIDTH_PX,
+        height_key=contracts.PREPROCESSING_METADATA_ORIENTATION_CANVAS_HEIGHT_PX,
     )
-    geometry_schema = _string_tuple(metadata.get("geometry_schema"))
+    geometry_schema = _string_tuple(
+        metadata.get(contracts.PREPROCESSING_METADATA_GEOMETRY_SCHEMA)
+    )
 
     extras = {
         key: metadata[key]
-        for key in (
-            "roi_request_xyxy_px",
-            "roi_source_xyxy_px",
-            "roi_canvas_insert_xyxy_px",
-            "roi_locator_bounds_xyxy_px",
-            "roi_locator_metadata",
-            "silhouette_bbox_inclusive_xyxy_px",
-            "silhouette_area_px",
-            "silhouette_fallback_used",
-            "silhouette_primary_break_reason",
-            "orientation_source_extent_xyxy_px",
-            "orientation_crop_source_xyxy_px",
-            "orientation_crop_size_px",
-        )
+        for key in contracts.ROI_METADATA_EXTRA_KEYS
         if key in metadata
     }
 
@@ -512,16 +501,16 @@ def _roi_metadata_from_preprocessing(metadata: Mapping[str, Any]) -> RoiMetadata
 
 
 def _debug_paths_from_preprocessing(metadata: Mapping[str, Any]) -> Mapping[str, Path]:
-    raw = metadata.get("debug_paths")
+    raw = metadata.get(contracts.PREPROCESSING_METADATA_DEBUG_PATHS)
     if raw is None:
-        raw = metadata.get("debug_image_paths")
+        raw = metadata.get(contracts.PREPROCESSING_METADATA_DEBUG_IMAGE_PATHS)
     if not isinstance(raw, Mapping):
         return {}
     return {str(key): Path(value) for key, value in raw.items()}
 
 
 def _metadata_warnings(metadata: Mapping[str, Any]) -> list[str]:
-    raw = metadata.get("warnings")
+    raw = metadata.get(contracts.PREPROCESSING_METADATA_WARNINGS)
     if raw is None:
         return []
     if isinstance(raw, str):
@@ -578,14 +567,14 @@ def _optional_float_tuple(
 
 
 def _source_wh(metadata: Mapping[str, Any]) -> tuple[int, int] | None:
-    if "source_image_wh_px" in metadata:
-        value = metadata["source_image_wh_px"]
+    if contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX in metadata:
+        value = metadata[contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX]
         if isinstance(value, (list, tuple)) and len(value) == 2:
             return int(value[0]), int(value[1])
     return _canvas_wh(
         metadata,
-        width_key="source_image_width_px",
-        height_key="source_image_height_px",
+        width_key=contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WIDTH_PX,
+        height_key=contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_HEIGHT_PX,
     )
 
 

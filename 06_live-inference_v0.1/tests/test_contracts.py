@@ -243,6 +243,46 @@ class LiveInferenceContractTests(unittest.TestCase):
         self.assertEqual(DISPLAY_ARTIFACT_DISTANCE_IMAGE, "x_distance_image")
         self.assertEqual(DISPLAY_ARTIFACT_ORIENTATION_IMAGE, "x_orientation_image")
         self.assertEqual(DISPLAY_ARTIFACT_ROI_OVERLAY, "roi_overlay")
+        self.assertEqual(contracts.DISPLAY_ARTIFACT_ROI_CROP, "roi_crop")
+        self.assertEqual(contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT, "locator_input")
+        self.assertEqual(
+            contracts.DISPLAY_ARTIFACT_ROI_OVERLAY_METADATA,
+            "roi_overlay_metadata",
+        )
+        self.assertIn(
+            contracts.DISPLAY_ARTIFACT_ROI_CROP,
+            contracts.DISPLAY_DEBUG_ARTIFACT_KEYS,
+        )
+
+    def test_preprocessing_metadata_bridge_constants(self) -> None:
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA,
+            "roi_locator_metadata",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_APPLICATION_SPACE,
+            "background_application_space",
+        )
+        self.assertEqual(
+            contracts.BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP,
+            "roi_fcn_input_and_roi_crop",
+        )
+        self.assertIn(
+            contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA,
+            contracts.ROI_METADATA_EXTRA_KEYS,
+        )
+        self.assertIn(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED,
+            contracts.BACKGROUND_REMOVAL_METADATA_KEYS,
+        )
+        self.assertEqual(
+            contracts.ROI_OVERLAY_BOUNDS_METADATA_KEYS,
+            (
+                contracts.PREPROCESSING_METADATA_ROI_LOCATOR_BOUNDS_XYXY_PX,
+                contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
+                contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
+            ),
+        )
 
     def test_inference_protocols_include_runtime_parameter_hooks(self) -> None:
         self.assertTrue(hasattr(contracts.InferenceWorkerProtocol, "update_runtime_parameters"))
