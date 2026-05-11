@@ -27,6 +27,7 @@ from live_inference.preprocessing import (  # noqa: E402
     load_roi_fcn_artifact_metadata,
     resolve_roi_fcn_checkpoint,
 )
+from live_inference.masking import BackgroundState  # noqa: E402
 
 
 SELECTED_ROI_ROOT = (
@@ -217,6 +218,53 @@ class RoiFcnLocatorRuntimeTests(unittest.TestCase):
         self.assertEqual(location.center_xy_px, (240.0, 150.0))
         self.assertEqual(location.roi_bounds_xyxy_px, (90.0, 0.0, 390.0, 300.0))
         self.assertEqual(location.metadata["device"], "cpu")
+
+    def test_background_removal_is_applied_to_locator_canvas(self) -> None:
+        _require_selected_roi_artifact()
+        torch = _optional_torch()
+
+        class CapturingPeakModel(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.last_input: np.ndarray | None = None
+
+            def forward(self, x):  # type: ignore[no-untyped-def]
+                self.last_input = x.detach().cpu().numpy()
+                output = torch.zeros(
+                    (1, 1, 300, 480),
+                    dtype=torch.float32,
+                    device=x.device,
+                )
+                output[0, 0, 150, 240] = 1.0
+                return output
+
+        source = _generated_source_image(width=960, height=600)
+        background_state = BackgroundState()
+        background_state.capture_background(source)
+        background_state.set_enabled(True)
+        background_state.set_threshold(1)
+        model = CapturingPeakModel()
+        locator = RoiFcnLocator(
+            SELECTED_ROI_ROOT,
+            device="cpu",
+            load_model=False,
+            model=model,
+        )
+
+        location = locator.locate(
+            source,
+            background_snapshot=background_state.get_snapshot(),
+            background_fill_value=255,
+        )
+
+        self.assertTrue(location.metadata["roi_fcn_background_removal_applied"])
+        self.assertEqual(
+            location.metadata["roi_fcn_background_remove_pixel_count"],
+            300 * 480,
+        )
+        self.assertIsNotNone(model.last_input)
+        assert model.last_input is not None
+        self.assertTrue(np.allclose(model.last_input, 1.0))
 
     def test_selected_live_local_model_loads_on_cpu_and_runs_generated_image_if_available(self) -> None:
         _require_selected_roi_artifact()

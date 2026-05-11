@@ -11,6 +11,7 @@ from .mask_application import (
     apply_fill_to_mask,
     combine_ignore_masks,
     compute_background_removal_mask,
+    compute_background_removal_mask_from_arrays,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "apply_fill_to_mask",
     "combine_ignore_masks",
     "compute_background_removal_mask",
+    "compute_background_removal_mask_from_arrays",
 ]

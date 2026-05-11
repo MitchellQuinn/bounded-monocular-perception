@@ -49,12 +49,34 @@ def compute_background_removal_mask(
         )
         return BackgroundRemovalResult(mask=None, applied=False, warning=warning)
 
-    background = np.asarray(snapshot.grayscale_background, dtype=np.uint8)
+    mask = compute_background_removal_mask_from_arrays(
+        current,
+        snapshot.grayscale_background,
+        threshold=snapshot.threshold,
+    )
+    return BackgroundRemovalResult(mask=mask, applied=True)
+
+
+def compute_background_removal_mask_from_arrays(
+    current_gray: np.ndarray,
+    background_gray: np.ndarray,
+    *,
+    threshold: int,
+) -> np.ndarray:
+    """Return pixels whose grayscale values match within ``threshold``."""
+    current = np.asarray(current_gray, dtype=np.uint8)
+    background = np.asarray(background_gray, dtype=np.uint8)
+    if current.ndim != 2:
+        raise ValueError(f"Background removal requires a 2D grayscale image; got {current.shape}.")
+    if background.shape != current.shape:
+        raise ValueError(
+            "Background shape must match current image shape: "
+            f"background={background.shape}, current={current.shape}."
+        )
     diff = np.empty(current.shape, dtype=np.int16)
     np.subtract(current, background, out=diff, dtype=np.int16)
     np.abs(diff, out=diff)
-    mask = diff < int(snapshot.threshold)
-    return BackgroundRemovalResult(mask=mask.astype(bool, copy=False), applied=True)
+    return diff < int(threshold)
 
 
 def combine_ignore_masks(
@@ -122,4 +144,5 @@ __all__ = [
     "apply_fill_to_mask",
     "combine_ignore_masks",
     "compute_background_removal_mask",
+    "compute_background_removal_mask_from_arrays",
 ]
