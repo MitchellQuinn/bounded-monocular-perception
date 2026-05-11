@@ -100,6 +100,13 @@ class _MaskPreparation:
     fill_value: int
 
 
+@dataclass(frozen=True)
+class _RoiBackgroundRemoval:
+    preview_gray: np.ndarray
+    removal_mask: np.ndarray | None
+    metadata: dict[str, Any]
+
+
 class TriStreamLivePreprocessor:
     """Prepare live raw image bytes as tri-stream model inputs."""
 
@@ -167,18 +174,17 @@ class TriStreamLivePreprocessor:
             canvas_width_px=silhouette_w,
             canvas_height_px=silhouette_h,
         )
-        roi_source_gray, roi_background_metadata = _apply_background_to_roi_canvas(
+        roi_background = _apply_background_to_roi_canvas(
             roi_gray,
             background_snapshot=mask_preparation.background_snapshot,
             source_bounds=source_bounds,
             roi_bounds=roi_bounds,
-            fill_value=mask_preparation.fill_value,
         )
         mask_metadata.update(
             _localized_background_metadata(
                 base=mask_metadata,
                 roi_location=roi_location,
-                roi_background_metadata=roi_background_metadata,
+                roi_background_metadata=roi_background.metadata,
             )
         )
         silhouette_result = self._render_silhouette(
@@ -188,13 +194,27 @@ class TriStreamLivePreprocessor:
             roi_bounds=roi_bounds,
         )
 
-        background_mask = _silhouette_to_background_mask(silhouette_result.roi_silhouette)
-        foreground_mask = background_mask < 0.5
+        silhouette_background_mask = _silhouette_to_background_mask(
+            silhouette_result.roi_silhouette
+        )
+        foreground_mask = silhouette_background_mask < 0.5
+        foreground_mask, foreground_background_metadata = (
+            _foreground_mask_after_background_removal(
+                foreground_mask,
+                roi_background.removal_mask,
+            )
+        )
+        mask_metadata.update(foreground_background_metadata)
+        model_background_mask = _background_mask_from_foreground(foreground_mask)
         roi_repr = _render_inverted_vehicle_detail_on_white(
-            roi_source_gray,
-            background_mask,
+            roi_gray,
+            model_background_mask,
         )
         inverted_orientation_repr = roi_repr
+        raw_orientation_source_gray = _raw_orientation_source_after_background_removal(
+            roi_gray,
+            roi_background.removal_mask,
+        )
         distance_image_2d, brightness_payload, distance_clipped = self._build_distance_image(
             roi_repr=roi_repr,
             foreground_mask=foreground_mask,
@@ -205,7 +225,7 @@ class TriStreamLivePreprocessor:
             orientation_crop_source_xyxy,
             orientation_crop_size_px,
         ) = self._build_orientation_image(
-            roi_source_gray=roi_source_gray,
+            roi_source_gray=raw_orientation_source_gray,
             inverted_orientation_repr=inverted_orientation_repr,
             foreground_mask=foreground_mask,
         )
@@ -295,7 +315,7 @@ class TriStreamLivePreprocessor:
             preprocessing_parameter_revision=runtime_revision,
             source_gray=source_gray,
             roi_location=roi_location,
-            roi_crop=roi_source_gray,
+            roi_crop=roi_background.preview_gray,
             distance_image=distance_image_2d,
             orientation_image=orientation_image_2d,
             metadata=metadata,
@@ -757,8 +777,7 @@ def _apply_background_to_roi_canvas(
     background_snapshot: BackgroundSnapshot | None,
     source_bounds: np.ndarray,
     roi_bounds: np.ndarray,
-    fill_value: int,
-) -> tuple[np.ndarray, dict[str, Any]]:
+) -> _RoiBackgroundRemoval:
     metadata: dict[str, Any] = {
         contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED: False,
         contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_REMOVE_PIXEL_COUNT: 0,
@@ -766,7 +785,11 @@ def _apply_background_to_roi_canvas(
     }
     snapshot = background_snapshot
     if snapshot is None or not snapshot.captured or not snapshot.enabled:
-        return roi_gray, metadata
+        return _RoiBackgroundRemoval(
+            preview_gray=roi_gray,
+            removal_mask=None,
+            metadata=metadata,
+        )
     source_h, source_w = int(snapshot.height_px), int(snapshot.width_px)
     background = snapshot.grayscale_background
     if background.shape != (source_h, source_w):
@@ -774,7 +797,11 @@ def _apply_background_to_roi_canvas(
             "background removal skipped for ROI crop: background shape "
             f"{background.shape} does not match {(source_h, source_w)}."
         )
-        return roi_gray, metadata
+        return _RoiBackgroundRemoval(
+            preview_gray=roi_gray,
+            removal_mask=None,
+            metadata=metadata,
+        )
     background_roi = _reconstruct_roi_canvas_from_source(
         background,
         source_xyxy=np.asarray(source_bounds, dtype=np.float32),
@@ -791,7 +818,66 @@ def _apply_background_to_roi_canvas(
     metadata[
         contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_REMOVE_PIXEL_COUNT
     ] = int(np.count_nonzero(mask))
-    return apply_fill_to_mask(roi_gray, mask, fill_value=fill_value), metadata
+    return _RoiBackgroundRemoval(
+        preview_gray=apply_fill_to_mask(roi_gray, mask, fill_value=255),
+        removal_mask=mask,
+        metadata=metadata,
+    )
+
+
+def _foreground_mask_after_background_removal(
+    foreground_mask: np.ndarray,
+    removal_mask: np.ndarray | None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    metadata: dict[str, Any] = {
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_EXCLUDED_FROM_FOREGROUND: False,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_FOREGROUND_REMOVE_PIXEL_COUNT: 0,
+    }
+    if removal_mask is None:
+        return foreground_mask, metadata
+
+    removable_foreground = np.asarray(foreground_mask, dtype=bool) & np.asarray(
+        removal_mask,
+        dtype=bool,
+    )
+    remove_count = int(np.count_nonzero(removable_foreground))
+    metadata[
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_FOREGROUND_REMOVE_PIXEL_COUNT
+    ] = remove_count
+    if remove_count <= 0:
+        return foreground_mask, metadata
+
+    adjusted = np.asarray(foreground_mask, dtype=bool) & ~np.asarray(
+        removal_mask,
+        dtype=bool,
+    )
+    if not bool(np.any(adjusted)):
+        metadata[contracts.PREPROCESSING_METADATA_BACKGROUND_WARNING] = (
+            "background removal mask would empty ROI foreground; keeping silhouette "
+            "foreground for distance/orientation inputs."
+        )
+        return foreground_mask, metadata
+
+    metadata[
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_EXCLUDED_FROM_FOREGROUND
+    ] = True
+    return adjusted, metadata
+
+
+def _background_mask_from_foreground(foreground_mask: np.ndarray) -> np.ndarray:
+    foreground = np.asarray(foreground_mask, dtype=bool)
+    background_mask = np.ones(foreground.shape, dtype=np.float32)
+    background_mask[foreground] = 0.0
+    return background_mask
+
+
+def _raw_orientation_source_after_background_removal(
+    roi_gray: np.ndarray,
+    removal_mask: np.ndarray | None,
+) -> np.ndarray:
+    if removal_mask is None:
+        return roi_gray
+    return apply_fill_to_mask(roi_gray, removal_mask, fill_value=255)
 
 
 def _localized_background_metadata(

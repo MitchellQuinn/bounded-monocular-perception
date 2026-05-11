@@ -73,6 +73,9 @@ class FramePreviewWidget(QWidget):
         self._cursor_source_xy: tuple[int, int] | None = None
         self._committed_overlay_pixmap: QPixmap | None = None
         self._draft_overlay_pixmap: QPixmap | None = None
+        self._background_preview_snapshot_cache: (
+            tuple[tuple[int, bool, int, int, int, int, int], BackgroundSnapshot] | None
+        ) = None
         self.setMouseTracking(False)
 
     def placeholder_text(self) -> str:
@@ -87,6 +90,27 @@ class FramePreviewWidget(QWidget):
         if image.isNull():
             return False
         self.set_image(image)
+        return True
+
+    def load_background_preview(
+        self,
+        path: Path | str,
+        snapshot: BackgroundSnapshot | None,
+        *,
+        max_width_px: int = 480,
+        max_height_px: int = 300,
+        fill_value: int = 255,
+    ) -> bool:
+        image = QImage(str(path))
+        if image.isNull():
+            return False
+        self.set_background_preview_image(
+            image,
+            snapshot,
+            max_width_px=max_width_px,
+            max_height_px=max_height_px,
+            fill_value=fill_value,
+        )
         return True
 
     def set_pixmap(self, pixmap: QPixmap) -> None:
@@ -119,8 +143,80 @@ class FramePreviewWidget(QWidget):
             self._ensure_draft_mask_for_current_source()
         self.update()
 
+    def set_background_preview_image(
+        self,
+        image: QImage,
+        snapshot: BackgroundSnapshot | None,
+        *,
+        max_width_px: int = 480,
+        max_height_px: int = 300,
+        fill_value: int = 255,
+    ) -> None:
+        if image.isNull():
+            self.set_background_snapshot(None)
+            self.set_image(image)
+            return
+
+        original_size = (int(image.width()), int(image.height()))
+        preview_image = _scaled_image_to_fit(
+            image,
+            max_width_px=max_width_px,
+            max_height_px=max_height_px,
+        )
+        preview_size = (int(preview_image.width()), int(preview_image.height()))
+        preview_snapshot = self._scaled_background_snapshot_for_preview(
+            snapshot,
+            original_size=original_size,
+            preview_size=preview_size,
+        )
+        self.set_background_snapshot(None)
+        self.set_mask_fill_value(fill_value)
+        self.set_image(preview_image)
+        self.set_background_snapshot(preview_snapshot)
+
     def pixmap(self) -> QPixmap | None:
         return self._pixmap
+
+    def raw_image(self) -> QImage | None:
+        if self._raw_image is None or self._raw_image.isNull():
+            return None
+        return self._raw_image.copy()
+
+    def _scaled_background_snapshot_for_preview(
+        self,
+        snapshot: BackgroundSnapshot | None,
+        *,
+        original_size: tuple[int, int],
+        preview_size: tuple[int, int],
+    ) -> BackgroundSnapshot | None:
+        if snapshot is None or not snapshot.captured or not snapshot.enabled:
+            return None
+        original_w, original_h = (int(original_size[0]), int(original_size[1]))
+        preview_w, preview_h = (int(preview_size[0]), int(preview_size[1]))
+        if preview_w <= 0 or preview_h <= 0:
+            return None
+        if not snapshot.dimensions_match(original_w, original_h):
+            return None
+        key = (
+            int(snapshot.revision),
+            bool(snapshot.enabled),
+            int(snapshot.threshold),
+            original_w,
+            original_h,
+            preview_w,
+            preview_h,
+        )
+        cached = self._background_preview_snapshot_cache
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        preview_snapshot = _scaled_background_snapshot(
+            snapshot,
+            original_size=original_size,
+            preview_size=preview_size,
+        )
+        if preview_snapshot is not None:
+            self._background_preview_snapshot_cache = (key, preview_snapshot)
+        return preview_snapshot
 
     def raw_pixmap(self) -> QPixmap | None:
         if self._raw_pixmap is None:
@@ -705,6 +801,61 @@ def _mask_overlay_pixmap(mask: np.ndarray, *, rgba: tuple[int, int, int, int]) -
     return QPixmap.fromImage(image)
 
 
+def _scaled_image_to_fit(
+    image: QImage,
+    *,
+    max_width_px: int,
+    max_height_px: int,
+) -> QImage:
+    max_width = max(1, int(max_width_px))
+    max_height = max(1, int(max_height_px))
+    width = int(image.width())
+    height = int(image.height())
+    if width <= 0 or height <= 0:
+        return image.copy()
+    if width <= max_width and height <= max_height:
+        return image.copy()
+    return image.scaled(
+        max_width,
+        max_height,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.FastTransformation,
+    )
+
+
+def _scaled_background_snapshot(
+    snapshot: BackgroundSnapshot | None,
+    *,
+    original_size: tuple[int, int],
+    preview_size: tuple[int, int],
+) -> BackgroundSnapshot | None:
+    if snapshot is None or not snapshot.captured or not snapshot.enabled:
+        return None
+    original_w, original_h = (int(original_size[0]), int(original_size[1]))
+    preview_w, preview_h = (int(preview_size[0]), int(preview_size[1]))
+    if preview_w <= 0 or preview_h <= 0:
+        return None
+    if not snapshot.dimensions_match(original_w, original_h):
+        return None
+
+    background_image = _gray_array_to_qimage(snapshot.grayscale_background)
+    scaled_background = background_image.scaled(
+        preview_w,
+        preview_h,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.FastTransformation,
+    )
+    return BackgroundSnapshot(
+        revision=int(snapshot.revision),
+        width_px=preview_w,
+        height_px=preview_h,
+        grayscale_background=_qimage_to_gray_array(scaled_background),
+        enabled=bool(snapshot.enabled),
+        threshold=int(snapshot.threshold),
+        captured_at_utc=snapshot.captured_at_utc,
+    )
+
+
 def _background_snapshot_key(
     snapshot: BackgroundSnapshot | None,
 ) -> tuple[int, bool, bool, int, int, int] | None:
@@ -738,6 +889,21 @@ def _qimage_to_gray_array(image: QImage) -> np.ndarray:
     buffer = gray_image.bits()
     array = np.frombuffer(buffer, dtype=np.uint8).reshape(height, bytes_per_line)
     return np.array(array[:, :width], dtype=np.uint8, copy=True)
+
+
+def _gray_array_to_qimage(image: np.ndarray) -> QImage:
+    gray = np.ascontiguousarray(np.asarray(image, dtype=np.uint8))
+    if gray.ndim != 2:
+        raise ValueError(f"Expected grayscale image with shape (H, W), got {gray.shape}.")
+    height, width = int(gray.shape[0]), int(gray.shape[1])
+    qimage = QImage(
+        gray.data,
+        width,
+        height,
+        int(gray.strides[0]),
+        QImage.Format.Format_Grayscale8,
+    ).copy()
+    return qimage
 
 
 def _rgb_array_to_pixmap(image: np.ndarray) -> QPixmap:
