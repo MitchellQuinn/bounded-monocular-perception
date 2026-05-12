@@ -75,9 +75,10 @@ from .debug_artifacts import (  # noqa: E402
     ARTIFACT_DISTANCE_IMAGE,
     ARTIFACT_FINAL_LOCATOR_INPUT,
     ARTIFACT_LOCATOR_INPUT,
+    ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY,
     ARTIFACT_LOCATOR_INPUT_AFTER_BACKGROUND_REMOVAL,
     ARTIFACT_LOCATOR_INPUT_AFTER_MANUAL_MASK,
-    ARTIFACT_LOCATOR_INPUT_RAW_OR_PRETRANSFORM,
+    ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY,
     ARTIFACT_MANUAL_MASK,
     ARTIFACT_ORIENTATION_IMAGE,
     ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS,
@@ -89,7 +90,15 @@ from .debug_artifacts import (  # noqa: E402
     default_debug_output_dir,
 )
 from .roi_locator import build_roi_fcn_locator_input  # noqa: E402
-from .stage_policy import StageTransformPolicySnapshot, StageTransformPolicyState
+from .stage_policy import (
+    ROI_LOCATOR_INPUT_POLARITY_AS_IS,
+    ROI_LOCATOR_INPUT_POLARITY_INVERTED,
+    StageTransformPolicySnapshot,
+    StageTransformPolicyState,
+)
+
+
+DEFAULT_ROI_LOCATOR_BACKGROUND_FILL_VALUE = 0
 
 
 @dataclass(frozen=True)
@@ -107,6 +116,7 @@ class _SilhouetteResult:
 @dataclass(frozen=True)
 class _MaskPreparation:
     original_source_gray: np.ndarray
+    locator_after_polarity_gray: np.ndarray
     locator_source_gray: np.ndarray
     source_gray: np.ndarray
     metadata: dict[str, Any]
@@ -117,6 +127,7 @@ class _MaskPreparation:
     regressor_background_snapshot: BackgroundSnapshot | None
     background_snapshot: BackgroundSnapshot | None
     fill_value: int
+    locator_fill_value: int
 
 
 @dataclass(frozen=True)
@@ -215,7 +226,7 @@ class TriStreamLivePreprocessor:
             mask_preparation.locator_source_gray,
             excluded_source_mask=mask_preparation.roi_exclusion_mask,
             background_snapshot=mask_preparation.locator_background_snapshot,
-            background_fill_value=mask_preparation.fill_value,
+            background_fill_value=mask_preparation.locator_fill_value,
         )
         center_x_px, center_y_px = _coerce_center_xy(roi_location)
         silhouette_w = int(self._config.silhouette_config.normalized_roi_canvas_width_px())
@@ -248,12 +259,10 @@ class TriStreamLivePreprocessor:
             roi_location=roi_location,
             request_bounds=request_bounds,
             source_bounds=source_bounds,
-            frame_width_px=source_w,
-            frame_height_px=source_h,
             roi_crop=roi_background.preview_gray,
             stage_policy=stage_policy,
         )
-        if not bool(roi_guard_metadata["roi_accepted"]):
+        if not bool(roi_guard_metadata[contracts.PREPROCESSING_METADATA_ROI_ACCEPTED]):
             rejection_metadata = self._base_metadata(
                 request=request,
                 input_image_hash=input_image_hash,
@@ -274,6 +283,7 @@ class TriStreamLivePreprocessor:
                 input_image_hash=input_image_hash,
                 preprocessing_parameter_revision=runtime_revision,
                 original_source_gray=mask_preparation.original_source_gray,
+                locator_after_polarity_gray=mask_preparation.locator_after_polarity_gray,
                 locator_source_gray=mask_preparation.locator_source_gray,
                 source_gray=source_gray,
                 roi_location=roi_location,
@@ -287,13 +297,19 @@ class TriStreamLivePreprocessor:
                 combined_ignore_mask=mask_preparation.combined_ignore_mask,
                 background_removal_mask=roi_background.removal_mask,
                 fill_value=mask_preparation.fill_value,
+                locator_fill_value=mask_preparation.locator_fill_value,
             )
             if debug_paths:
                 rejection_metadata = dict(rejection_metadata)
                 rejection_metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS] = {
                     str(kind): str(path) for kind, path in debug_paths.items()
                 }
-            reason = str(roi_guard_metadata.get("roi_rejection_reason") or "roi_rejected")
+            reason = str(
+                roi_guard_metadata.get(
+                    contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON
+                )
+                or "roi_rejected"
+            )
             details = _roi_rejection_details(
                 request=request,
                 input_image_hash=input_image_hash,
@@ -406,6 +422,7 @@ class TriStreamLivePreprocessor:
             input_image_hash=input_image_hash,
             preprocessing_parameter_revision=runtime_revision,
             original_source_gray=mask_preparation.original_source_gray,
+            locator_after_polarity_gray=mask_preparation.locator_after_polarity_gray,
             locator_source_gray=mask_preparation.locator_source_gray,
             source_gray=source_gray,
             roi_location=roi_location,
@@ -419,6 +436,7 @@ class TriStreamLivePreprocessor:
             combined_ignore_mask=mask_preparation.combined_ignore_mask,
             background_removal_mask=roi_background.removal_mask,
             fill_value=mask_preparation.fill_value,
+            locator_fill_value=mask_preparation.locator_fill_value,
         )
         if debug_paths:
             metadata = dict(metadata)
@@ -489,6 +507,9 @@ class TriStreamLivePreprocessor:
             contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX: (
                 _array_xyxy_to_tuple(request_bounds)
             ),
+            contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX: (
+                _array_xyxy_to_tuple(request_bounds)
+            ),
             contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX: (
                 _array_xyxy_to_tuple(source_bounds)
             ),
@@ -504,6 +525,10 @@ class TriStreamLivePreprocessor:
                 float(center_y_px),
             ),
             "roi_center_source_xy_px": (float(center_x_px), float(center_y_px)),
+            contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CENTER_SOURCE_XY_PX: (
+                float(center_x_px),
+                float(center_y_px),
+            ),
             "roi_center_canvas_xy_px": _roi_center_canvas_xy(roi_location),
             contracts.PREPROCESSING_METADATA_RUNTIME_PARAMETER_REVISION: runtime_revision,
             contracts.PREPROCESSING_METADATA_WARNINGS: tuple(warnings),
@@ -575,6 +600,7 @@ class TriStreamLivePreprocessor:
             )
         )
         metadata.update(stage_policy.to_metadata())
+        locator_fill_value = DEFAULT_ROI_LOCATOR_BACKGROUND_FILL_VALUE
 
         manual_mask: np.ndarray | None = None
         manual_mask_valid = False
@@ -612,10 +638,18 @@ class TriStreamLivePreprocessor:
             manual_mask_valid
             and stage_policy.apply_manual_mask_to_regressor_preprocessing
         )
+        locator_after_polarity = _apply_roi_locator_input_polarity(
+            source_gray,
+            stage_policy.roi_locator_input_polarity,
+        )
         locator_source = (
-            apply_fill_to_mask(source_gray, manual_mask, fill_value=fill_value)
+            apply_fill_to_mask(
+                locator_after_polarity,
+                manual_mask,
+                fill_value=locator_fill_value,
+            )
             if manual_to_locator
-            else np.array(source_gray, dtype=np.uint8, copy=True)
+            else np.array(locator_after_polarity, dtype=np.uint8, copy=True)
         )
         regressor_source = (
             apply_fill_to_mask(source_gray, manual_mask, fill_value=fill_value)
@@ -656,7 +690,10 @@ class TriStreamLivePreprocessor:
             else None
         )
         locator_background_snapshot = (
-            usable_background
+            _transform_background_snapshot_for_roi_locator(
+                usable_background,
+                polarity=stage_policy.roi_locator_input_polarity,
+            )
             if bool(stage_policy.apply_background_removal_to_roi_locator)
             else None
         )
@@ -680,6 +717,7 @@ class TriStreamLivePreprocessor:
 
         return _MaskPreparation(
             original_source_gray=np.array(source_gray, dtype=np.uint8, copy=True),
+            locator_after_polarity_gray=locator_after_polarity,
             locator_source_gray=locator_source,
             source_gray=regressor_source,
             metadata=metadata,
@@ -692,6 +730,7 @@ class TriStreamLivePreprocessor:
             regressor_background_snapshot=regressor_background_snapshot,
             background_snapshot=background_snapshot if background_warning is None else None,
             fill_value=fill_value,
+            locator_fill_value=locator_fill_value,
         )
 
     def _render_silhouette(
@@ -858,6 +897,7 @@ class TriStreamLivePreprocessor:
         input_image_hash: contracts.FrameHash,
         preprocessing_parameter_revision: int | None,
         original_source_gray: np.ndarray,
+        locator_after_polarity_gray: np.ndarray,
         locator_source_gray: np.ndarray,
         source_gray: np.ndarray,
         roi_location: RoiLocation,
@@ -871,6 +911,7 @@ class TriStreamLivePreprocessor:
         combined_ignore_mask: np.ndarray | None,
         background_removal_mask: np.ndarray | None,
         fill_value: int,
+        locator_fill_value: int,
     ) -> dict[str, Path]:
         if not bool(request.save_debug_images):
             return {}
@@ -889,18 +930,24 @@ class TriStreamLivePreprocessor:
                 ARTIFACT_PREPROCESSOR_SOURCE_BEFORE_REGRESSOR_MASKS: original_source_gray,
                 ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS: source_gray,
                 ARTIFACT_ROI_CROP: roi_crop,
-                ARTIFACT_LOCATOR_INPUT_RAW_OR_PRETRANSFORM: _debug_locator_input(
+                ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY: _debug_locator_input(
                     original_source_gray,
                     roi_location,
                     background_snapshot=None,
-                    fill_value=fill_value,
+                    fill_value=locator_fill_value,
+                ),
+                ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY: _debug_locator_input(
+                    locator_after_polarity_gray,
+                    roi_location,
+                    background_snapshot=None,
+                    fill_value=locator_fill_value,
                 ),
                 ARTIFACT_LOCATOR_INPUT_AFTER_MANUAL_MASK: (
                     _debug_locator_input(
                         locator_source_gray,
                         roi_location,
                         background_snapshot=None,
-                        fill_value=fill_value,
+                        fill_value=locator_fill_value,
                     )
                     if bool(metadata.get("manual_mask_applied_to_roi_locator"))
                     else None
@@ -910,7 +957,7 @@ class TriStreamLivePreprocessor:
                         locator_source_gray,
                         roi_location,
                         background_snapshot=locator_background_snapshot,
-                        fill_value=fill_value,
+                        fill_value=locator_fill_value,
                     )
                     if locator_background_snapshot is not None
                     else None
@@ -919,13 +966,13 @@ class TriStreamLivePreprocessor:
                     locator_source_gray,
                     roi_location,
                     background_snapshot=locator_background_snapshot,
-                    fill_value=fill_value,
+                    fill_value=locator_fill_value,
                 ),
                 ARTIFACT_LOCATOR_INPUT: _debug_locator_input(
                     locator_source_gray,
                     roi_location,
                     background_snapshot=locator_background_snapshot,
-                    fill_value=fill_value,
+                    fill_value=locator_fill_value,
                 ),
                 ARTIFACT_ROI_FCN_HEATMAP_PRE_EXCLUSION: _locator_heatmap_from_metadata(
                     roi_location,
@@ -973,18 +1020,16 @@ def _roi_guard_metadata(
     roi_location: RoiLocation,
     request_bounds: np.ndarray,
     source_bounds: np.ndarray,
-    frame_width_px: int,
-    frame_height_px: int,
     roi_crop: np.ndarray,
     stage_policy: StageTransformPolicySnapshot,
 ) -> dict[str, Any]:
     confidence = _roi_confidence(roi_location)
-    clipped = _roi_is_clipped(
+    clipping = _roi_clip_amounts(
         request_bounds=request_bounds,
         source_bounds=source_bounds,
-        frame_width_px=frame_width_px,
-        frame_height_px=frame_height_px,
     )
+    clip_max = max(clipping.values()) if clipping else 0
+    clipped = clip_max > 0
     content_fraction = _roi_content_fraction(roi_crop)
     reasons: list[str] = []
     if confidence is not None and confidence < float(stage_policy.roi_min_confidence):
@@ -992,8 +1037,21 @@ def _roi_guard_metadata(
             "low_confidence:"
             f"{confidence:.3f}<min:{float(stage_policy.roi_min_confidence):.3f}"
         )
-    if bool(stage_policy.reject_clipped_roi) and clipped:
-        reasons.append("clipped_roi")
+    tolerance_px = int(stage_policy.roi_clip_tolerance_px)
+    clip_tolerated = bool(
+        clipped
+        and bool(stage_policy.reject_clipped_roi)
+        and int(clip_max) <= int(tolerance_px)
+    )
+    if (
+        bool(stage_policy.reject_clipped_roi)
+        and clipped
+        and int(clip_max) > int(tolerance_px)
+    ):
+        reasons.append(
+            "clipped_roi:"
+            f"{int(clip_max)}px>tolerance:{int(tolerance_px)}px"
+        )
     min_content = float(stage_policy.roi_min_content_fraction)
     if min_content > 0.0 and content_fraction < min_content:
         reasons.append(
@@ -1002,13 +1060,23 @@ def _roi_guard_metadata(
         )
     accepted = not reasons
     return {
-        "roi_confidence": confidence,
-        "roi_clipped": bool(clipped),
-        "roi_accepted": bool(accepted),
-        "roi_rejected": not bool(accepted),
-        "roi_rejection_reason": ";".join(reasons) if reasons else None,
-        "roi_rejection_reasons": tuple(reasons),
-        "roi_content_fraction": float(content_fraction),
+        contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE: confidence,
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CONFIDENCE: confidence,
+        contracts.PREPROCESSING_METADATA_ROI_CLIPPED: bool(clipped),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_LEFT_PX: int(clipping["left"]),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_RIGHT_PX: int(clipping["right"]),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOP_PX: int(clipping["top"]),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_BOTTOM_PX: int(clipping["bottom"]),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX: int(clip_max),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX: int(tolerance_px),
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED: bool(clip_tolerated),
+        contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: bool(accepted),
+        contracts.PREPROCESSING_METADATA_ROI_REJECTED: not bool(accepted),
+        contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON: (
+            ";".join(reasons) if reasons else None
+        ),
+        contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASONS: tuple(reasons),
+        contracts.PREPROCESSING_METADATA_ROI_CONTENT_FRACTION: float(content_fraction),
     }
 
 
@@ -1038,23 +1106,23 @@ def _roi_center_canvas_xy(roi_location: RoiLocation) -> tuple[float, float] | No
         return None
 
 
-def _roi_is_clipped(
+def _roi_clip_amounts(
     *,
     request_bounds: np.ndarray,
     source_bounds: np.ndarray,
-    frame_width_px: int,
-    frame_height_px: int,
-) -> bool:
+) -> dict[str, int]:
     req = np.asarray(request_bounds, dtype=np.float32).reshape(4)
     src = np.asarray(source_bounds, dtype=np.float32).reshape(4)
-    if bool(np.any(np.abs(req - src) > 1e-3)):
-        return True
-    return bool(
-        req[0] < 0.0
-        or req[1] < 0.0
-        or req[2] > float(frame_width_px)
-        or req[3] > float(frame_height_px)
-    )
+    return {
+        "left": _clip_pixels(src[0] - req[0]),
+        "top": _clip_pixels(src[1] - req[1]),
+        "right": _clip_pixels(req[2] - src[2]),
+        "bottom": _clip_pixels(req[3] - src[3]),
+    }
+
+
+def _clip_pixels(value: float) -> int:
+    return max(0, int(math.ceil(float(value) - 1e-6)))
 
 
 def _roi_content_fraction(roi_crop: np.ndarray) -> float:
@@ -1074,15 +1142,26 @@ def _roi_rejection_details(
     keys = (
         "request_id",
         "frame_hash",
-        "roi_confidence",
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY,
+        contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE,
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CONFIDENCE,
         "roi_center_canvas_xy_px",
         "roi_center_source_xy_px",
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CENTER_SOURCE_XY_PX,
         contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
-        "roi_clipped",
-        "roi_accepted",
-        "roi_rejection_reason",
-        "roi_rejection_reasons",
+        contracts.PREPROCESSING_METADATA_ROI_CLIPPED,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_LEFT_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_RIGHT_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOP_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_BOTTOM_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED,
+        contracts.PREPROCESSING_METADATA_ROI_ACCEPTED,
+        contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON,
+        contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASONS,
         "apply_manual_mask_to_roi_locator",
         "apply_background_removal_to_roi_locator",
         "apply_manual_mask_to_regressor_preprocessing",
@@ -1192,6 +1271,44 @@ def _background_source_warning(
         "background removal skipped: background size "
         f"{(snapshot.width_px, snapshot.height_px)} does not match source image "
         f"size {(int(source_width_px), int(source_height_px))}."
+    )
+
+
+def _apply_roi_locator_input_polarity(
+    source_gray: np.ndarray,
+    polarity: str,
+) -> np.ndarray:
+    source = np.asarray(source_gray, dtype=np.uint8)
+    if source.ndim != 2:
+        raise ValueError(f"Expected grayscale 2D image, got {source.shape}")
+    if polarity == ROI_LOCATOR_INPUT_POLARITY_AS_IS:
+        return np.array(source, dtype=np.uint8, copy=True)
+    if polarity == ROI_LOCATOR_INPUT_POLARITY_INVERTED:
+        return np.ascontiguousarray(255 - source)
+    raise ValueError(f"Unsupported ROI locator input polarity: {polarity!r}.")
+
+
+def _transform_background_snapshot_for_roi_locator(
+    snapshot: BackgroundSnapshot | None,
+    *,
+    polarity: str,
+) -> BackgroundSnapshot | None:
+    if snapshot is None:
+        return None
+    if polarity == ROI_LOCATOR_INPUT_POLARITY_AS_IS:
+        return snapshot
+    background = _apply_roi_locator_input_polarity(
+        snapshot.grayscale_background,
+        polarity,
+    )
+    return BackgroundSnapshot(
+        revision=snapshot.revision,
+        width_px=snapshot.width_px,
+        height_px=snapshot.height_px,
+        grayscale_background=background,
+        enabled=snapshot.enabled,
+        threshold=snapshot.threshold,
+        captured_at_utc=snapshot.captured_at_utc,
     )
 
 

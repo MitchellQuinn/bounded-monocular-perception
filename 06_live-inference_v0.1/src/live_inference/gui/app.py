@@ -95,6 +95,8 @@ def build_live_inference_gui_context(
     camera_name: str = DEFAULT_CAMERA_NAME,
     log_v4l2_controls_at_startup: bool = False,
     device: str | None = None,
+    roi_locator_polarity: str = "as_is",
+    roi_clip_tolerance_px: int = 0,
     save_debug_images: bool = False,
     debug_output_dir: Path | None = None,
     frame_interval_ms: int = DEFAULT_FRAME_INTERVAL_MS,
@@ -104,7 +106,11 @@ def build_live_inference_gui_context(
     """Build the selected camera to tri-stream inference pipeline."""
     deps = (dependency_loader or _load_runtime_dependencies)()
     from live_inference.masking import BackgroundState, FrameMaskState  # noqa: PLC0415
-    from live_inference.preprocessing import StageTransformPolicyState  # noqa: PLC0415
+    from live_inference.preprocessing import (  # noqa: PLC0415
+        StageTransformPolicySnapshot,
+        StageTransformPolicyState,
+        normalize_roi_locator_input_polarity,
+    )
     from live_inference.inspection import (  # noqa: PLC0415
         InferenceTraceRecorder,
         SingleFrameInferenceRunner,
@@ -113,7 +119,14 @@ def build_live_inference_gui_context(
     resolved_camera_source = _camera_source(camera_source)
     frame_mask_state = FrameMaskState()
     background_state = BackgroundState()
-    stage_policy_state = StageTransformPolicyState()
+    stage_policy_state = StageTransformPolicyState(
+        StageTransformPolicySnapshot(
+            roi_locator_input_polarity=normalize_roi_locator_input_polarity(
+                roi_locator_polarity
+            ),
+            roi_clip_tolerance_px=int(roi_clip_tolerance_px),
+        )
+    )
     project_root = _live_project_root()
     resolved_selection_path = _resolve_path(
         model_selection_path or selection_path or default_model_selection_path()
@@ -287,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:
             camera_name=args.camera_name,
             log_v4l2_controls_at_startup=args.log_v4l2_controls_at_startup,
             device=args.device,
+            roi_locator_polarity=args.roi_locator_polarity,
+            roi_clip_tolerance_px=args.roi_clip_tolerance_px,
             save_debug_images=args.save_debug_images,
             debug_output_dir=args.debug_output_dir,
             frame_interval_ms=args.frame_interval_ms,
@@ -426,6 +441,19 @@ def _argument_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="{auto,cuda,cpu}",
         help="Optional runtime device override for both selected models.",
+    )
+    parser.add_argument(
+        "--roi-locator-polarity",
+        type=_roi_locator_polarity,
+        choices=("as_is", "inverted"),
+        default="as_is",
+        help="ROI-FCN locator input polarity.",
+    )
+    parser.add_argument(
+        "--roi-clip-tolerance-px",
+        type=_non_negative_int,
+        default=0,
+        help="Maximum clipped ROI overflow in pixels allowed before rejection.",
     )
     parser.add_argument(
         "--inference-poll-interval-ms",
@@ -589,6 +617,13 @@ def _device_policy(value: str) -> str:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _roi_locator_polarity(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_")
+    if text in {"as_is", "inverted"}:
+        return text
+    raise argparse.ArgumentTypeError("value must be one of: as_is, inverted")
+
+
 def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     synthetic_config = context.synthetic_camera_config
     print("Live inference GUI launch context:", file=sys.stderr)
@@ -599,6 +634,15 @@ def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
         file=sys.stderr,
     )
     print(f"  roi_fcn_device = {context.roi_fcn_device}", file=sys.stderr)
+    stage_policy = context.stage_policy_state.get_snapshot()
+    print(
+        f"  roi_locator_input_polarity = {stage_policy.roi_locator_input_polarity}",
+        file=sys.stderr,
+    )
+    print(
+        f"  roi_clip_tolerance_px = {stage_policy.roi_clip_tolerance_px}",
+        file=sys.stderr,
+    )
     print(
         f"  synthetic_camera_config = {context.synthetic_camera_config_path}",
         file=sys.stderr,

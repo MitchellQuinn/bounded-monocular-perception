@@ -112,6 +112,23 @@ PYTHONPATH=06_live-inference_v0.1/src ./.venv/bin/python \
   --auto-start-inference
 ```
 
+Live camera command for dark Defender on bright board ROI-FCN probing:
+
+```bash
+PYTHONPATH=06_live-inference_v0.1/src ./.venv/bin/python \
+  -m live_inference.gui.app \
+  --camera-source opencv-v4l2 \
+  --camera-device /dev/video0 \
+  --camera-width 960 \
+  --camera-height 600 \
+  --camera-fps 80 \
+  --device auto \
+  --roi-locator-polarity inverted \
+  --roi-clip-tolerance-px 10 \
+  --auto-start-camera \
+  --auto-start-inference
+```
+
 Do not use high-bandwidth `ffplay` raw preview over RDP as a normal workflow.
 Prefer headless capture checks or the app's compressed and scaled GUI preview.
 Full resolution 1920x1200 at 50 fps is for later testing, not the default.

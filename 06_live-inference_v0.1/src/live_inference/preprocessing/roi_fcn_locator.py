@@ -82,7 +82,7 @@ class RoiFcnLocator:
             _eval_model(self._model)
         elif load_model:
             self._model = self._load_model()
-        self._background_locator_cache: tuple[tuple[int, int, int, int, int], np.ndarray] | None = None
+        self._background_locator_cache: tuple[tuple[int, int, int, int, int, int], np.ndarray] | None = None
 
     @property
     def metadata(self) -> RoiFcnArtifactMetadata:
@@ -98,7 +98,7 @@ class RoiFcnLocator:
         *,
         excluded_source_mask: np.ndarray | None = None,
         background_snapshot: BackgroundSnapshot | None = None,
-        background_fill_value: int = 255,
+        background_fill_value: int = 0,
     ) -> RoiLocation:
         """Run ROI-FCN on one grayscale source image and return source-space ROI."""
         if self._model is None:
@@ -193,6 +193,7 @@ class RoiFcnLocator:
             int(snapshot.height_px),
             canvas_w,
             canvas_h,
+            id(snapshot.grayscale_background),
         )
         if self._background_locator_cache is not None:
             cache_key, cached = self._background_locator_cache

@@ -154,6 +154,20 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertIsNotNone(self.window.findChild(QLabel, "background_status_label"))
         self.assertIsNotNone(self._background_preview_widget())
 
+    def test_roi_locator_controls_exist(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QLabel, QSpinBox
+
+        self.assertIsNotNone(
+            self.window.findChild(QCheckBox, "invert_roi_locator_input_checkbox")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QSpinBox, "roi_clip_tolerance_input")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QLabel, "roi_locator_status_label")
+        )
+        self.assertIsNotNone(self.window.findChild(QLabel, "roi_clip_amount_value"))
+
     def test_stage_policy_checkboxes_update_shared_state(self) -> None:
         from PySide6.QtWidgets import QCheckBox
 
@@ -189,6 +203,25 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertFalse(snapshot.apply_manual_mask_to_regressor_preprocessing)
         self.assertTrue(snapshot.apply_background_removal_to_roi_locator)
         self.assertTrue(snapshot.apply_background_removal_to_regressor_preprocessing)
+
+    def test_roi_locator_controls_update_shared_state(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QSpinBox
+
+        invert = self.window.findChild(
+            QCheckBox,
+            "invert_roi_locator_input_checkbox",
+        )
+        tolerance = self.window.findChild(QSpinBox, "roi_clip_tolerance_input")
+        assert invert is not None
+        assert tolerance is not None
+
+        invert.setChecked(True)
+        tolerance.setValue(10)
+        _process_events(self.app)
+
+        snapshot = self.window.stage_policy_state.get_snapshot()
+        self.assertEqual(snapshot.roi_locator_input_polarity, "inverted")
+        self.assertEqual(snapshot.roi_clip_tolerance_px, 10)
 
     def test_debug_heatmap_overlay_checkbox_defaults_to_enabled(self) -> None:
         from PySide6.QtWidgets import QCheckBox
@@ -684,9 +717,13 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
                 roi_metadata=_RoiMetadataPayload(
                     source_image_wh_px=(80, 48),
                     extras={
-                        "roi_confidence": 0.876,
-                        "roi_clipped": False,
-                        "roi_accepted": True,
+                        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY: "inverted",
+                        contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE: 0.876,
+                        contracts.PREPROCESSING_METADATA_ROI_CLIPPED: True,
+                        contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX: 6,
+                        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX: 10,
+                        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED: True,
+                        contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: True,
                         "apply_manual_mask_to_roi_locator": False,
                         "manual_mask_applied_to_roi_locator": False,
                         "apply_background_removal_to_roi_locator": True,
@@ -698,8 +735,12 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         _process_events(self.app)
 
         self.assertEqual(self.window.roi_confidence_value.text(), "0.876")
-        self.assertEqual(self.window.roi_clipped_value.text(), "no")
+        self.assertEqual(self.window.roi_clipped_value.text(), "yes")
+        self.assertEqual(self.window.roi_clip_amount_value.text(), "6 px / tol 10 px tolerated")
         self.assertEqual(self.window.roi_acceptance_value.text(), "accepted")
+        self.assertIn("ROI confidence 0.876", self.window.roi_locator_status_label.text())
+        self.assertIn("clip 6 px / tol 10 px", self.window.roi_locator_status_label.text())
+        self.assertIn("polarity inverted", self.window.roi_locator_transforms_value.text())
         self.assertIn("background yes", self.window.roi_locator_transforms_value.text())
 
     def test_rejected_roi_error_clears_prediction_labels_and_updates_status(self) -> None:
@@ -711,10 +752,13 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
                 error_type="roi_rejected",
                 message="ROI rejected",
                 details={
-                    "roi_confidence": 0.12,
-                    "roi_clipped": True,
-                    "roi_accepted": False,
-                    "roi_rejection_reason": "low_confidence",
+                    contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE: 0.12,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIPPED: True,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX: 126,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX: 10,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED: False,
+                    contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: False,
+                    contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON: "low_confidence",
                     "apply_manual_mask_to_roi_locator": False,
                     "manual_mask_applied_to_roi_locator": False,
                     "apply_background_removal_to_roi_locator": False,
@@ -728,6 +772,7 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(self.window.yaw_value.text(), "n/a")
         self.assertEqual(self.window.roi_confidence_value.text(), "0.120")
         self.assertEqual(self.window.roi_clipped_value.text(), "yes")
+        self.assertEqual(self.window.roi_clip_amount_value.text(), "126 px / tol 10 px")
         self.assertIn("rejected", self.window.roi_acceptance_value.text())
         self.assertIsNone(self._preview_widget().overlay())
 

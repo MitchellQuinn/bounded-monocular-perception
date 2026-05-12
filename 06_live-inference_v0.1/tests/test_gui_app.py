@@ -39,6 +39,8 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertFalse(args.save_debug_images)
         self.assertIsNone(args.debug_output_dir)
         self.assertIsNone(args.device)
+        self.assertEqual(args.roi_locator_polarity, "as_is")
+        self.assertEqual(args.roi_clip_tolerance_px, 0)
 
     def test_cli_parser_parses_camera_sources(self) -> None:
         for value in ("synthetic", "opencv-v4l2"):
@@ -109,6 +111,19 @@ class GuiAppCliParserTests(unittest.TestCase):
 
                 self.assertEqual(args.device, value)
 
+    def test_cli_parser_parses_roi_locator_options(self) -> None:
+        args = gui_app._argument_parser().parse_args(
+            [
+                "--roi-locator-polarity",
+                "inverted",
+                "--roi-clip-tolerance-px",
+                "10",
+            ]
+        )
+
+        self.assertEqual(args.roi_locator_polarity, "inverted")
+        self.assertEqual(args.roi_clip_tolerance_px, 10)
+
     def test_cli_parser_rejects_invalid_device_override(self) -> None:
         with redirect_stderr(StringIO()):
             with self.assertRaises(SystemExit):
@@ -125,6 +140,8 @@ class GuiAppCompositionTests(unittest.TestCase):
             device="cpu",
             save_debug_images=True,
             debug_output_dir=Path("debug_artifacts"),
+            roi_locator_polarity="inverted",
+            roi_clip_tolerance_px=10,
             frame_interval_ms=123,
             inference_poll_interval_ms=17,
             dependency_loader=lambda: _fake_dependencies(records),
@@ -152,6 +169,14 @@ class GuiAppCompositionTests(unittest.TestCase):
         self.assertIs(records["preprocessor_mask_state"], context.frame_mask_state)
         self.assertIs(records["preprocessor_background_state"], context.background_state)
         self.assertIs(records["preprocessor_stage_policy_state"], context.stage_policy_state)
+        self.assertEqual(
+            context.stage_policy_state.get_snapshot().roi_locator_input_polarity,
+            "inverted",
+        )
+        self.assertEqual(
+            context.stage_policy_state.get_snapshot().roi_clip_tolerance_px,
+            10,
+        )
 
     def test_real_camera_composition_uses_fake_real_camera_publisher(self) -> None:
         records: dict[str, Any] = {}
