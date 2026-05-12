@@ -31,6 +31,9 @@ class LiveInferenceGuiContext:
 
     camera_controller: object
     inference_controller: object
+    frame_reader: object
+    single_frame_runner: object
+    trace_output_dir: Path
     model_selection_path: Path
     live_inference_config: object
     camera_source: str
@@ -41,6 +44,7 @@ class LiveInferenceGuiContext:
     roi_fcn_device: str
     frame_mask_state: object
     background_state: object
+    stage_policy_state: object
 
 
 @dataclass(frozen=True)
@@ -100,10 +104,16 @@ def build_live_inference_gui_context(
     """Build the selected camera to tri-stream inference pipeline."""
     deps = (dependency_loader or _load_runtime_dependencies)()
     from live_inference.masking import BackgroundState, FrameMaskState  # noqa: PLC0415
+    from live_inference.preprocessing import StageTransformPolicyState  # noqa: PLC0415
+    from live_inference.inspection import (  # noqa: PLC0415
+        InferenceTraceRecorder,
+        SingleFrameInferenceRunner,
+    )
 
     resolved_camera_source = _camera_source(camera_source)
     frame_mask_state = FrameMaskState()
     background_state = BackgroundState()
+    stage_policy_state = StageTransformPolicyState()
     project_root = _live_project_root()
     resolved_selection_path = _resolve_path(
         model_selection_path or selection_path or default_model_selection_path()
@@ -192,6 +202,7 @@ def build_live_inference_gui_context(
         roi_locator=roi_locator,
         mask_state=frame_mask_state,
         background_state=background_state,
+        stage_policy_state=stage_policy_state,
     )
     engine = deps.torch_tri_stream_inference_engine_cls(
         model_root=selection.distance_orientation_root,
@@ -199,6 +210,28 @@ def build_live_inference_gui_context(
         device=distance_orientation_device,
     )
     core = deps.inference_processing_core_cls(selector, preprocessor, engine)
+    trace_output_dir = project_root / "live_traces"
+    trace_recorder = InferenceTraceRecorder(
+        output_dir=trace_output_dir,
+        context_metadata={
+            "model_selection_path": str(resolved_selection_path),
+            "distance_orientation_root": str(selection.distance_orientation_root),
+            "roi_fcn_root": str(selection.roi_fcn_root),
+            "distance_orientation_device": distance_orientation_device,
+            "roi_fcn_device": roi_fcn_device,
+            "device": distance_orientation_device,
+        },
+    )
+    single_frame_runner = SingleFrameInferenceRunner(
+        preprocessor,
+        engine,
+        trace_recorder=trace_recorder,
+        request_extras={
+            "model_selection_path": str(resolved_selection_path),
+            "distance_orientation_root": str(selection.distance_orientation_root),
+            "roi_fcn_root": str(selection.roi_fcn_root),
+        },
+    )
 
     camera_worker = deps.camera_worker_cls(publisher)
     inference_worker = deps.inference_worker_cls(
@@ -208,6 +241,9 @@ def build_live_inference_gui_context(
     return LiveInferenceGuiContext(
         camera_controller=deps.worker_thread_controller_cls(camera_worker),
         inference_controller=deps.worker_thread_controller_cls(inference_worker),
+        frame_reader=reader,
+        single_frame_runner=single_frame_runner,
+        trace_output_dir=trace_output_dir,
         model_selection_path=resolved_selection_path,
         live_inference_config=live_config,
         camera_source=resolved_camera_source,
@@ -218,6 +254,7 @@ def build_live_inference_gui_context(
         roi_fcn_device=roi_fcn_device,
         frame_mask_state=frame_mask_state,
         background_state=background_state,
+        stage_policy_state=stage_policy_state,
     )
 
 
@@ -261,8 +298,12 @@ def main(argv: list[str] | None = None) -> int:
         window = LiveInferenceMainWindow(
             camera_controller=context.camera_controller,
             inference_controller=context.inference_controller,
+            frame_reader=context.frame_reader,
+            single_frame_runner=context.single_frame_runner,
+            trace_output_dir=context.trace_output_dir,
             mask_state=context.frame_mask_state,
             background_state=context.background_state,
+            stage_policy_state=context.stage_policy_state,
         )
         app.aboutToQuit.connect(window.stop_all)
         window.resize(960, 600)
@@ -580,6 +621,7 @@ def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
         f"{getattr(context.live_inference_config, 'debug_output_dir', 'n/a')}",
         file=sys.stderr,
     )
+    print(f"  trace_output_dir = {context.trace_output_dir}", file=sys.stderr)
     print(
         f"  synthetic_camera_source_dir = {getattr(synthetic_config, 'source_dir', 'n/a')}",
         file=sys.stderr,

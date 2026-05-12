@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Callable
 
 from interfaces import (
@@ -81,6 +82,8 @@ class InferenceProcessingCore:
         selected = selection.selected
         prepared = self._prepare_inputs(selected)
         if isinstance(prepared, WorkerError):
+            if _should_mark_processed_after_error(prepared):
+                self._selector.mark_processed(selected.frame_hash)
             return InferenceProcessingOutcome(error=prepared)
 
         result = self._run_inference(prepared, selected)
@@ -226,7 +229,7 @@ class InferenceProcessingCore:
     ) -> WorkerError:
         return WorkerError(
             worker_name=WorkerName.INFERENCE,
-            error_type=error_type,
+            error_type=_exception_error_type(exception, error_type),
             message=message,
             recoverable=True,
             timestamp_utc=self._now_utc_fn(),
@@ -236,12 +239,36 @@ class InferenceProcessingCore:
                 "request_id": selected.request.request_id,
                 "frame_hash": _hash_value(selected.frame_hash),
                 "exception_type": type(exception).__name__,
+                **_exception_details(exception),
             },
         )
 
 
 def _hash_value(frame_hash: FrameHash) -> str:
     return frame_hash.value
+
+
+def _exception_error_type(exception: Exception, default: str) -> str:
+    value = getattr(exception, "worker_error_type", None)
+    return str(value) if value else default
+
+
+def _exception_details(exception: Exception) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    details = getattr(exception, "failure_details", None)
+    if isinstance(details, Mapping):
+        payload.update(dict(details))
+    preprocessing_metadata = getattr(exception, "preprocessing_metadata", None)
+    if isinstance(preprocessing_metadata, Mapping):
+        payload["preprocessing_metadata"] = dict(preprocessing_metadata)
+    debug_paths = getattr(exception, "debug_paths", None)
+    if isinstance(debug_paths, Mapping):
+        payload["debug_paths"] = {str(key): str(value) for key, value in debug_paths.items()}
+    return payload
+
+
+def _should_mark_processed_after_error(error: WorkerError) -> bool:
+    return bool(error.details.get("mark_frame_processed"))
 
 
 __all__ = [

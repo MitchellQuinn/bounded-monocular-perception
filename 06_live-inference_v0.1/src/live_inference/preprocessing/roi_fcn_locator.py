@@ -364,6 +364,7 @@ def decode_roi_fcn_heatmap(
 
     heatmap_array = np.asarray(heatmap)
     excluded_count = 0
+    heatmap_before_exclusion = np.asarray(heatmap_array, dtype=np.float32)
     if excluded_source_mask is not None:
         excluded_heatmap_mask = build_roi_fcn_exclusion_mask(
             np.asarray(excluded_source_mask, dtype=bool),
@@ -399,6 +400,12 @@ def decode_roi_fcn_heatmap(
             contracts.PREPROCESSING_METADATA_ROI_HEIGHT_PX: int(roi_height_px),
             contracts.PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8: (
                 _normalized_heatmap_uint8(heatmap_array)
+            ),
+            "roi_fcn_heatmap_pre_exclusion_u8": _normalized_heatmap_uint8(
+                heatmap_before_exclusion
+            ),
+            "roi_fcn_heatmap_post_exclusion_u8": _normalized_heatmap_uint8(
+                heatmap_array
             ),
             "locator_input_shape": tuple(int(value) for value in locator_input.locator_image.shape),
             contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX: tuple(

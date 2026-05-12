@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -27,6 +30,7 @@ from PySide6.QtWidgets import (
 
 import interfaces.contracts as contracts
 
+from live_inference.frame_handoff import compute_frame_hash
 from .frame_preview_widget import (
     FramePreviewHeatmapOverlay,
     FramePreviewOverlay,
@@ -37,6 +41,15 @@ from live_inference.masking import (
     BackgroundState,
     FrameMaskState,
 )
+from live_inference.preprocessing import StageTransformPolicyState
+
+
+@dataclass(frozen=True)
+class _CapturedSingleFrame:
+    image_bytes: bytes
+    frame_hash: contracts.FrameHash
+    source_path: Path | None
+    frame_metadata: contracts.FrameMetadata | None
 
 
 class LiveInferenceMainWindow(QMainWindow):
@@ -47,16 +60,29 @@ class LiveInferenceMainWindow(QMainWindow):
         *,
         camera_controller: object,
         inference_controller: object,
+        frame_reader: object | None = None,
+        single_frame_runner: object | None = None,
+        trace_output_dir: Path | str | None = None,
         mask_state: FrameMaskState | None = None,
         background_state: BackgroundState | None = None,
+        stage_policy_state: StageTransformPolicyState | None = None,
         stop_wait_ms: int = 1000,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.camera_controller = camera_controller
         self.inference_controller = inference_controller
+        self.frame_reader = frame_reader
+        self.single_frame_runner = single_frame_runner
+        runner_trace_dir = getattr(single_frame_runner, "trace_output_dir", None)
+        self.trace_output_dir = (
+            Path(trace_output_dir)
+            if trace_output_dir is not None
+            else Path(runner_trace_dir) if runner_trace_dir is not None else None
+        )
         self.mask_state = mask_state or FrameMaskState()
         self.background_state = background_state or BackgroundState()
+        self.stage_policy_state = stage_policy_state or StageTransformPolicyState()
         self._stop_wait_ms = int(stop_wait_ms)
         self._frames_written_count = 0
         self._frames_processed_count = 0
@@ -71,6 +97,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._last_inference_state_text = ""
         self._inference_start_requested = False
         self._preview_background_revision: int | None = None
+        self._captured_single_frame: _CapturedSingleFrame | None = None
 
         self.setWindowTitle("Live Inference")
         self._build_ui()
@@ -144,6 +171,44 @@ class LiveInferenceMainWindow(QMainWindow):
             controls_layout.addWidget(button)
         panel_layout.addWidget(controls_group)
 
+        single_frame_group = QGroupBox("Single Frame")
+        single_frame_group.setObjectName("single_frame_group")
+        single_frame_layout = QGridLayout(single_frame_group)
+        single_frame_layout.setColumnStretch(1, 1)
+        self.capture_frame_button = QPushButton("Capture Frame")
+        self.capture_frame_button.setObjectName("capture_frame_button")
+        self.run_single_inference_button = QPushButton("Run Single Inference")
+        self.run_single_inference_button.setObjectName("run_single_inference_button")
+        self.record_trace_checkbox = QCheckBox("Record Trace")
+        self.record_trace_checkbox.setObjectName("record_trace_checkbox")
+        self.record_trace_checkbox.setChecked(False)
+        self.trace_output_dir_value = QLabel(_text(self.trace_output_dir, default="n/a"))
+        self.trace_output_dir_value.setObjectName("trace_output_dir_value")
+        self.trace_output_dir_value.setWordWrap(True)
+        self.last_captured_frame_hash_value = QLabel("n/a")
+        self.last_captured_frame_hash_value.setObjectName(
+            "last_captured_frame_hash_value"
+        )
+        self.last_captured_frame_hash_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.last_trace_path_value = QLabel("n/a")
+        self.last_trace_path_value.setObjectName("last_trace_path_value")
+        self.last_trace_path_value.setWordWrap(True)
+        self.last_trace_path_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        single_frame_layout.addWidget(self.capture_frame_button, 0, 0, 1, 2)
+        single_frame_layout.addWidget(self.run_single_inference_button, 1, 0, 1, 2)
+        single_frame_layout.addWidget(self.record_trace_checkbox, 2, 0, 1, 2)
+        single_frame_layout.addWidget(QLabel("Trace dir:"), 3, 0)
+        single_frame_layout.addWidget(self.trace_output_dir_value, 3, 1)
+        single_frame_layout.addWidget(QLabel("Captured hash:"), 4, 0)
+        single_frame_layout.addWidget(self.last_captured_frame_hash_value, 4, 1)
+        single_frame_layout.addWidget(QLabel("Last trace:"), 5, 0)
+        single_frame_layout.addWidget(self.last_trace_path_value, 5, 1)
+        panel_layout.addWidget(single_frame_group)
+
         self.control_tabs = QTabWidget()
         self.control_tabs.setObjectName("control_tabs")
 
@@ -170,6 +235,25 @@ class LiveInferenceMainWindow(QMainWindow):
         self.mask_fill_white_checkbox.setChecked(True)
         self.mask_fill_value_label = QLabel("Mask fill: White (255)")
         self.mask_fill_value_label.setObjectName("mask_fill_value_label")
+        stage_policy = self.stage_policy_state.get_snapshot()
+        self.apply_manual_mask_to_roi_locator_checkbox = QCheckBox(
+            "Apply manual mask to ROI locator"
+        )
+        self.apply_manual_mask_to_roi_locator_checkbox.setObjectName(
+            "apply_manual_mask_to_roi_locator_checkbox"
+        )
+        self.apply_manual_mask_to_roi_locator_checkbox.setChecked(
+            bool(stage_policy.apply_manual_mask_to_roi_locator)
+        )
+        self.apply_manual_mask_to_model_preprocessing_checkbox = QCheckBox(
+            "Apply manual mask to model preprocessing"
+        )
+        self.apply_manual_mask_to_model_preprocessing_checkbox.setObjectName(
+            "apply_manual_mask_to_model_preprocessing_checkbox"
+        )
+        self.apply_manual_mask_to_model_preprocessing_checkbox.setChecked(
+            bool(stage_policy.apply_manual_mask_to_regressor_preprocessing)
+        )
 
         mask_layout.addWidget(self.draw_mask_button, 0, 0)
         mask_layout.addWidget(self.apply_mask_button, 0, 1)
@@ -180,6 +264,20 @@ class LiveInferenceMainWindow(QMainWindow):
         mask_layout.addWidget(self.mask_brush_diameter_input, 3, 1)
         mask_layout.addWidget(self.mask_fill_white_checkbox, 4, 0)
         mask_layout.addWidget(self.mask_fill_value_label, 4, 1)
+        mask_layout.addWidget(
+            self.apply_manual_mask_to_roi_locator_checkbox,
+            5,
+            0,
+            1,
+            2,
+        )
+        mask_layout.addWidget(
+            self.apply_manual_mask_to_model_preprocessing_checkbox,
+            6,
+            0,
+            1,
+            2,
+        )
         self.control_tabs.addTab(mask_tab, "Mask")
 
         background_tab = QWidget()
@@ -204,6 +302,24 @@ class LiveInferenceMainWindow(QMainWindow):
         self.background_status_label = QLabel("Background: not captured")
         self.background_status_label.setObjectName("background_status_label")
         self.background_status_label.setWordWrap(True)
+        self.apply_background_removal_to_roi_locator_checkbox = QCheckBox(
+            "Apply background removal to ROI locator"
+        )
+        self.apply_background_removal_to_roi_locator_checkbox.setObjectName(
+            "apply_background_removal_to_roi_locator_checkbox"
+        )
+        self.apply_background_removal_to_roi_locator_checkbox.setChecked(
+            bool(stage_policy.apply_background_removal_to_roi_locator)
+        )
+        self.apply_background_removal_to_model_preprocessing_checkbox = QCheckBox(
+            "Apply background removal to model preprocessing"
+        )
+        self.apply_background_removal_to_model_preprocessing_checkbox.setObjectName(
+            "apply_background_removal_to_model_preprocessing_checkbox"
+        )
+        self.apply_background_removal_to_model_preprocessing_checkbox.setChecked(
+            bool(stage_policy.apply_background_removal_to_regressor_preprocessing)
+        )
         self.background_preview_widget = FramePreviewWidget()
         self.background_preview_widget.setObjectName("background_preview_widget")
         self.background_preview_widget.set_placeholder_text("No background preview yet")
@@ -218,8 +334,22 @@ class LiveInferenceMainWindow(QMainWindow):
         background_layout.addWidget(QLabel("Threshold:"), 2, 0)
         background_layout.addWidget(self.background_threshold_input, 2, 1)
         background_layout.addWidget(self.clear_background_button, 3, 0, 1, 2)
-        background_layout.addWidget(self.background_status_label, 4, 0, 1, 2)
-        background_layout.addWidget(self.background_preview_widget, 5, 0, 1, 2)
+        background_layout.addWidget(
+            self.apply_background_removal_to_roi_locator_checkbox,
+            4,
+            0,
+            1,
+            2,
+        )
+        background_layout.addWidget(
+            self.apply_background_removal_to_model_preprocessing_checkbox,
+            5,
+            0,
+            1,
+            2,
+        )
+        background_layout.addWidget(self.background_status_label, 6, 0, 1, 2)
+        background_layout.addWidget(self.background_preview_widget, 7, 0, 1, 2)
         self.control_tabs.addTab(background_tab, "Background")
 
         roi_fcn_tab = QWidget()
@@ -324,6 +454,31 @@ class LiveInferenceMainWindow(QMainWindow):
             object_name="debug_artifacts_value",
         )
         self.debug_artifacts_value.setWordWrap(True)
+        self.roi_confidence_value = self._add_readout(
+            status_grid,
+            row=11,
+            label="ROI confidence",
+            object_name="roi_confidence_value",
+        )
+        self.roi_clipped_value = self._add_readout(
+            status_grid,
+            row=12,
+            label="ROI clipped",
+            object_name="roi_clipped_value",
+        )
+        self.roi_acceptance_value = self._add_readout(
+            status_grid,
+            row=13,
+            label="ROI status",
+            object_name="roi_acceptance_value",
+        )
+        self.roi_locator_transforms_value = self._add_readout(
+            status_grid,
+            row=14,
+            label="Locator transforms",
+            object_name="roi_locator_transforms_value",
+        )
+        self.roi_locator_transforms_value.setWordWrap(True)
 
         self.log_panel = QPlainTextEdit()
         self.log_panel.setObjectName("log_panel")
@@ -376,6 +531,8 @@ class LiveInferenceMainWindow(QMainWindow):
         self.start_inference_button.clicked.connect(self.start_inference)
         self.stop_inference_button.clicked.connect(self.stop_inference)
         self.stop_all_button.clicked.connect(self.stop_all)
+        self.capture_frame_button.clicked.connect(self.capture_single_frame)
+        self.run_single_inference_button.clicked.connect(self.run_single_inference)
         self.draw_mask_button.clicked.connect(self.start_draw_mask)
         self.apply_mask_button.clicked.connect(self.apply_draw_mask)
         self.erase_mask_button.clicked.connect(self.start_erase_mask)
@@ -383,9 +540,21 @@ class LiveInferenceMainWindow(QMainWindow):
         self.clear_mask_button.clicked.connect(self.clear_mask)
         self.mask_brush_diameter_input.valueChanged.connect(self._on_brush_diameter_changed)
         self.mask_fill_white_checkbox.toggled.connect(self._on_mask_fill_toggled)
+        self.apply_manual_mask_to_roi_locator_checkbox.toggled.connect(
+            self._on_apply_manual_mask_to_roi_locator_toggled
+        )
+        self.apply_manual_mask_to_model_preprocessing_checkbox.toggled.connect(
+            self._on_apply_manual_mask_to_model_preprocessing_toggled
+        )
         self.capture_background_button.clicked.connect(self.capture_background)
         self.enable_background_removal_checkbox.toggled.connect(
             self._on_background_enabled_toggled
+        )
+        self.apply_background_removal_to_roi_locator_checkbox.toggled.connect(
+            self._on_apply_background_removal_to_roi_locator_toggled
+        )
+        self.apply_background_removal_to_model_preprocessing_checkbox.toggled.connect(
+            self._on_apply_background_removal_to_model_preprocessing_toggled
         )
         self.clear_background_button.clicked.connect(self.clear_background)
         self.background_threshold_input.valueChanged.connect(
@@ -459,6 +628,106 @@ class LiveInferenceMainWindow(QMainWindow):
             "Inference stop",
         )
         self._inference_start_requested = False
+
+    def capture_single_frame(self) -> None:
+        reader = self.frame_reader
+        if reader is None:
+            self._append_log("ERROR", "Capture Frame unavailable: no frame reader configured.")
+            return
+
+        latest_frame = self._latest_completed_frame(reader)
+        if latest_frame is None:
+            self._append_log("WARNING", "Capture Frame failed: no completed frame is available.")
+            return
+
+        try:
+            image_bytes = bytes(reader.read_frame_bytes(latest_frame))
+        except Exception as exc:
+            self._append_log("ERROR", f"Capture Frame failed: {exc}")
+            return
+
+        frame_hash = compute_frame_hash(image_bytes)
+        source_path = _path_or_none(_payload_value(latest_frame, "image_path"))
+        metadata = _payload_value(latest_frame, "metadata")
+        frame_metadata = metadata if isinstance(metadata, contracts.FrameMetadata) else None
+        self._captured_single_frame = _CapturedSingleFrame(
+            image_bytes=image_bytes,
+            frame_hash=frame_hash,
+            source_path=source_path,
+            frame_metadata=frame_metadata,
+        )
+        self.last_captured_frame_hash_value.setText(frame_hash.value)
+        self._display_captured_frame(image_bytes)
+        self._append_log("INFO", f"Captured frame {frame_hash.value}")
+
+    def run_single_inference(self) -> None:
+        captured = self._captured_single_frame
+        if captured is None:
+            self._append_log(
+                "WARNING",
+                "Run Single Inference requires a captured frame.",
+            )
+            return
+        if self._inference_is_running_or_requested():
+            self._append_log(
+                "WARNING",
+                "Single-frame inference refused because continuous inference is running",
+            )
+            return
+        runner = self.single_frame_runner
+        if runner is None:
+            self._append_log(
+                "ERROR",
+                "Run Single Inference unavailable: no single-frame runner configured.",
+            )
+            return
+
+        self._append_log("INFO", "Single-frame inference started")
+        try:
+            outcome = runner.run_single_frame(
+                captured.image_bytes,
+                source_path=captured.source_path,
+                frame_metadata=captured.frame_metadata,
+                record_trace=self.record_trace_checkbox.isChecked(),
+            )
+        except Exception as exc:
+            self._append_log("ERROR", f"Single-frame inference failed: {exc}")
+            return
+
+        result = _payload_value(outcome, "result")
+        error = _payload_value(outcome, "error")
+        trace_path = _path_or_none(_payload_value(outcome, "trace_path"))
+
+        if result is not None:
+            self._on_inference_result_ready(result)
+            self._append_log("INFO", "Single-frame inference completed")
+
+        if trace_path is not None:
+            self.last_trace_path_value.setText(str(trace_path))
+            self._append_log("INFO", f"Trace written to {trace_path}")
+
+        if error is not None:
+            self._on_error_occurred(error)
+
+    def _latest_completed_frame(self, reader: object) -> object | None:
+        method = getattr(reader, "latest_completed_frame", None)
+        if not callable(method):
+            self._append_log("ERROR", "Capture Frame unavailable: reader has no latest_completed_frame().")
+            return None
+        try:
+            return method()
+        except Exception as exc:
+            self._append_log("ERROR", f"Capture Frame failed: {exc}")
+            return None
+
+    def _display_captured_frame(self, image_bytes: bytes) -> None:
+        image = QImage.fromData(image_bytes)
+        if image.isNull():
+            self._append_log("WARNING", "Captured frame preview unavailable: bytes could not be decoded.")
+            return
+        self.frame_preview_widget.set_image(image)
+        self._sync_preview_background_if_changed()
+        self._refresh_background_preview()
 
     def start_draw_mask(self) -> None:
         self.frame_preview_widget.set_brush_diameter_px(
@@ -536,6 +805,29 @@ class LiveInferenceMainWindow(QMainWindow):
     def _current_mask_fill_value(self) -> int:
         return 255 if self.mask_fill_white_checkbox.isChecked() else 0
 
+    def _on_apply_manual_mask_to_roi_locator_toggled(self, checked: bool) -> None:
+        snapshot = self.stage_policy_state.update(
+            apply_manual_mask_to_roi_locator=bool(checked)
+        )
+        self._append_log(
+            "INFO",
+            "Manual mask ROI locator application "
+            f"{_enabled_text(checked)}: revision={snapshot.revision}.",
+        )
+
+    def _on_apply_manual_mask_to_model_preprocessing_toggled(
+        self,
+        checked: bool,
+    ) -> None:
+        snapshot = self.stage_policy_state.update(
+            apply_manual_mask_to_regressor_preprocessing=bool(checked)
+        )
+        self._append_log(
+            "INFO",
+            "Manual mask model preprocessing application "
+            f"{_enabled_text(checked)}: revision={snapshot.revision}.",
+        )
+
     def capture_background(self) -> None:
         if self._inference_is_running_or_requested():
             message = "Stop inference before capturing background"
@@ -576,6 +868,32 @@ class LiveInferenceMainWindow(QMainWindow):
         self._sync_background_controls_from_state(snapshot)
         state = "enabled" if checked else "disabled"
         self._append_log("INFO", f"Background removal {state}: revision={revision}.")
+
+    def _on_apply_background_removal_to_roi_locator_toggled(
+        self,
+        checked: bool,
+    ) -> None:
+        snapshot = self.stage_policy_state.update(
+            apply_background_removal_to_roi_locator=bool(checked)
+        )
+        self._append_log(
+            "INFO",
+            "Background removal ROI locator application "
+            f"{_enabled_text(checked)}: revision={snapshot.revision}.",
+        )
+
+    def _on_apply_background_removal_to_model_preprocessing_toggled(
+        self,
+        checked: bool,
+    ) -> None:
+        snapshot = self.stage_policy_state.update(
+            apply_background_removal_to_regressor_preprocessing=bool(checked)
+        )
+        self._append_log(
+            "INFO",
+            "Background removal model preprocessing application "
+            f"{_enabled_text(checked)}: revision={snapshot.revision}.",
+        )
 
     def _on_background_threshold_changed(self, value: int) -> None:
         self.background_state.set_threshold(int(value))
@@ -846,6 +1164,38 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_locator_canvas_value.setText(
                 f"ROI-FCN canvas: {canvas_w} x {canvas_h}"
             )
+        self._apply_roi_status_from_mapping(extras, locator_metadata=locator_metadata)
+
+    def _apply_roi_status_from_mapping(
+        self,
+        payload: Mapping[str, object],
+        *,
+        locator_metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        locator = locator_metadata or _mapping_payload(
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA)
+        )
+        confidence = _first_present(
+            payload.get("roi_confidence"),
+            locator.get("heatmap_peak_confidence"),
+            _mapping_payload(locator.get("decoded_heatmap")).get("confidence"),
+        )
+        self.roi_confidence_value.setText(_format_optional_float(confidence, precision=3))
+
+        clipped = _optional_bool(payload.get("roi_clipped"))
+        self.roi_clipped_value.setText(_yes_no_unknown(clipped))
+
+        accepted = _optional_bool(payload.get("roi_accepted"))
+        reason = _text(payload.get("roi_rejection_reason"), default="")
+        if accepted is True:
+            self.roi_acceptance_value.setText("accepted")
+        elif accepted is False:
+            suffix = f" - {reason}" if reason else ""
+            self.roi_acceptance_value.setText(f"rejected{suffix}")
+        else:
+            self.roi_acceptance_value.setText("n/a")
+
+        self.roi_locator_transforms_value.setText(_locator_transform_status(payload))
 
     def _update_debug_artifact_paths(self, result: object) -> None:
         debug_paths = _mapping_payload(_payload_value(result, "debug_paths"))
@@ -911,6 +1261,14 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def _on_error_occurred(self, error: object) -> None:
         self._flush_repeated_skip_summary()
+        if _is_roi_rejection_error(error):
+            details = _mapping_payload(_payload_value(error, "details"))
+            self._apply_roi_status_from_mapping(details)
+            self.distance_value.setText("n/a")
+            self.yaw_value.setText("n/a")
+            self.frame_preview_widget.set_overlay(None)
+            self.roi_crop_preview_widget.set_image(QImage())
+            self.roi_crop_preview_widget.set_placeholder_text("ROI rejected")
         self._append_log("ERROR", _issue_display_text(error))
 
     def _on_lifecycle_event(self, event: object) -> None:
@@ -1016,6 +1374,15 @@ def _payload_value(payload: object, name: str) -> object | None:
     return getattr(payload, name, None)
 
 
+def _path_or_none(value: object | None) -> Path | None:
+    if value is None:
+        return None
+    try:
+        return Path(value)
+    except TypeError:
+        return None
+
+
 def _overlay_from_result(result: object) -> FramePreviewOverlay | None:
     roi_metadata = _payload_value(result, "roi_metadata")
     if roi_metadata is None:
@@ -1066,6 +1433,80 @@ def _sequence_payload(payload: object | None) -> tuple[object, ...]:
     if isinstance(payload, list):
         return tuple(payload)
     return ()
+
+
+def _is_roi_rejection_error(error: object) -> bool:
+    if _text(_payload_value(error, "error_type"), default="") == "roi_rejected":
+        return True
+    details = _mapping_payload(_payload_value(error, "details"))
+    return _optional_bool(details.get("roi_accepted")) is False
+
+
+def _locator_transform_status(payload: Mapping[str, object]) -> str:
+    manual_configured = _optional_bool(payload.get("apply_manual_mask_to_roi_locator"))
+    manual_applied = _optional_bool(payload.get("manual_mask_applied_to_roi_locator"))
+    background_configured = _optional_bool(
+        payload.get("apply_background_removal_to_roi_locator")
+    )
+    background_applied = _optional_bool(
+        payload.get("background_removal_applied_to_roi_locator")
+    )
+    if (
+        manual_configured is None
+        and manual_applied is None
+        and background_configured is None
+        and background_applied is None
+    ):
+        return "n/a"
+    return (
+        "mask "
+        f"{_yes_no_unknown(manual_applied)}"
+        f" (configured {_yes_no_unknown(manual_configured)}); "
+        "background "
+        f"{_yes_no_unknown(background_applied)}"
+        f" (configured {_yes_no_unknown(background_configured)})"
+    )
+
+
+def _optional_bool(value: object | None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "yes", "1", "on", "accepted"}:
+            return True
+        if text in {"false", "no", "0", "off", "rejected"}:
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return None
+
+
+def _yes_no_unknown(value: bool | None) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "n/a"
+
+
+def _format_optional_float(value: object | None, *, precision: int) -> str:
+    if value is None:
+        return "n/a"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return _text(value, default="n/a")
+    return f"{number:.{precision}f}"
+
+
+def _first_present(*values: object | None) -> object | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def _first_xyxy(
@@ -1173,6 +1614,10 @@ def _format_value(value: object, unit: str, *, precision: int) -> str:
     except (TypeError, ValueError):
         return _text(value, default="n/a")
     return f"{number:.{precision}f} {unit}"
+
+
+def _enabled_text(value: object) -> str:
+    return "enabled" if bool(value) else "disabled"
 
 
 def _enum_text(value: object | None) -> str:

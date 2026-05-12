@@ -180,6 +180,27 @@ class InferenceProcessingCoreTests(unittest.TestCase):
 
         self.assertEqual(selector.mark_processed_calls, [])
 
+    def test_roi_rejection_prevents_engine_call_and_marks_frame_processed(self) -> None:
+        selected = _selected_frame()
+        selector = FakeSelector(FrameSelectionResult(selected=selected))
+        engine = FakeEngine()
+        core = InferenceProcessingCore(
+            selector,  # type: ignore[arg-type]
+            FakePreprocessor(exception=_StructuredRoiRejectedError()),
+            engine,
+            now_utc_fn=lambda: ERROR_AT,
+        )
+
+        outcome = core.process_once()
+
+        self.assertIsNotNone(outcome.error)
+        assert outcome.error is not None
+        self.assertEqual(outcome.error.error_type, "roi_rejected")
+        self.assertEqual(outcome.error.failure_stage, FrameFailureStage.PREPROCESS)
+        self.assertEqual(engine.calls, [])
+        self.assertEqual(selector.mark_processed_calls, [selected.frame_hash])
+        self.assertFalse(outcome.error.details["roi_accepted"])
+
     def test_inference_exception_returns_failure_stage_inference(self) -> None:
         core = _core_with_fake_selector(
             FrameSelectionResult(selected=_selected_frame()),
@@ -371,6 +392,23 @@ class FakeEngine:
         assert inputs.source_frame is not None
         assert inputs.source_frame.frame_hash is not None
         return _result(inputs.request_id, inputs.source_frame.frame_hash)
+
+
+class _StructuredRoiRejectedError(ValueError):
+    worker_error_type = "roi_rejected"
+
+    def __init__(self) -> None:
+        super().__init__("ROI rejected during preprocessing")
+        self.failure_details = {
+            "roi_accepted": False,
+            "roi_rejection_reason": "low_confidence:0.120<min:0.300",
+            "mark_frame_processed": True,
+        }
+        self.preprocessing_metadata = {
+            "roi_accepted": False,
+            "roi_rejection_reason": "low_confidence:0.120<min:0.300",
+        }
+        self.debug_paths = {}
 
 
 def _core_with_fake_selector(
