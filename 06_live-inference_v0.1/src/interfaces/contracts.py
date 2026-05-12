@@ -153,6 +153,9 @@ PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVE_PIXEL_COUNT = (
     "roi_fcn_background_remove_pixel_count"
 )
 PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_WARNING = "roi_fcn_background_warning"
+PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8 = "roi_fcn_heatmap_u8"
+PREPROCESSING_METADATA_ROI_FCN_RESIZED_IMAGE_WH_PX = "resized_image_wh_px"
+PREPROCESSING_METADATA_ROI_FCN_PADDING_LTRB_PX = "padding_ltrb_px"
 BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP = (
     "roi_fcn_input_and_roi_crop"
 )
@@ -338,6 +341,12 @@ def _to_plain(value: Any) -> Any:
         return [_to_plain(item) for item in value]
     if isinstance(value, list):
         return [_to_plain(item) for item in value]
+    to_list = getattr(value, "tolist", None)
+    if callable(to_list):
+        try:
+            return _to_plain(to_list())
+        except (TypeError, ValueError):
+            return value
     return value
 
 
@@ -1053,6 +1062,9 @@ __all__ = [
     "PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVAL_APPLIED",
     "PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_REMOVE_PIXEL_COUNT",
     "PREPROCESSING_METADATA_ROI_FCN_BACKGROUND_WARNING",
+    "PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8",
+    "PREPROCESSING_METADATA_ROI_FCN_PADDING_LTRB_PX",
+    "PREPROCESSING_METADATA_ROI_FCN_RESIZED_IMAGE_WH_PX",
     "PREPROCESSING_METADATA_ROI_HEIGHT_PX",
     "PREPROCESSING_METADATA_ROI_LOCATOR_BOUNDS_XYXY_PX",
     "PREPROCESSING_METADATA_ROI_LOCATOR_METADATA",

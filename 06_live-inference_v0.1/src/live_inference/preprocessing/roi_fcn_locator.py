@@ -397,12 +397,19 @@ def decode_roi_fcn_heatmap(
             contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX: int(canvas_height_px),
             contracts.PREPROCESSING_METADATA_ROI_WIDTH_PX: int(roi_width_px),
             contracts.PREPROCESSING_METADATA_ROI_HEIGHT_PX: int(roi_height_px),
+            contracts.PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8: (
+                _normalized_heatmap_uint8(heatmap_array)
+            ),
             "locator_input_shape": tuple(int(value) for value in locator_input.locator_image.shape),
             contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX: tuple(
                 int(value) for value in locator_input.source_image_wh_px.tolist()
             ),
-            "resized_image_wh_px": tuple(int(value) for value in locator_input.resized_image_wh_px.tolist()),
-            "padding_ltrb_px": tuple(int(value) for value in locator_input.padding_ltrb_px.tolist()),
+            contracts.PREPROCESSING_METADATA_ROI_FCN_RESIZED_IMAGE_WH_PX: tuple(
+                int(value) for value in locator_input.resized_image_wh_px.tolist()
+            ),
+            contracts.PREPROCESSING_METADATA_ROI_FCN_PADDING_LTRB_PX: tuple(
+                int(value) for value in locator_input.padding_ltrb_px.tolist()
+            ),
             "resize_scale": float(locator_input.resize_scale),
             "heatmap_shape": tuple(int(value) for value in heatmap_array.shape),
             "decoded_heatmap": decoded.to_dict(),
@@ -416,6 +423,30 @@ def decode_roi_fcn_heatmap(
         roi_bounds_xyxy_px=_array4_to_tuple(roi_bounds),
         metadata=metadata_payload,
     )
+
+
+def _normalized_heatmap_uint8(heatmap: np.ndarray) -> np.ndarray:
+    numeric = np.asarray(heatmap, dtype=np.float32)
+    if numeric.ndim != 2:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    finite_mask = np.isfinite(numeric)
+    if not bool(np.any(finite_mask)):
+        return np.zeros(numeric.shape, dtype=np.uint8)
+
+    finite = numeric[finite_mask]
+    finite_min = float(np.min(finite))
+    finite_max = float(np.max(finite))
+    normalized = np.zeros(numeric.shape, dtype=np.float32)
+    if finite_min >= 0.0 and finite_max <= 1.0:
+        normalized[finite_mask] = np.clip(numeric[finite_mask], 0.0, 1.0)
+    elif finite_max > finite_min:
+        normalized[finite_mask] = (
+            (numeric[finite_mask] - finite_min) / (finite_max - finite_min)
+        )
+    elif finite_max > 0.0:
+        normalized[finite_mask] = 1.0
+    return np.ascontiguousarray(np.rint(normalized * 255.0).astype(np.uint8))
 
 
 def _ensure_roi_training_src_path() -> None:

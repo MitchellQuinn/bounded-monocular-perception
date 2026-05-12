@@ -19,6 +19,8 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+import interfaces.contracts as contracts  # noqa: E402
+
 
 class LiveInferenceMainWindowTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -110,6 +112,33 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         )
         self.assertIsNotNone(self.window.findChild(QLabel, "background_status_label"))
         self.assertIsNotNone(self._background_preview_widget())
+
+    def test_debug_heatmap_overlay_checkbox_defaults_to_enabled(self) -> None:
+        from PySide6.QtWidgets import QCheckBox
+
+        checkbox = self.window.findChild(
+            QCheckBox,
+            "show_roi_fcn_heatmap_overlay_checkbox",
+        )
+
+        self.assertIsNotNone(checkbox)
+        assert checkbox is not None
+        self.assertTrue(checkbox.isChecked())
+        self.assertTrue(self._preview_widget().heatmap_overlay_enabled())
+
+    def test_debug_heatmap_overlay_checkbox_toggles_frame_preview(self) -> None:
+        from PySide6.QtWidgets import QCheckBox
+
+        checkbox = self.window.findChild(
+            QCheckBox,
+            "show_roi_fcn_heatmap_overlay_checkbox",
+        )
+        assert checkbox is not None
+
+        checkbox.setChecked(False)
+        _process_events(self.app)
+
+        self.assertFalse(self._preview_widget().heatmap_overlay_enabled())
 
     def test_fill_checkbox_updates_label_and_mask_state_fill_value(self) -> None:
         from PySide6.QtWidgets import QCheckBox, QLabel
@@ -431,6 +460,50 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(overlay.bbox_xyxy_px, (10.0, 12.0, 40.0, 32.0))
         self.assertEqual(overlay.center_xy_px, (25.0, 22.0))
         self.assertEqual(overlay.roi_bounds_xyxy_px, (0.0, 0.0, 60.0, 48.0))
+
+    def test_result_ready_updates_preview_heatmap_overlay_metadata(self) -> None:
+        image_path = self._write_temp_frame_image()
+        self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
+        heatmap = np.zeros((48, 80), dtype=np.uint8)
+        heatmap[24, 40] = 255
+        self.inference_controller.signals.result_ready.emit(
+            _ResultPayload(
+                predicted_distance_m=1.0,
+                predicted_yaw_deg=2.0,
+                inference_time_ms=3.0,
+                preprocessing_time_ms=4.0,
+                total_time_ms=7.0,
+                roi_metadata=_RoiMetadataPayload(
+                    source_image_wh_px=(80, 48),
+                    extras={
+                        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA: {
+                            contracts.PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8: heatmap,
+                            contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_WIDTH_PX: 80,
+                            contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX: 48,
+                            contracts.PREPROCESSING_METADATA_ROI_FCN_RESIZED_IMAGE_WH_PX: (
+                                80,
+                                48,
+                            ),
+                            contracts.PREPROCESSING_METADATA_ROI_FCN_PADDING_LTRB_PX: (
+                                0,
+                                0,
+                                0,
+                                0,
+                            ),
+                        }
+                    },
+                ),
+            )
+        )
+        _process_events(self.app)
+
+        overlay = self._preview_widget().overlay()
+        self.assertIsNotNone(overlay)
+        assert overlay is not None
+        self.assertIsNotNone(overlay.roi_fcn_heatmap)
+        assert overlay.roi_fcn_heatmap is not None
+        self.assertEqual(overlay.roi_fcn_heatmap.heatmap_u8.shape, (48, 80))
+        self.assertEqual(overlay.roi_fcn_heatmap.canvas_wh_px, (80, 48))
 
     def test_result_ready_shows_debug_artifact_paths(self) -> None:
         self.inference_controller.signals.result_ready.emit(

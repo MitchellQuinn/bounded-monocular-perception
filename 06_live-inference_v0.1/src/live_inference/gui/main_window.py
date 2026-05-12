@@ -27,7 +27,11 @@ from PySide6.QtWidgets import (
 
 import interfaces.contracts as contracts
 
-from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
+from .frame_preview_widget import (
+    FramePreviewHeatmapOverlay,
+    FramePreviewOverlay,
+    FramePreviewWidget,
+)
 from live_inference.masking import (
     DEFAULT_BACKGROUND_THRESHOLD,
     BackgroundState,
@@ -231,9 +235,17 @@ class LiveInferenceMainWindow(QMainWindow):
 
         debug_tab = QWidget()
         debug_layout = QVBoxLayout(debug_tab)
+        self.show_roi_fcn_heatmap_overlay_checkbox = QCheckBox(
+            "Show ROI-FCN heatmap overlay"
+        )
+        self.show_roi_fcn_heatmap_overlay_checkbox.setObjectName(
+            "show_roi_fcn_heatmap_overlay_checkbox"
+        )
+        self.show_roi_fcn_heatmap_overlay_checkbox.setChecked(True)
         self.debug_summary_value = QLabel("Debug artifacts: n/a")
         self.debug_summary_value.setObjectName("debug_summary_value")
         self.debug_summary_value.setWordWrap(True)
+        debug_layout.addWidget(self.show_roi_fcn_heatmap_overlay_checkbox)
         debug_layout.addWidget(self.debug_summary_value)
         debug_layout.addStretch(1)
         self.control_tabs.addTab(debug_tab, "Debug")
@@ -378,6 +390,9 @@ class LiveInferenceMainWindow(QMainWindow):
         self.clear_background_button.clicked.connect(self.clear_background)
         self.background_threshold_input.valueChanged.connect(
             self._on_background_threshold_changed
+        )
+        self.show_roi_fcn_heatmap_overlay_checkbox.toggled.connect(
+            self._on_roi_fcn_heatmap_overlay_toggled
         )
 
     def _connect_worker_signals(self) -> None:
@@ -567,6 +582,9 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.background_state.get_snapshot()
         self._apply_background_snapshot_to_preview(snapshot)
         self._sync_background_controls_from_state(snapshot)
+
+    def _on_roi_fcn_heatmap_overlay_toggled(self, checked: bool) -> None:
+        self.frame_preview_widget.set_heatmap_overlay_enabled(bool(checked))
 
     def _sync_background_controls_from_state(self, snapshot: object | None = None) -> None:
         if snapshot is None:
@@ -1011,13 +1029,18 @@ def _overlay_from_result(result: object) -> FramePreviewOverlay | None:
         extras,
         *contracts.ROI_OVERLAY_BOUNDS_METADATA_KEYS,
     )
-    if bbox is None and center is None and roi_bounds is None:
+    locator_metadata = _mapping_payload(
+        extras.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA)
+    )
+    heatmap = _heatmap_overlay_from_locator_metadata(locator_metadata)
+    if bbox is None and center is None and roi_bounds is None and heatmap is None:
         return None
     return FramePreviewOverlay(
         source_image_wh_px=source_size,
         bbox_xyxy_px=bbox,
         center_xy_px=center,
         roi_bounds_xyxy_px=roi_bounds,
+        roi_fcn_heatmap=heatmap,
         label="Pipeline ROI / bbox",
     )
 
@@ -1056,6 +1079,42 @@ def _first_xyxy(
     return None
 
 
+def _heatmap_overlay_from_locator_metadata(
+    locator_metadata: Mapping[str, object],
+) -> FramePreviewHeatmapOverlay | None:
+    heatmap = locator_metadata.get(
+        contracts.PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8
+    )
+    if heatmap is None:
+        return None
+    canvas_w = _optional_int(
+        locator_metadata.get(contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_WIDTH_PX)
+    )
+    canvas_h = _optional_int(
+        locator_metadata.get(contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX)
+    )
+    resized_wh = _size_tuple(
+        locator_metadata.get(
+            contracts.PREPROCESSING_METADATA_ROI_FCN_RESIZED_IMAGE_WH_PX
+        )
+    )
+    padding = _int_tuple(
+        locator_metadata.get(contracts.PREPROCESSING_METADATA_ROI_FCN_PADDING_LTRB_PX),
+        width=4,
+    )
+    if canvas_w is None or canvas_h is None or resized_wh is None or padding is None:
+        return None
+    try:
+        return FramePreviewHeatmapOverlay(
+            heatmap_u8=heatmap,
+            canvas_wh_px=(canvas_w, canvas_h),
+            resized_image_wh_px=resized_wh,
+            padding_ltrb_px=padding,
+        )
+    except ValueError:
+        return None
+
+
 def _xyxy_tuple(value: object | None) -> tuple[float, float, float, float] | None:
     parsed = _float_tuple(value, width=4)
     if parsed is None:
@@ -1078,6 +1137,13 @@ def _size_tuple(value: object | None) -> tuple[int, int] | None:
     if width <= 0 or height <= 0:
         return None
     return width, height
+
+
+def _int_tuple(value: object | None, *, width: int) -> tuple[int, ...] | None:
+    parsed = _float_tuple(value, width=width)
+    if parsed is None:
+        return None
+    return tuple(int(item) for item in parsed)
 
 
 def _optional_int(value: object | None) -> int | None:

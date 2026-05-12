@@ -20,6 +20,24 @@ from live_inference.masking import (
 
 
 @dataclass(frozen=True)
+class FramePreviewHeatmapOverlay:
+    """ROI-FCN heatmap plus locator geometry needed to project it to source space."""
+
+    heatmap_u8: np.ndarray
+    canvas_wh_px: tuple[int, int]
+    resized_image_wh_px: tuple[int, int]
+    padding_ltrb_px: tuple[int, int, int, int]
+
+    def __post_init__(self) -> None:
+        heatmap = np.asarray(self.heatmap_u8, dtype=np.uint8)
+        if heatmap.ndim != 2:
+            raise ValueError(f"Heatmap overlay must be 2D; got shape {heatmap.shape}.")
+        copied = np.ascontiguousarray(heatmap)
+        copied.setflags(write=False)
+        object.__setattr__(self, "heatmap_u8", copied)
+
+
+@dataclass(frozen=True)
 class FramePreviewOverlay:
     """Source-image-space geometry to draw over the preview."""
 
@@ -27,6 +45,7 @@ class FramePreviewOverlay:
     bbox_xyxy_px: tuple[float, float, float, float] | None = None
     center_xy_px: tuple[float, float] | None = None
     roi_bounds_xyxy_px: tuple[float, float, float, float] | None = None
+    roi_fcn_heatmap: FramePreviewHeatmapOverlay | None = None
     label: str = "Pipeline ROI / bbox"
 
 
@@ -62,6 +81,7 @@ class FramePreviewWidget(QWidget):
         self._raw_gray: np.ndarray | None = None
         self._placeholder_text = "No frame yet"
         self._overlay: FramePreviewOverlay | None = None
+        self._heatmap_overlay_enabled = True
         self._committed_mask: np.ndarray | None = None
         self._committed_mask_size: tuple[int, int] | None = None
         self._background_snapshot: BackgroundSnapshot | None = None
@@ -73,6 +93,7 @@ class FramePreviewWidget(QWidget):
         self._cursor_source_xy: tuple[int, int] | None = None
         self._committed_overlay_pixmap: QPixmap | None = None
         self._draft_overlay_pixmap: QPixmap | None = None
+        self._heatmap_overlay_pixmap_cache: tuple[tuple[int, ...], QPixmap] | None = None
         self._background_preview_snapshot_cache: (
             tuple[tuple[int, bool, int, int, int, int, int], BackgroundSnapshot] | None
         ) = None
@@ -245,10 +266,18 @@ class FramePreviewWidget(QWidget):
 
     def set_overlay(self, overlay: FramePreviewOverlay | None) -> None:
         self._overlay = overlay
+        self._heatmap_overlay_pixmap_cache = None
         self.update()
 
     def overlay(self) -> FramePreviewOverlay | None:
         return self._overlay
+
+    def set_heatmap_overlay_enabled(self, enabled: bool) -> None:
+        self._heatmap_overlay_enabled = bool(enabled)
+        self.update()
+
+    def heatmap_overlay_enabled(self) -> bool:
+        return bool(self._heatmap_overlay_enabled)
 
     def set_committed_mask_snapshot(self, snapshot: FrameMaskSnapshot | None) -> None:
         if snapshot is not None:
@@ -475,6 +504,7 @@ class FramePreviewWidget(QWidget):
 
         target_rect = self.image_target_rect()
         painter.drawPixmap(target_rect, self._pixmap, QRectF(self._pixmap.rect()))
+        self._draw_heatmap_overlay(painter)
         self._draw_mask_overlay(painter)
         self._draw_overlay(painter)
         self._draw_brush_cursor(painter)
@@ -683,6 +713,81 @@ class FramePreviewWidget(QWidget):
         painter.setPen(pen)
         painter.drawEllipse(center, radius, radius)
 
+    def _draw_heatmap_overlay(self, painter: QPainter) -> None:
+        if not self._heatmap_overlay_enabled:
+            return
+        overlay = self._overlay
+        if overlay is None or overlay.roi_fcn_heatmap is None:
+            return
+        source_size = overlay.source_image_wh_px
+        if not self.overlay_source_size_matches(source_size):
+            return
+        target_rect = self.image_target_rect()
+        if target_rect.isNull():
+            return
+        source_w, source_h = _valid_source_size(source_size)
+        if source_w <= 0 or source_h <= 0:
+            return
+        heatmap_pixmap = self._heatmap_overlay_pixmap(
+            overlay.roi_fcn_heatmap,
+            source_wh_px=(source_w, source_h),
+        )
+        if heatmap_pixmap is None or heatmap_pixmap.isNull():
+            return
+        painter.drawPixmap(
+            target_rect,
+            heatmap_pixmap,
+            QRectF(heatmap_pixmap.rect()),
+        )
+
+    def _heatmap_overlay_pixmap(
+        self,
+        heatmap: FramePreviewHeatmapOverlay,
+        *,
+        source_wh_px: tuple[int, int],
+    ) -> QPixmap | None:
+        source_w, source_h = _valid_source_size(source_wh_px)
+        canvas_w, canvas_h = _valid_source_size(heatmap.canvas_wh_px)
+        resized_w, resized_h = _valid_source_size(heatmap.resized_image_wh_px)
+        padding = _valid_padding_ltrb(heatmap.padding_ltrb_px)
+        if (
+            source_w <= 0
+            or source_h <= 0
+            or canvas_w <= 0
+            or canvas_h <= 0
+            or resized_w <= 0
+            or resized_h <= 0
+            or padding is None
+        ):
+            return None
+        cache_key = (
+            source_w,
+            source_h,
+            canvas_w,
+            canvas_h,
+            resized_w,
+            resized_h,
+            *padding,
+            int(heatmap.heatmap_u8.shape[1]),
+            int(heatmap.heatmap_u8.shape[0]),
+        )
+        cached = self._heatmap_overlay_pixmap_cache
+        if cached is not None and cached[0] == cache_key:
+            return cached[1]
+
+        source_heatmap = _project_locator_heatmap_to_source(
+            heatmap.heatmap_u8,
+            source_wh_px=(source_w, source_h),
+            canvas_wh_px=(canvas_w, canvas_h),
+            resized_image_wh_px=(resized_w, resized_h),
+            padding_ltrb_px=padding,
+        )
+        if source_heatmap is None:
+            return None
+        pixmap = _heatmap_overlay_pixmap(source_heatmap)
+        self._heatmap_overlay_pixmap_cache = (cache_key, pixmap)
+        return pixmap
+
     def _draw_overlay(self, painter: QPainter) -> None:
         overlay = self._overlay
         if overlay is None or not self.overlay_source_size_matches(overlay.source_image_wh_px):
@@ -749,6 +854,21 @@ def _valid_source_size(source_image_wh_px: tuple[int, int] | None) -> tuple[int,
         return int(width), int(height)
     except (TypeError, ValueError):
         return 0, 0
+
+
+def _valid_padding_ltrb(
+    padding_ltrb_px: tuple[int, int, int, int] | None,
+) -> tuple[int, int, int, int] | None:
+    if padding_ltrb_px is None:
+        return None
+    try:
+        left, top, right, bottom = padding_ltrb_px
+        parsed = (int(left), int(top), int(right), int(bottom))
+    except (TypeError, ValueError):
+        return None
+    if min(parsed) < 0:
+        return None
+    return parsed
 
 
 def _point_xy(point: QPointF | tuple[float, float]) -> tuple[float, float]:
@@ -856,6 +976,75 @@ def _scaled_background_snapshot(
     )
 
 
+def _project_locator_heatmap_to_source(
+    heatmap_u8: np.ndarray,
+    *,
+    source_wh_px: tuple[int, int],
+    canvas_wh_px: tuple[int, int],
+    resized_image_wh_px: tuple[int, int],
+    padding_ltrb_px: tuple[int, int, int, int],
+) -> np.ndarray | None:
+    source_w, source_h = source_wh_px
+    canvas_w, canvas_h = canvas_wh_px
+    resized_w, resized_h = resized_image_wh_px
+    pad_left, pad_top, _, _ = padding_ltrb_px
+    if min(source_w, source_h, canvas_w, canvas_h, resized_w, resized_h) <= 0:
+        return None
+
+    heatmap = np.asarray(heatmap_u8, dtype=np.uint8)
+    if heatmap.ndim != 2 or heatmap.size <= 0:
+        return None
+
+    heatmap_image = _gray_array_to_qimage(heatmap)
+    if (int(heatmap.shape[1]), int(heatmap.shape[0])) != (canvas_w, canvas_h):
+        heatmap_image = heatmap_image.scaled(
+            canvas_w,
+            canvas_h,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    canvas_heatmap = _qimage_to_gray_array(heatmap_image)
+
+    x1 = min(canvas_w, max(0, int(pad_left)))
+    y1 = min(canvas_h, max(0, int(pad_top)))
+    x2 = min(canvas_w, x1 + int(resized_w))
+    y2 = min(canvas_h, y1 + int(resized_h))
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    unpadded = np.ascontiguousarray(canvas_heatmap[y1:y2, x1:x2])
+    unpadded_image = _gray_array_to_qimage(unpadded)
+    source_image = unpadded_image.scaled(
+        source_w,
+        source_h,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    return _qimage_to_gray_array(source_image)
+
+
+def _heatmap_overlay_pixmap(heatmap_u8: np.ndarray) -> QPixmap:
+    heatmap = np.asarray(heatmap_u8, dtype=np.uint8)
+    height, width = int(heatmap.shape[0]), int(heatmap.shape[1])
+    normalized = heatmap.astype(np.float32) / 255.0
+    alpha = np.rint(np.power(normalized, 0.65) * 160.0).astype(np.uint8)
+    alpha[heatmap == 0] = 0
+
+    overlay = np.zeros((height, width, 4), dtype=np.uint8)
+    overlay[..., 0] = 255
+    overlay[..., 1] = np.rint(48.0 + normalized * 180.0).astype(np.uint8)
+    overlay[..., 2] = 32
+    overlay[..., 3] = alpha
+    image = QImage(
+        overlay.data,
+        width,
+        height,
+        int(overlay.strides[0]),
+        QImage.Format.Format_RGBA8888,
+    ).copy()
+    return QPixmap.fromImage(image)
+
+
 def _background_snapshot_key(
     snapshot: BackgroundSnapshot | None,
 ) -> tuple[int, bool, bool, int, int, int] | None:
@@ -921,4 +1110,9 @@ def _rgb_array_to_pixmap(image: np.ndarray) -> QPixmap:
     return QPixmap.fromImage(qimage)
 
 
-__all__ = ["FrameMaskEditResult", "FramePreviewOverlay", "FramePreviewWidget"]
+__all__ = [
+    "FrameMaskEditResult",
+    "FramePreviewHeatmapOverlay",
+    "FramePreviewOverlay",
+    "FramePreviewWidget",
+]

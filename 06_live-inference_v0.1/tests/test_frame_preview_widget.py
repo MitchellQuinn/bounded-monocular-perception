@@ -47,6 +47,34 @@ class FramePreviewWidgetTests(unittest.TestCase):
         self.assertIsNotNone(self.widget.grab())
         self.assertIsNotNone(self.widget.overlay())
 
+    def test_roi_fcn_heatmap_overlay_can_be_toggled(self) -> None:
+        _, QPixmap, FramePreviewOverlay, _ = _gui_imports()
+        from live_inference.gui.frame_preview_widget import FramePreviewHeatmapOverlay
+
+        self.widget.set_pixmap(QPixmap.fromImage(_image(200, 100)))
+        heatmap = np.zeros((10, 20), dtype=np.uint8)
+        heatmap[5, 10] = 255
+        self.widget.set_overlay(
+            FramePreviewOverlay(
+                source_image_wh_px=(200, 100),
+                roi_fcn_heatmap=FramePreviewHeatmapOverlay(
+                    heatmap_u8=heatmap,
+                    canvas_wh_px=(20, 10),
+                    resized_image_wh_px=(20, 10),
+                    padding_ltrb_px=(0, 0, 0, 0),
+                ),
+            )
+        )
+        self.app.processEvents()
+
+        enabled_color = self.widget.grab().toImage().pixelColor(200, 200)
+        self.widget.set_heatmap_overlay_enabled(False)
+        self.app.processEvents()
+        disabled_color = self.widget.grab().toImage().pixelColor(200, 200)
+
+        self.assertFalse(self.widget.heatmap_overlay_enabled())
+        self.assertGreater(enabled_color.red(), disabled_color.red())
+
     def test_source_to_widget_mapping_accounts_for_letterboxing(self) -> None:
         _, QPixmap, _, _ = _gui_imports()
         self.widget.set_pixmap(QPixmap.fromImage(_image(200, 100)))
