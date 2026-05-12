@@ -18,7 +18,8 @@ from .roi_locator import (
     build_roi_fcn_exclusion_mask,
     build_roi_fcn_locator_input,
 )
-from .tri_stream_live_preprocessor import TriStreamLivePreprocessor
+from .stage_policy import StageTransformPolicySnapshot, StageTransformPolicyState
+from .tri_stream_live_preprocessor import RoiRejectedError, TriStreamLivePreprocessor
 
 __all__ = [
     "BrightnessNormalizationRuntimeConfig",
@@ -27,6 +28,9 @@ __all__ = [
     "RoiFcnLocator",
     "RoiLocation",
     "RoiLocator",
+    "RoiRejectedError",
+    "StageTransformPolicySnapshot",
+    "StageTransformPolicyState",
     "TriStreamLivePreprocessor",
     "TriStreamPreprocessingConfig",
     "build_roi_fcn_exclusion_mask",

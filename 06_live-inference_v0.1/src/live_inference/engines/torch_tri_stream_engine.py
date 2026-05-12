@@ -477,6 +477,13 @@ def _roi_metadata_from_preprocessing(metadata: Mapping[str, Any]) -> RoiMetadata
         for key in contracts.ROI_METADATA_EXTRA_KEYS
         if key in metadata
     }
+    extras.update(
+        {
+            key: metadata[key]
+            for key in _LIVE_ROI_STATUS_EXTRA_KEYS
+            if key in metadata
+        }
+    )
 
     if (
         bbox is None
@@ -498,6 +505,26 @@ def _roi_metadata_from_preprocessing(metadata: Mapping[str, Any]) -> RoiMetadata
         geometry_schema=geometry_schema,
         extras=extras,
     )
+
+
+_LIVE_ROI_STATUS_EXTRA_KEYS = (
+    "stage_policy_revision",
+    "apply_manual_mask_to_roi_locator",
+    "apply_background_removal_to_roi_locator",
+    "apply_manual_mask_to_regressor_preprocessing",
+    "apply_background_removal_to_regressor_preprocessing",
+    "manual_mask_applied_to_roi_locator",
+    "background_removal_applied_to_roi_locator",
+    "manual_mask_applied_to_regressor_preprocessing",
+    "background_removal_applied_to_regressor_preprocessing",
+    "roi_confidence",
+    "roi_clipped",
+    "roi_accepted",
+    "roi_rejected",
+    "roi_rejection_reason",
+    "roi_rejection_reasons",
+    "roi_content_fraction",
+)
 
 
 def _debug_paths_from_preprocessing(metadata: Mapping[str, Any]) -> Mapping[str, Path]:

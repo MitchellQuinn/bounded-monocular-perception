@@ -20,6 +20,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 import interfaces.contracts as contracts  # noqa: E402
+from live_inference.frame_handoff import compute_frame_hash  # noqa: E402
 
 
 class LiveInferenceMainWindowTests(unittest.TestCase):
@@ -55,6 +56,22 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             "stop_all_button",
         ):
             self.assertIsNotNone(self.window.findChild(QPushButton, object_name))
+
+    def test_single_frame_controls_exist(self) -> None:
+        _, QPushButton, _, _ = _gui_imports()
+        from PySide6.QtWidgets import QCheckBox, QLabel
+
+        self.assertIsNotNone(self.window.findChild(QPushButton, "capture_frame_button"))
+        self.assertIsNotNone(
+            self.window.findChild(QPushButton, "run_single_inference_button")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QCheckBox, "record_trace_checkbox")
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QLabel, "last_captured_frame_hash_value")
+        )
+        self.assertIsNotNone(self.window.findChild(QLabel, "last_trace_path_value"))
 
     def test_right_side_control_panel_contains_camera_and_inference_buttons(self) -> None:
         _, QPushButton, _, _ = _gui_imports()
@@ -92,6 +109,18 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertIsNotNone(
             self.window.findChild(QCheckBox, "mask_fill_white_checkbox")
         )
+        self.assertIsNotNone(
+            self.window.findChild(
+                QCheckBox,
+                "apply_manual_mask_to_roi_locator_checkbox",
+            )
+        )
+        self.assertIsNotNone(
+            self.window.findChild(
+                QCheckBox,
+                "apply_manual_mask_to_model_preprocessing_checkbox",
+            )
+        )
         self.assertIsNotNone(self.window.findChild(QLabel, "mask_fill_value_label"))
 
     def test_background_controls_exist(self) -> None:
@@ -105,6 +134,18 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             self.window.findChild(QCheckBox, "enable_background_removal_checkbox")
         )
         self.assertIsNotNone(
+            self.window.findChild(
+                QCheckBox,
+                "apply_background_removal_to_roi_locator_checkbox",
+            )
+        )
+        self.assertIsNotNone(
+            self.window.findChild(
+                QCheckBox,
+                "apply_background_removal_to_model_preprocessing_checkbox",
+            )
+        )
+        self.assertIsNotNone(
             self.window.findChild(QPushButton, "clear_background_button")
         )
         self.assertIsNotNone(
@@ -112,6 +153,42 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         )
         self.assertIsNotNone(self.window.findChild(QLabel, "background_status_label"))
         self.assertIsNotNone(self._background_preview_widget())
+
+    def test_stage_policy_checkboxes_update_shared_state(self) -> None:
+        from PySide6.QtWidgets import QCheckBox
+
+        manual_locator = self.window.findChild(
+            QCheckBox,
+            "apply_manual_mask_to_roi_locator_checkbox",
+        )
+        manual_model = self.window.findChild(
+            QCheckBox,
+            "apply_manual_mask_to_model_preprocessing_checkbox",
+        )
+        background_locator = self.window.findChild(
+            QCheckBox,
+            "apply_background_removal_to_roi_locator_checkbox",
+        )
+        background_model = self.window.findChild(
+            QCheckBox,
+            "apply_background_removal_to_model_preprocessing_checkbox",
+        )
+        assert manual_locator is not None
+        assert manual_model is not None
+        assert background_locator is not None
+        assert background_model is not None
+
+        manual_locator.setChecked(True)
+        manual_model.setChecked(False)
+        background_locator.setChecked(True)
+        background_model.setChecked(True)
+        _process_events(self.app)
+
+        snapshot = self.window.stage_policy_state.get_snapshot()
+        self.assertTrue(snapshot.apply_manual_mask_to_roi_locator)
+        self.assertFalse(snapshot.apply_manual_mask_to_regressor_preprocessing)
+        self.assertTrue(snapshot.apply_background_removal_to_roi_locator)
+        self.assertTrue(snapshot.apply_background_removal_to_regressor_preprocessing)
 
     def test_debug_heatmap_overlay_checkbox_defaults_to_enabled(self) -> None:
         from PySide6.QtWidgets import QCheckBox
@@ -312,6 +389,97 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertIn("Frame preview unavailable", log_text)
         self.assertIn(str(missing_path), log_text)
 
+    def test_capture_frame_updates_last_captured_hash_label_from_reader(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+
+        self.window.capture_frame_button.click()
+        _process_events(self.app)
+
+        label = self.window.findChild(QLabel, "last_captured_frame_hash_value")
+        assert label is not None
+        expected_hash = compute_frame_hash(frame_bytes).value
+        self.assertEqual(label.text(), expected_hash)
+        self.assertIn(
+            f"Captured frame {expected_hash}",
+            self.window.log_panel.toPlainText(),
+        )
+        self.assertTrue(_widget_has_pixmap(self._preview_widget()))
+
+    def test_run_single_inference_updates_result_labels_using_fake_runner(self) -> None:
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        runner = _FakeSingleFrameRunner()
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+        self.window.single_frame_runner = runner
+        self.window.capture_frame_button.click()
+
+        self.window.run_single_inference_button.click()
+        _process_events(self.app)
+
+        self.assertEqual(runner.calls, [frame_bytes])
+        self.assertEqual(self.window.distance_value.text(), "7.250 m")
+        self.assertEqual(self.window.yaw_value.text(), "-12.50 deg")
+        self.assertIn(
+            "Single-frame inference completed",
+            self.window.log_panel.toPlainText(),
+        )
+
+    def test_continuous_inference_running_refuses_single_frame_run(self) -> None:
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        runner = _FakeSingleFrameRunner()
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+        self.window.single_frame_runner = runner
+        self.window.capture_frame_button.click()
+
+        self.window.start_inference_button.click()
+        self.window.run_single_inference_button.click()
+        _process_events(self.app)
+
+        self.assertEqual(runner.calls, [])
+        self.assertIn(
+            "Single-frame inference refused because continuous inference is running",
+            self.window.log_panel.toPlainText(),
+        )
+
+    def test_trace_path_label_updates_when_single_frame_trace_is_written(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        trace_path = Path(temp_dir.name) / "trace"
+        runner = _FakeSingleFrameRunner(trace_path=trace_path)
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+        self.window.single_frame_runner = runner
+        self.window.capture_frame_button.click()
+
+        self.window.record_trace_checkbox.setChecked(True)
+        self.window.run_single_inference_button.click()
+        _process_events(self.app)
+
+        label = self.window.findChild(QLabel, "last_trace_path_value")
+        assert label is not None
+        self.assertEqual(label.text(), str(trace_path))
+        self.assertEqual(runner.record_trace_values, [True])
+
     def test_frame_preview_does_not_affect_result_label_updates(self) -> None:
         image_path = self._write_temp_frame_image()
         self.camera_controller.signals.frame_written.emit(_FramePayload(image_path=image_path))
@@ -505,6 +673,64 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(overlay.roi_fcn_heatmap.heatmap_u8.shape, (48, 80))
         self.assertEqual(overlay.roi_fcn_heatmap.canvas_wh_px, (80, 48))
 
+    def test_result_ready_updates_roi_confidence_and_acceptance_status(self) -> None:
+        self.inference_controller.signals.result_ready.emit(
+            _ResultPayload(
+                predicted_distance_m=1.0,
+                predicted_yaw_deg=2.0,
+                inference_time_ms=3.0,
+                preprocessing_time_ms=4.0,
+                total_time_ms=7.0,
+                roi_metadata=_RoiMetadataPayload(
+                    source_image_wh_px=(80, 48),
+                    extras={
+                        "roi_confidence": 0.876,
+                        "roi_clipped": False,
+                        "roi_accepted": True,
+                        "apply_manual_mask_to_roi_locator": False,
+                        "manual_mask_applied_to_roi_locator": False,
+                        "apply_background_removal_to_roi_locator": True,
+                        "background_removal_applied_to_roi_locator": True,
+                    },
+                ),
+            )
+        )
+        _process_events(self.app)
+
+        self.assertEqual(self.window.roi_confidence_value.text(), "0.876")
+        self.assertEqual(self.window.roi_clipped_value.text(), "no")
+        self.assertEqual(self.window.roi_acceptance_value.text(), "accepted")
+        self.assertIn("background yes", self.window.roi_locator_transforms_value.text())
+
+    def test_rejected_roi_error_clears_prediction_labels_and_updates_status(self) -> None:
+        self.window.distance_value.setText("7.250 m")
+        self.window.yaw_value.setText("-12.50 deg")
+
+        self.inference_controller.signals.error_occurred.emit(
+            _IssuePayload(
+                error_type="roi_rejected",
+                message="ROI rejected",
+                details={
+                    "roi_confidence": 0.12,
+                    "roi_clipped": True,
+                    "roi_accepted": False,
+                    "roi_rejection_reason": "low_confidence",
+                    "apply_manual_mask_to_roi_locator": False,
+                    "manual_mask_applied_to_roi_locator": False,
+                    "apply_background_removal_to_roi_locator": False,
+                    "background_removal_applied_to_roi_locator": False,
+                },
+            )
+        )
+        _process_events(self.app)
+
+        self.assertEqual(self.window.distance_value.text(), "n/a")
+        self.assertEqual(self.window.yaw_value.text(), "n/a")
+        self.assertEqual(self.window.roi_confidence_value.text(), "0.120")
+        self.assertEqual(self.window.roi_clipped_value.text(), "yes")
+        self.assertIn("rejected", self.window.roi_acceptance_value.text())
+        self.assertIsNone(self._preview_widget().overlay())
+
     def test_result_ready_shows_debug_artifact_paths(self) -> None:
         self.inference_controller.signals.result_ready.emit(
             _ResultPayload(
@@ -652,6 +878,7 @@ class _IssuePayload:
     message: str
     warning_type: str | None = None
     error_type: str | None = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -662,22 +889,85 @@ class _FramePayload:
     metadata: object | None = None
 
 
+@dataclass(frozen=True)
+class _SingleFrameOutcomePayload:
+    result: object | None
+    error: object | None
+    trace_path: Path | None
+    frame_hash: object | None = None
+    request_id: str = "single-frame-request"
+
+
+class _FakeFrameReader:
+    def __init__(self, *, image_path: Path, image_bytes: bytes) -> None:
+        self.image_path = image_path
+        self.image_bytes = image_bytes
+
+    def latest_completed_frame(self) -> _FramePayload:
+        return _FramePayload(
+            image_path=self.image_path,
+            metadata=contracts.FrameMetadata(frame_id="fake-frame"),
+        )
+
+    def read_frame_bytes(self, frame: object) -> bytes:
+        return self.image_bytes
+
+
+class _FakeSingleFrameRunner:
+    def __init__(self, *, trace_path: Path | None = None) -> None:
+        self.trace_path = trace_path
+        self.calls: list[bytes] = []
+        self.record_trace_values: list[bool] = []
+
+    @property
+    def trace_output_dir(self) -> Path:
+        return Path("live_traces")
+
+    def run_single_frame(
+        self,
+        image_bytes: bytes,
+        *,
+        source_path: Path | None = None,
+        frame_metadata: object | None = None,
+        record_trace: bool = False,
+    ) -> _SingleFrameOutcomePayload:
+        self.calls.append(bytes(image_bytes))
+        self.record_trace_values.append(bool(record_trace))
+        return _SingleFrameOutcomePayload(
+            result=_ResultPayload(
+                predicted_distance_m=7.25,
+                predicted_yaw_deg=-12.5,
+                inference_time_ms=5.0,
+                preprocessing_time_ms=2.0,
+                total_time_ms=7.0,
+            ),
+            error=None,
+            trace_path=self.trace_path,
+        )
+
+
 class _FakeController:
     def __init__(self, signals: object) -> None:
         self.signals = signals
         self.start_calls = 0
         self.stop_calls = 0
         self.wait_calls = 0
+        self.running = False
 
     def start(self) -> None:
         self.start_calls += 1
+        self.running = True
 
     def request_stop(self) -> None:
         self.stop_calls += 1
+        self.running = False
 
     def wait(self, timeout_ms: int | None = None) -> bool:
         self.wait_calls += 1
         return True
+
+    def is_running(self) -> bool:
+        return self.running
 
 
 _GUI_IMPORTS: tuple[Any, Any, Any, Any] | None = None

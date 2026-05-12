@@ -175,6 +175,30 @@ class TorchTriStreamInferenceEngineUnitTests(unittest.TestCase):
             contracts.BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP,
         )
 
+    def test_roi_guard_metadata_is_carried_in_roi_metadata_extras(self) -> None:
+        prepared = _prepared_inputs(
+            preprocessing_metadata_overrides={
+                "roi_confidence": 0.41,
+                "roi_clipped": False,
+                "roi_accepted": True,
+                "apply_manual_mask_to_roi_locator": False,
+                "apply_background_removal_to_roi_locator": True,
+                "manual_mask_applied_to_roi_locator": False,
+                "background_removal_applied_to_roi_locator": True,
+            }
+        )
+
+        result = _fake_engine().run_inference(prepared)
+
+        self.assertIsNotNone(result.roi_metadata)
+        assert result.roi_metadata is not None
+        extras = result.roi_metadata.extras
+        self.assertEqual(extras["roi_confidence"], 0.41)
+        self.assertFalse(extras["roi_clipped"])
+        self.assertTrue(extras["roi_accepted"])
+        self.assertTrue(extras["apply_background_removal_to_roi_locator"])
+        self.assertTrue(extras["background_removal_applied_to_roi_locator"])
+
     def test_preprocessing_parameter_revision_is_preserved(self) -> None:
         result = _fake_engine().run_inference(_prepared_inputs(parameter_revision=9))
 

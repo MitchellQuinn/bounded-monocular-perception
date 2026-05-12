@@ -69,14 +69,27 @@ from rb_pipeline_v4.silhouette_algorithms import (  # noqa: E402
 
 from .debug_artifacts import (  # noqa: E402
     ARTIFACT_ACCEPTED_RAW_FRAME,
+    ARTIFACT_BACKGROUND_REMOVAL_MASK,
+    ARTIFACT_BACKGROUND_SNAPSHOT,
+    ARTIFACT_COMBINED_IGNORE_MASK,
     ARTIFACT_DISTANCE_IMAGE,
+    ARTIFACT_FINAL_LOCATOR_INPUT,
     ARTIFACT_LOCATOR_INPUT,
+    ARTIFACT_LOCATOR_INPUT_AFTER_BACKGROUND_REMOVAL,
+    ARTIFACT_LOCATOR_INPUT_AFTER_MANUAL_MASK,
+    ARTIFACT_LOCATOR_INPUT_RAW_OR_PRETRANSFORM,
+    ARTIFACT_MANUAL_MASK,
     ARTIFACT_ORIENTATION_IMAGE,
+    ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS,
+    ARTIFACT_PREPROCESSOR_SOURCE_BEFORE_REGRESSOR_MASKS,
+    ARTIFACT_ROI_FCN_HEATMAP_POST_EXCLUSION,
+    ARTIFACT_ROI_FCN_HEATMAP_PRE_EXCLUSION,
     ARTIFACT_ROI_CROP,
     DebugArtifactWriter,
     default_debug_output_dir,
 )
 from .roi_locator import build_roi_fcn_locator_input  # noqa: E402
+from .stage_policy import StageTransformPolicySnapshot, StageTransformPolicyState
 
 
 @dataclass(frozen=True)
@@ -93,9 +106,15 @@ class _SilhouetteResult:
 
 @dataclass(frozen=True)
 class _MaskPreparation:
+    original_source_gray: np.ndarray
+    locator_source_gray: np.ndarray
     source_gray: np.ndarray
     metadata: dict[str, Any]
     roi_exclusion_mask: np.ndarray | None
+    manual_mask: np.ndarray | None
+    combined_ignore_mask: np.ndarray | None
+    locator_background_snapshot: BackgroundSnapshot | None
+    regressor_background_snapshot: BackgroundSnapshot | None
     background_snapshot: BackgroundSnapshot | None
     fill_value: int
 
@@ -105,6 +124,25 @@ class _RoiBackgroundRemoval:
     preview_gray: np.ndarray
     removal_mask: np.ndarray | None
     metadata: dict[str, Any]
+
+
+class RoiRejectedError(ValueError):
+    """Raised when ROI-FCN output is explicitly rejected before model inference."""
+
+    worker_error_type = "roi_rejected"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: Mapping[str, Any],
+        preprocessing_metadata: Mapping[str, Any],
+        debug_paths: Mapping[str, Path],
+    ) -> None:
+        super().__init__(message)
+        self.failure_details = dict(details)
+        self.preprocessing_metadata = dict(preprocessing_metadata)
+        self.debug_paths = {str(key): Path(path) for key, path in debug_paths.items()}
 
 
 class TriStreamLivePreprocessor:
@@ -119,6 +157,8 @@ class TriStreamLivePreprocessor:
         runtime_parameter_revision_getter: Callable[[], int | None] | None = None,
         mask_state: FrameMaskState | None = None,
         background_state: BackgroundState | None = None,
+        stage_policy_state: StageTransformPolicyState | None = None,
+        stage_policy: StageTransformPolicySnapshot | None = None,
     ) -> None:
         if config is None:
             if model_manifest is None:
@@ -132,10 +172,17 @@ class TriStreamLivePreprocessor:
         self._runtime_parameter_revision_getter = runtime_parameter_revision_getter
         self._mask_state = mask_state
         self._background_state = background_state
+        self._stage_policy_state = stage_policy_state or StageTransformPolicyState(
+            stage_policy
+        )
 
     @property
     def config(self) -> TriStreamPreprocessingConfig:
         return self._config
+
+    @property
+    def stage_policy_state(self) -> StageTransformPolicyState:
+        return self._stage_policy_state
 
     def prepare_model_inputs(
         self,
@@ -144,10 +191,17 @@ class TriStreamLivePreprocessor:
     ) -> PreparedInferenceInputs:
         """Decode raw bytes and reproduce the v0.4 tri-stream preprocessing contract."""
         decoded_source_gray = _decode_image_bytes_to_grayscale(image_bytes)
-        mask_preparation = self._prepare_source_masks(decoded_source_gray)
+        stage_policy = self._stage_policy_state.get_snapshot()
+        mask_preparation = self._prepare_source_masks(
+            decoded_source_gray,
+            stage_policy=stage_policy,
+        )
         source_gray = mask_preparation.source_gray
         mask_metadata = mask_preparation.metadata
-        source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
+        source_h, source_w = (
+            int(decoded_source_gray.shape[0]),
+            int(decoded_source_gray.shape[1]),
+        )
         warnings = _hash_warnings(request, image_bytes)
         for warning_key in (
             "frame_mask_warning",
@@ -158,9 +212,9 @@ class TriStreamLivePreprocessor:
                 warnings.append(str(warning))
 
         roi_location = self._locate_roi(
-            source_gray,
+            mask_preparation.locator_source_gray,
             excluded_source_mask=mask_preparation.roi_exclusion_mask,
-            background_snapshot=mask_preparation.background_snapshot,
+            background_snapshot=mask_preparation.locator_background_snapshot,
             background_fill_value=mask_preparation.fill_value,
         )
         center_x_px, center_y_px = _coerce_center_xy(roi_location)
@@ -176,7 +230,7 @@ class TriStreamLivePreprocessor:
         )
         roi_background = _apply_background_to_roi_canvas(
             roi_gray,
-            background_snapshot=mask_preparation.background_snapshot,
+            background_snapshot=mask_preparation.regressor_background_snapshot,
             source_bounds=source_bounds,
             roi_bounds=roi_bounds,
         )
@@ -185,8 +239,72 @@ class TriStreamLivePreprocessor:
                 base=mask_metadata,
                 roi_location=roi_location,
                 roi_background_metadata=roi_background.metadata,
+                stage_policy=stage_policy,
             )
         )
+        runtime_revision = self._runtime_parameter_revision()
+        input_image_hash = _accepted_input_image_hash(request, image_bytes)
+        roi_guard_metadata = _roi_guard_metadata(
+            roi_location=roi_location,
+            request_bounds=request_bounds,
+            source_bounds=source_bounds,
+            frame_width_px=source_w,
+            frame_height_px=source_h,
+            roi_crop=roi_background.preview_gray,
+            stage_policy=stage_policy,
+        )
+        if not bool(roi_guard_metadata["roi_accepted"]):
+            rejection_metadata = self._base_metadata(
+                request=request,
+                input_image_hash=input_image_hash,
+                runtime_revision=runtime_revision,
+                source_width_px=source_w,
+                source_height_px=source_h,
+                roi_location=roi_location,
+                source_bounds=source_bounds,
+                roi_bounds=roi_bounds,
+                request_bounds=request_bounds,
+                warnings=warnings,
+                mask_metadata=mask_metadata,
+                roi_guard_metadata=roi_guard_metadata,
+                stage_policy=stage_policy,
+            )
+            debug_paths = self._write_debug_artifacts(
+                request=request,
+                input_image_hash=input_image_hash,
+                preprocessing_parameter_revision=runtime_revision,
+                original_source_gray=mask_preparation.original_source_gray,
+                locator_source_gray=mask_preparation.locator_source_gray,
+                source_gray=source_gray,
+                roi_location=roi_location,
+                roi_crop=roi_background.preview_gray,
+                distance_image=None,
+                orientation_image=None,
+                metadata=rejection_metadata,
+                locator_background_snapshot=mask_preparation.locator_background_snapshot,
+                background_snapshot=mask_preparation.background_snapshot,
+                manual_mask=mask_preparation.manual_mask,
+                combined_ignore_mask=mask_preparation.combined_ignore_mask,
+                background_removal_mask=roi_background.removal_mask,
+                fill_value=mask_preparation.fill_value,
+            )
+            if debug_paths:
+                rejection_metadata = dict(rejection_metadata)
+                rejection_metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS] = {
+                    str(kind): str(path) for kind, path in debug_paths.items()
+                }
+            reason = str(roi_guard_metadata.get("roi_rejection_reason") or "roi_rejected")
+            details = _roi_rejection_details(
+                request=request,
+                input_image_hash=input_image_hash,
+                metadata=rejection_metadata,
+            )
+            raise RoiRejectedError(
+                f"ROI rejected during preprocessing: {reason}",
+                details=details,
+                preprocessing_metadata=rejection_metadata,
+                debug_paths=debug_paths,
+            )
         silhouette_result = self._render_silhouette(
             roi_gray=roi_gray,
             source_gray=source_gray,
@@ -234,10 +352,116 @@ class TriStreamLivePreprocessor:
             image_width_px=source_w,
             image_height_px=source_h,
         )
-        runtime_revision = self._runtime_parameter_revision()
-        input_image_hash = _accepted_input_image_hash(request, image_bytes)
+        metadata = self._base_metadata(
+            request=request,
+            input_image_hash=input_image_hash,
+            runtime_revision=runtime_revision,
+            source_width_px=source_w,
+            source_height_px=source_h,
+            roi_location=roi_location,
+            source_bounds=source_bounds,
+            roi_bounds=roi_bounds,
+            request_bounds=request_bounds,
+            warnings=warnings,
+            mask_metadata=mask_metadata,
+            roi_guard_metadata=roi_guard_metadata,
+            stage_policy=stage_policy,
+        )
+        metadata.update(
+            {
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_XYXY_PX: (
+                    _array_xyxy_to_tuple(silhouette_result.feature_bbox_xyxy_px)
+                ),
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_INCLUSIVE_XYXY_PX: (
+                    silhouette_result.bbox_inclusive_xyxy_px
+                ),
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_AREA_PX: int(
+                    silhouette_result.area_px
+                ),
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_FALLBACK_USED: bool(
+                    silhouette_result.fallback_used
+                ),
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_PRIMARY_BREAK_REASON: (
+                    silhouette_result.primary_break_reason
+                ),
+                "silhouette_diagnostics": dict(silhouette_result.diagnostics),
+                "brightness_normalization": brightness_payload,
+                "distance_clipped": bool(distance_clipped),
+                "orientation_context_scale": float(
+                    self._config.orientation_context_scale
+                ),
+                contracts.PREPROCESSING_METADATA_ORIENTATION_SOURCE_EXTENT_XYXY_PX: (
+                    _array_xyxy_to_tuple(orientation_source_extent_xyxy)
+                ),
+                contracts.PREPROCESSING_METADATA_ORIENTATION_CROP_SOURCE_XYXY_PX: (
+                    _array_xyxy_to_tuple(orientation_crop_source_xyxy)
+                ),
+                contracts.PREPROCESSING_METADATA_ORIENTATION_CROP_SIZE_PX: float(
+                    orientation_crop_size_px
+                ),
+            }
+        )
+        debug_paths = self._write_debug_artifacts(
+            request=request,
+            input_image_hash=input_image_hash,
+            preprocessing_parameter_revision=runtime_revision,
+            original_source_gray=mask_preparation.original_source_gray,
+            locator_source_gray=mask_preparation.locator_source_gray,
+            source_gray=source_gray,
+            roi_location=roi_location,
+            roi_crop=roi_background.preview_gray,
+            distance_image=distance_image_2d,
+            orientation_image=orientation_image_2d,
+            metadata=metadata,
+            locator_background_snapshot=mask_preparation.locator_background_snapshot,
+            background_snapshot=mask_preparation.background_snapshot,
+            manual_mask=mask_preparation.manual_mask,
+            combined_ignore_mask=mask_preparation.combined_ignore_mask,
+            background_removal_mask=roi_background.removal_mask,
+            fill_value=mask_preparation.fill_value,
+        )
+        if debug_paths:
+            metadata = dict(metadata)
+            metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS] = {
+                str(kind): str(path) for kind, path in debug_paths.items()
+            }
 
-        metadata = {
+        return PreparedInferenceInputs(
+            request_id=request.request_id,
+            input_mode=contracts.InferenceInputMode.TRI_STREAM_V0_4,
+            input_keys=contracts.TRI_STREAM_INPUT_KEYS,
+            model_inputs={
+                contracts.TRI_STREAM_DISTANCE_IMAGE_KEY: distance_image_2d[
+                    None, ...
+                ].astype(np.float32, copy=False),
+                contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY: orientation_image_2d[
+                    None, ...
+                ].astype(np.float32, copy=False),
+                contracts.TRI_STREAM_GEOMETRY_KEY: geometry.astype(np.float32, copy=False),
+            },
+            source_frame=request.frame,
+            preprocessing_metadata=metadata,
+        )
+
+    def _base_metadata(
+        self,
+        *,
+        request: InferenceRequest,
+        input_image_hash: contracts.FrameHash,
+        runtime_revision: int | None,
+        source_width_px: int,
+        source_height_px: int,
+        roi_location: RoiLocation,
+        source_bounds: np.ndarray,
+        roi_bounds: np.ndarray,
+        request_bounds: np.ndarray,
+        warnings: list[str],
+        mask_metadata: Mapping[str, Any],
+        roi_guard_metadata: Mapping[str, Any],
+        stage_policy: StageTransformPolicySnapshot,
+    ) -> dict[str, Any]:
+        center_x_px, center_y_px = _coerce_center_xy(roi_location)
+        metadata: dict[str, Any] = {
             "preprocessing_contract_name": self._config.preprocessing_contract_name,
             "preprocessing_contract_version": self._config.preprocessing_contract_version,
             "input_mode": contracts.TRI_STREAM_INPUT_MODE,
@@ -247,8 +471,8 @@ class TriStreamLivePreprocessor:
             "geometry_dim": int(self._config.geometry_dim),
             contracts.PREPROCESSING_METADATA_INPUT_IMAGE_HASH: input_image_hash.value,
             "input_image_hash_algorithm": input_image_hash.algorithm,
-            contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WIDTH_PX: source_w,
-            contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_HEIGHT_PX: source_h,
+            contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WIDTH_PX: int(source_width_px),
+            contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_HEIGHT_PX: int(source_height_px),
             contracts.PREPROCESSING_METADATA_DISTANCE_CANVAS_WIDTH_PX: int(
                 self._config.distance_canvas_size[0]
             ),
@@ -279,71 +503,16 @@ class TriStreamLivePreprocessor:
                 float(center_x_px),
                 float(center_y_px),
             ),
-            contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_XYXY_PX: _array_xyxy_to_tuple(
-                silhouette_result.feature_bbox_xyxy_px
-            ),
-            contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_INCLUSIVE_XYXY_PX: (
-                silhouette_result.bbox_inclusive_xyxy_px
-            ),
-            contracts.PREPROCESSING_METADATA_SILHOUETTE_AREA_PX: int(silhouette_result.area_px),
-            contracts.PREPROCESSING_METADATA_SILHOUETTE_FALLBACK_USED: bool(
-                silhouette_result.fallback_used
-            ),
-            contracts.PREPROCESSING_METADATA_SILHOUETTE_PRIMARY_BREAK_REASON: (
-                silhouette_result.primary_break_reason
-            ),
-            "silhouette_diagnostics": dict(silhouette_result.diagnostics),
-            "brightness_normalization": brightness_payload,
-            "distance_clipped": bool(distance_clipped),
-            "orientation_context_scale": float(self._config.orientation_context_scale),
-            contracts.PREPROCESSING_METADATA_ORIENTATION_SOURCE_EXTENT_XYXY_PX: (
-                _array_xyxy_to_tuple(orientation_source_extent_xyxy)
-            ),
-            contracts.PREPROCESSING_METADATA_ORIENTATION_CROP_SOURCE_XYXY_PX: _array_xyxy_to_tuple(
-                orientation_crop_source_xyxy
-            ),
-            contracts.PREPROCESSING_METADATA_ORIENTATION_CROP_SIZE_PX: float(
-                orientation_crop_size_px
-            ),
+            "roi_center_source_xy_px": (float(center_x_px), float(center_y_px)),
+            "roi_center_canvas_xy_px": _roi_center_canvas_xy(roi_location),
             contracts.PREPROCESSING_METADATA_RUNTIME_PARAMETER_REVISION: runtime_revision,
             contracts.PREPROCESSING_METADATA_WARNINGS: tuple(warnings),
+            "request_id": request.request_id,
         }
-        metadata.update(mask_metadata)
-        debug_paths = self._write_debug_artifacts(
-            request=request,
-            input_image_hash=input_image_hash,
-            preprocessing_parameter_revision=runtime_revision,
-            source_gray=source_gray,
-            roi_location=roi_location,
-            roi_crop=roi_background.preview_gray,
-            distance_image=distance_image_2d,
-            orientation_image=orientation_image_2d,
-            metadata=metadata,
-            background_snapshot=mask_preparation.background_snapshot,
-            fill_value=mask_preparation.fill_value,
-        )
-        if debug_paths:
-            metadata = dict(metadata)
-            metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS] = {
-                str(kind): str(path) for kind, path in debug_paths.items()
-            }
-
-        return PreparedInferenceInputs(
-            request_id=request.request_id,
-            input_mode=contracts.InferenceInputMode.TRI_STREAM_V0_4,
-            input_keys=contracts.TRI_STREAM_INPUT_KEYS,
-            model_inputs={
-                contracts.TRI_STREAM_DISTANCE_IMAGE_KEY: distance_image_2d[
-                    None, ...
-                ].astype(np.float32, copy=False),
-                contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY: orientation_image_2d[
-                    None, ...
-                ].astype(np.float32, copy=False),
-                contracts.TRI_STREAM_GEOMETRY_KEY: geometry.astype(np.float32, copy=False),
-            },
-            source_frame=request.frame,
-            preprocessing_metadata=metadata,
-        )
+        metadata.update(stage_policy.to_metadata())
+        metadata.update(dict(mask_metadata))
+        metadata.update(dict(roi_guard_metadata))
+        return metadata
 
     def _locate_roi(
         self,
@@ -377,6 +546,8 @@ class TriStreamLivePreprocessor:
     def _prepare_source_masks(
         self,
         source_gray: np.ndarray,
+        *,
+        stage_policy: StageTransformPolicySnapshot,
     ) -> _MaskPreparation:
         source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
         frame_snapshot = (
@@ -403,9 +574,10 @@ class TriStreamLivePreprocessor:
                 warning=None,
             )
         )
+        metadata.update(stage_policy.to_metadata())
 
         manual_mask: np.ndarray | None = None
-        masked_source = source_gray
+        manual_mask_valid = False
         if (
             frame_snapshot is not None
             and frame_snapshot.enabled
@@ -421,12 +593,7 @@ class TriStreamLivePreprocessor:
                 metadata["frame_mask_warning"] = warning
             else:
                 manual_mask = frame_snapshot.mask
-                metadata["frame_mask_applied"] = True
-                masked_source = apply_fill_to_mask(
-                    source_gray,
-                    manual_mask,
-                    fill_value=fill_value,
-                )
+                manual_mask_valid = True
 
         background_warning = _background_source_warning(
             background_snapshot,
@@ -438,23 +605,91 @@ class TriStreamLivePreprocessor:
                 background_warning
             )
 
+        manual_to_locator = bool(
+            manual_mask_valid and stage_policy.apply_manual_mask_to_roi_locator
+        )
+        manual_to_regressor = bool(
+            manual_mask_valid
+            and stage_policy.apply_manual_mask_to_regressor_preprocessing
+        )
+        locator_source = (
+            apply_fill_to_mask(source_gray, manual_mask, fill_value=fill_value)
+            if manual_to_locator
+            else np.array(source_gray, dtype=np.uint8, copy=True)
+        )
+        regressor_source = (
+            apply_fill_to_mask(source_gray, manual_mask, fill_value=fill_value)
+            if manual_to_regressor
+            else np.array(source_gray, dtype=np.uint8, copy=True)
+        )
+
         manual_count = (
             int(np.count_nonzero(manual_mask)) if manual_mask is not None else 0
         )
-        metadata["combined_ignore_pixel_count"] = manual_count
+        metadata["frame_mask_applied"] = bool(manual_to_locator or manual_to_regressor)
+        metadata["manual_mask_available"] = bool(manual_mask_valid)
+        metadata["manual_mask_applied_to_roi_locator"] = bool(manual_to_locator)
+        metadata["manual_mask_applied_to_regressor_preprocessing"] = bool(
+            manual_to_regressor
+        )
+        metadata["combined_ignore_pixel_count"] = (
+            manual_count if bool(manual_to_locator or manual_to_regressor) else 0
+        )
         metadata["combined_ignore_excluded_from_roi_locator"] = False
-        if manual_mask is not None:
+        roi_exclusion_mask: np.ndarray | None = None
+        if manual_mask is not None and manual_to_locator:
             excluded = _locator_accepts_parameter(
                 self._roi_locator,
                 "excluded_source_mask",
             )
             metadata["frame_mask_excluded_from_roi_locator"] = excluded
             metadata["combined_ignore_excluded_from_roi_locator"] = excluded
+            if excluded:
+                roi_exclusion_mask = manual_mask
+
+        usable_background = (
+            background_snapshot
+            if background_warning is None
+            and background_snapshot is not None
+            and background_snapshot.captured
+            and background_snapshot.enabled
+            else None
+        )
+        locator_background_snapshot = (
+            usable_background
+            if bool(stage_policy.apply_background_removal_to_roi_locator)
+            else None
+        )
+        regressor_background_snapshot = (
+            usable_background
+            if bool(stage_policy.apply_background_removal_to_regressor_preprocessing)
+            else None
+        )
+        metadata["background_removal_applied_to_roi_locator"] = bool(
+            locator_background_snapshot is not None
+        )
+        metadata["background_removal_applied_to_regressor_preprocessing"] = bool(
+            regressor_background_snapshot is not None
+        )
+        combined_ignore_mask = (
+            np.array(manual_mask, dtype=bool, copy=True)
+            if manual_mask is not None
+            and bool(manual_to_locator or manual_to_regressor)
+            else None
+        )
 
         return _MaskPreparation(
-            source_gray=masked_source,
+            original_source_gray=np.array(source_gray, dtype=np.uint8, copy=True),
+            locator_source_gray=locator_source,
+            source_gray=regressor_source,
             metadata=metadata,
-            roi_exclusion_mask=manual_mask,
+            roi_exclusion_mask=roi_exclusion_mask,
+            manual_mask=np.array(manual_mask, dtype=bool, copy=True)
+            if manual_mask is not None
+            else None,
+            combined_ignore_mask=combined_ignore_mask,
+            locator_background_snapshot=locator_background_snapshot,
+            regressor_background_snapshot=regressor_background_snapshot,
             background_snapshot=background_snapshot if background_warning is None else None,
             fill_value=fill_value,
         )
@@ -622,13 +857,19 @@ class TriStreamLivePreprocessor:
         request: InferenceRequest,
         input_image_hash: contracts.FrameHash,
         preprocessing_parameter_revision: int | None,
+        original_source_gray: np.ndarray,
+        locator_source_gray: np.ndarray,
         source_gray: np.ndarray,
         roi_location: RoiLocation,
         roi_crop: np.ndarray,
-        distance_image: np.ndarray,
-        orientation_image: np.ndarray,
+        distance_image: np.ndarray | None,
+        orientation_image: np.ndarray | None,
         metadata: Mapping[str, Any],
+        locator_background_snapshot: BackgroundSnapshot | None,
         background_snapshot: BackgroundSnapshot | None,
+        manual_mask: np.ndarray | None,
+        combined_ignore_mask: np.ndarray | None,
+        background_removal_mask: np.ndarray | None,
         fill_value: int,
     ) -> dict[str, Path]:
         if not bool(request.save_debug_images):
@@ -644,16 +885,74 @@ class TriStreamLivePreprocessor:
             input_image_hash=input_image_hash,
             preprocessing_parameter_revision=preprocessing_parameter_revision,
             image_artifacts={
-                ARTIFACT_ACCEPTED_RAW_FRAME: source_gray,
+                ARTIFACT_ACCEPTED_RAW_FRAME: original_source_gray,
+                ARTIFACT_PREPROCESSOR_SOURCE_BEFORE_REGRESSOR_MASKS: original_source_gray,
+                ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS: source_gray,
                 ARTIFACT_ROI_CROP: roi_crop,
-                ARTIFACT_LOCATOR_INPUT: _debug_locator_input(
-                    source_gray,
+                ARTIFACT_LOCATOR_INPUT_RAW_OR_PRETRANSFORM: _debug_locator_input(
+                    original_source_gray,
                     roi_location,
-                    background_snapshot=background_snapshot,
+                    background_snapshot=None,
                     fill_value=fill_value,
+                ),
+                ARTIFACT_LOCATOR_INPUT_AFTER_MANUAL_MASK: (
+                    _debug_locator_input(
+                        locator_source_gray,
+                        roi_location,
+                        background_snapshot=None,
+                        fill_value=fill_value,
+                    )
+                    if bool(metadata.get("manual_mask_applied_to_roi_locator"))
+                    else None
+                ),
+                ARTIFACT_LOCATOR_INPUT_AFTER_BACKGROUND_REMOVAL: (
+                    _debug_locator_input(
+                        locator_source_gray,
+                        roi_location,
+                        background_snapshot=locator_background_snapshot,
+                        fill_value=fill_value,
+                    )
+                    if locator_background_snapshot is not None
+                    else None
+                ),
+                ARTIFACT_FINAL_LOCATOR_INPUT: _debug_locator_input(
+                    locator_source_gray,
+                    roi_location,
+                    background_snapshot=locator_background_snapshot,
+                    fill_value=fill_value,
+                ),
+                ARTIFACT_LOCATOR_INPUT: _debug_locator_input(
+                    locator_source_gray,
+                    roi_location,
+                    background_snapshot=locator_background_snapshot,
+                    fill_value=fill_value,
+                ),
+                ARTIFACT_ROI_FCN_HEATMAP_PRE_EXCLUSION: _locator_heatmap_from_metadata(
+                    roi_location,
+                    "roi_fcn_heatmap_pre_exclusion_u8",
+                ),
+                ARTIFACT_ROI_FCN_HEATMAP_POST_EXCLUSION: _locator_heatmap_from_metadata(
+                    roi_location,
+                    "roi_fcn_heatmap_post_exclusion_u8",
                 ),
                 ARTIFACT_DISTANCE_IMAGE: distance_image,
                 ARTIFACT_ORIENTATION_IMAGE: orientation_image,
+                ARTIFACT_MANUAL_MASK: manual_mask,
+                ARTIFACT_BACKGROUND_SNAPSHOT: (
+                    background_snapshot.grayscale_background
+                    if background_snapshot is not None and background_snapshot.captured
+                    else None
+                ),
+                ARTIFACT_BACKGROUND_REMOVAL_MASK: (
+                    background_removal_mask
+                    if background_removal_mask is not None
+                    else _debug_locator_background_mask(
+                        locator_source_gray,
+                        roi_location,
+                        background_snapshot=locator_background_snapshot,
+                    )
+                ),
+                ARTIFACT_COMBINED_IGNORE_MASK: combined_ignore_mask,
             },
             metadata=metadata,
         )
@@ -667,6 +966,147 @@ def _decode_image_bytes_to_grayscale(image_bytes: bytes) -> np.ndarray:
     if decoded is None:
         raise ValueError("Could not decode image bytes as a supported image.")
     return to_grayscale_uint8(decoded)
+
+
+def _roi_guard_metadata(
+    *,
+    roi_location: RoiLocation,
+    request_bounds: np.ndarray,
+    source_bounds: np.ndarray,
+    frame_width_px: int,
+    frame_height_px: int,
+    roi_crop: np.ndarray,
+    stage_policy: StageTransformPolicySnapshot,
+) -> dict[str, Any]:
+    confidence = _roi_confidence(roi_location)
+    clipped = _roi_is_clipped(
+        request_bounds=request_bounds,
+        source_bounds=source_bounds,
+        frame_width_px=frame_width_px,
+        frame_height_px=frame_height_px,
+    )
+    content_fraction = _roi_content_fraction(roi_crop)
+    reasons: list[str] = []
+    if confidence is not None and confidence < float(stage_policy.roi_min_confidence):
+        reasons.append(
+            "low_confidence:"
+            f"{confidence:.3f}<min:{float(stage_policy.roi_min_confidence):.3f}"
+        )
+    if bool(stage_policy.reject_clipped_roi) and clipped:
+        reasons.append("clipped_roi")
+    min_content = float(stage_policy.roi_min_content_fraction)
+    if min_content > 0.0 and content_fraction < min_content:
+        reasons.append(
+            "low_roi_content:"
+            f"{content_fraction:.4f}<min:{min_content:.4f}"
+        )
+    accepted = not reasons
+    return {
+        "roi_confidence": confidence,
+        "roi_clipped": bool(clipped),
+        "roi_accepted": bool(accepted),
+        "roi_rejected": not bool(accepted),
+        "roi_rejection_reason": ";".join(reasons) if reasons else None,
+        "roi_rejection_reasons": tuple(reasons),
+        "roi_content_fraction": float(content_fraction),
+    }
+
+
+def _roi_confidence(roi_location: RoiLocation) -> float | None:
+    metadata = dict(roi_location.metadata)
+    value = metadata.get("heatmap_peak_confidence")
+    if value is None:
+        decoded = metadata.get("decoded_heatmap")
+        if isinstance(decoded, Mapping):
+            value = decoded.get("confidence")
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _roi_center_canvas_xy(roi_location: RoiLocation) -> tuple[float, float] | None:
+    decoded = dict(roi_location.metadata).get("decoded_heatmap")
+    if not isinstance(decoded, Mapping):
+        return None
+    try:
+        return (float(decoded["canvas_x"]), float(decoded["canvas_y"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _roi_is_clipped(
+    *,
+    request_bounds: np.ndarray,
+    source_bounds: np.ndarray,
+    frame_width_px: int,
+    frame_height_px: int,
+) -> bool:
+    req = np.asarray(request_bounds, dtype=np.float32).reshape(4)
+    src = np.asarray(source_bounds, dtype=np.float32).reshape(4)
+    if bool(np.any(np.abs(req - src) > 1e-3)):
+        return True
+    return bool(
+        req[0] < 0.0
+        or req[1] < 0.0
+        or req[2] > float(frame_width_px)
+        or req[3] > float(frame_height_px)
+    )
+
+
+def _roi_content_fraction(roi_crop: np.ndarray) -> float:
+    array = np.asarray(roi_crop, dtype=np.uint8)
+    if array.size <= 0:
+        return 0.0
+    content = (array > 5) & (array < 250)
+    return float(np.count_nonzero(content)) / float(array.size)
+
+
+def _roi_rejection_details(
+    *,
+    request: InferenceRequest,
+    input_image_hash: contracts.FrameHash,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    keys = (
+        "request_id",
+        "frame_hash",
+        "roi_confidence",
+        "roi_center_canvas_xy_px",
+        "roi_center_source_xy_px",
+        contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
+        "roi_clipped",
+        "roi_accepted",
+        "roi_rejection_reason",
+        "roi_rejection_reasons",
+        "apply_manual_mask_to_roi_locator",
+        "apply_background_removal_to_roi_locator",
+        "apply_manual_mask_to_regressor_preprocessing",
+        "apply_background_removal_to_regressor_preprocessing",
+        "manual_mask_applied_to_roi_locator",
+        "background_removal_applied_to_roi_locator",
+        contracts.PREPROCESSING_METADATA_DEBUG_PATHS,
+    )
+    details = {key: metadata.get(key) for key in keys if key in metadata}
+    details["request_id"] = request.request_id
+    details["frame_hash"] = input_image_hash.value
+    details["mark_frame_processed"] = True
+    return details
+
+
+def _locator_heatmap_from_metadata(
+    roi_location: RoiLocation,
+    key: str,
+) -> np.ndarray | None:
+    value = dict(roi_location.metadata).get(key)
+    if value is None:
+        return None
+    array = np.asarray(value, dtype=np.uint8)
+    return array if array.ndim == 2 and array.size else None
 
 
 def _frame_mask_metadata(
@@ -885,6 +1325,7 @@ def _localized_background_metadata(
     base: Mapping[str, Any],
     roi_location: RoiLocation,
     roi_background_metadata: Mapping[str, Any],
+    stage_policy: StageTransformPolicySnapshot,
 ) -> dict[str, Any]:
     locator_metadata = dict(roi_location.metadata)
     roi_fcn_applied = bool(
@@ -916,11 +1357,18 @@ def _localized_background_metadata(
         )
         or base.get(contracts.PREPROCESSING_METADATA_BACKGROUND_WARNING)
     )
+    spaces: list[str] = []
+    if roi_fcn_applied:
+        spaces.append("roi_locator_input")
+    if roi_crop_applied:
+        spaces.append("regressor_preprocessing_input")
     return {
         contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED: (
             roi_fcn_applied or roi_crop_applied
         ),
-        contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVE_PIXEL_COUNT: roi_crop_count,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVE_PIXEL_COUNT: (
+            roi_fcn_count + roi_crop_count
+        ),
         contracts.PREPROCESSING_METADATA_BACKGROUND_WARNING: warning,
         contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED: roi_crop_applied,
         contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_REMOVE_PIXEL_COUNT: (
@@ -931,9 +1379,15 @@ def _localized_background_metadata(
             roi_fcn_count
         ),
         contracts.PREPROCESSING_METADATA_BACKGROUND_APPLICATION_SPACE: (
-            contracts.BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP
-            if bool(base.get(contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_ENABLED))
-            else None
+            "+".join(spaces) if spaces else None
+        ),
+        "background_removal_applied_to_roi_locator": bool(roi_fcn_applied),
+        "background_removal_applied_to_regressor_preprocessing": bool(roi_crop_applied),
+        "apply_background_removal_to_roi_locator": bool(
+            stage_policy.apply_background_removal_to_roi_locator
+        ),
+        "apply_background_removal_to_regressor_preprocessing": bool(
+            stage_policy.apply_background_removal_to_regressor_preprocessing
         ),
     }
 
@@ -1145,6 +1599,46 @@ def _debug_locator_input(
     debug_input = np.array(locator_input.locator_image, dtype=np.float32, copy=True)
     debug_input[0][mask] = float(_coerce_fill_value(fill_value)) / 255.0
     return debug_input
+
+
+def _debug_locator_background_mask(
+    source_gray: np.ndarray,
+    roi_location: RoiLocation,
+    *,
+    background_snapshot: BackgroundSnapshot | None,
+) -> np.ndarray | None:
+    metadata = roi_location.metadata
+    canvas_width = _optional_positive_int(
+        metadata.get(contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_WIDTH_PX)
+    )
+    canvas_height = _optional_positive_int(
+        metadata.get(contracts.PREPROCESSING_METADATA_LOCATOR_CANVAS_HEIGHT_PX)
+    )
+    if canvas_width is None or canvas_height is None:
+        return None
+    snapshot = background_snapshot
+    if snapshot is None or not snapshot.captured or not snapshot.enabled:
+        return None
+    locator_input = build_roi_fcn_locator_input(
+        source_gray,
+        canvas_width_px=canvas_width,
+        canvas_height_px=canvas_height,
+    )
+    source_w, source_h = (int(value) for value in locator_input.source_image_wh_px.tolist())
+    if not snapshot.dimensions_match(source_w, source_h):
+        return None
+    background_input = build_roi_fcn_locator_input(
+        snapshot.grayscale_background,
+        canvas_width_px=canvas_width,
+        canvas_height_px=canvas_height,
+    )
+    current_u8 = _locator_input_uint8(locator_input.locator_image)
+    background_u8 = _locator_input_uint8(background_input.locator_image)
+    return compute_background_removal_mask_from_arrays(
+        current_u8,
+        background_u8,
+        threshold=snapshot.threshold,
+    )
 
 
 def _locator_input_uint8(locator_image: np.ndarray) -> np.ndarray:
