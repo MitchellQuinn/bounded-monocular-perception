@@ -41,7 +41,11 @@ from live_inference.masking import (
     BackgroundState,
     FrameMaskState,
 )
-from live_inference.preprocessing import StageTransformPolicyState
+from live_inference.preprocessing import (
+    ROI_LOCATOR_INPUT_POLARITY_AS_IS,
+    ROI_LOCATOR_INPUT_POLARITY_INVERTED,
+    StageTransformPolicyState,
+)
 
 
 @dataclass(frozen=True)
@@ -353,14 +357,36 @@ class LiveInferenceMainWindow(QMainWindow):
         self.control_tabs.addTab(background_tab, "Background")
 
         roi_fcn_tab = QWidget()
-        roi_fcn_layout = QVBoxLayout(roi_fcn_tab)
+        roi_fcn_layout = QGridLayout(roi_fcn_tab)
         self.roi_size_value = QLabel("ROI size: n/a")
         self.roi_size_value.setObjectName("roi_size_value")
         self.roi_locator_canvas_value = QLabel("ROI-FCN canvas: n/a")
         self.roi_locator_canvas_value.setObjectName("roi_locator_canvas_value")
-        roi_fcn_layout.addWidget(self.roi_size_value)
-        roi_fcn_layout.addWidget(self.roi_locator_canvas_value)
-        roi_fcn_layout.addStretch(1)
+        self.invert_roi_locator_input_checkbox = QCheckBox("Invert ROI locator input")
+        self.invert_roi_locator_input_checkbox.setObjectName(
+            "invert_roi_locator_input_checkbox"
+        )
+        self.invert_roi_locator_input_checkbox.setChecked(
+            stage_policy.roi_locator_input_polarity
+            == ROI_LOCATOR_INPUT_POLARITY_INVERTED
+        )
+        self.roi_clip_tolerance_input = QSpinBox()
+        self.roi_clip_tolerance_input.setObjectName("roi_clip_tolerance_input")
+        self.roi_clip_tolerance_input.setRange(0, 10000)
+        self.roi_clip_tolerance_input.setSingleStep(1)
+        self.roi_clip_tolerance_input.setSuffix(" px")
+        self.roi_clip_tolerance_input.setValue(int(stage_policy.roi_clip_tolerance_px))
+        self.roi_locator_status_label = QLabel("ROI locator: n/a")
+        self.roi_locator_status_label.setObjectName("roi_locator_status_label")
+        self.roi_locator_status_label.setWordWrap(True)
+        roi_fcn_layout.setColumnStretch(1, 1)
+        roi_fcn_layout.addWidget(self.roi_size_value, 0, 0, 1, 2)
+        roi_fcn_layout.addWidget(self.roi_locator_canvas_value, 1, 0, 1, 2)
+        roi_fcn_layout.addWidget(self.invert_roi_locator_input_checkbox, 2, 0, 1, 2)
+        roi_fcn_layout.addWidget(QLabel("ROI clip tolerance:"), 3, 0)
+        roi_fcn_layout.addWidget(self.roi_clip_tolerance_input, 3, 1)
+        roi_fcn_layout.addWidget(self.roi_locator_status_label, 4, 0, 1, 2)
+        roi_fcn_layout.setRowStretch(5, 1)
         self.control_tabs.addTab(roi_fcn_tab, "ROI / FCN")
 
         debug_tab = QWidget()
@@ -466,15 +492,21 @@ class LiveInferenceMainWindow(QMainWindow):
             label="ROI clipped",
             object_name="roi_clipped_value",
         )
-        self.roi_acceptance_value = self._add_readout(
+        self.roi_clip_amount_value = self._add_readout(
             status_grid,
             row=13,
+            label="ROI clip amount",
+            object_name="roi_clip_amount_value",
+        )
+        self.roi_acceptance_value = self._add_readout(
+            status_grid,
+            row=14,
             label="ROI status",
             object_name="roi_acceptance_value",
         )
         self.roi_locator_transforms_value = self._add_readout(
             status_grid,
-            row=14,
+            row=15,
             label="Locator transforms",
             object_name="roi_locator_transforms_value",
         )
@@ -559,6 +591,12 @@ class LiveInferenceMainWindow(QMainWindow):
         self.clear_background_button.clicked.connect(self.clear_background)
         self.background_threshold_input.valueChanged.connect(
             self._on_background_threshold_changed
+        )
+        self.invert_roi_locator_input_checkbox.toggled.connect(
+            self._on_invert_roi_locator_input_toggled
+        )
+        self.roi_clip_tolerance_input.valueChanged.connect(
+            self._on_roi_clip_tolerance_changed
         )
         self.show_roi_fcn_heatmap_overlay_checkbox.toggled.connect(
             self._on_roi_fcn_heatmap_overlay_toggled
@@ -901,6 +939,29 @@ class LiveInferenceMainWindow(QMainWindow):
         self._apply_background_snapshot_to_preview(snapshot)
         self._sync_background_controls_from_state(snapshot)
 
+    def _on_invert_roi_locator_input_toggled(self, checked: bool) -> None:
+        polarity = (
+            ROI_LOCATOR_INPUT_POLARITY_INVERTED
+            if checked
+            else ROI_LOCATOR_INPUT_POLARITY_AS_IS
+        )
+        snapshot = self.stage_policy_state.update(
+            roi_locator_input_polarity=polarity
+        )
+        self._append_log(
+            "INFO",
+            "ROI locator input polarity changed: "
+            f"{snapshot.roi_locator_input_polarity}, revision={snapshot.revision}.",
+        )
+
+    def _on_roi_clip_tolerance_changed(self, value: int) -> None:
+        snapshot = self.stage_policy_state.update(roi_clip_tolerance_px=int(value))
+        self._append_log(
+            "INFO",
+            "ROI clip tolerance changed: "
+            f"{snapshot.roi_clip_tolerance_px}px, revision={snapshot.revision}.",
+        )
+
     def _on_roi_fcn_heatmap_overlay_toggled(self, checked: bool) -> None:
         self.frame_preview_widget.set_heatmap_overlay_enabled(bool(checked))
 
@@ -1176,17 +1237,37 @@ class LiveInferenceMainWindow(QMainWindow):
             payload.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA)
         )
         confidence = _first_present(
-            payload.get("roi_confidence"),
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE),
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CONFIDENCE),
             locator.get("heatmap_peak_confidence"),
             _mapping_payload(locator.get("decoded_heatmap")).get("confidence"),
         )
         self.roi_confidence_value.setText(_format_optional_float(confidence, precision=3))
 
-        clipped = _optional_bool(payload.get("roi_clipped"))
+        clipped = _optional_bool(payload.get(contracts.PREPROCESSING_METADATA_ROI_CLIPPED))
         self.roi_clipped_value.setText(_yes_no_unknown(clipped))
+        clip_max = _optional_non_negative_int(
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX)
+        )
+        clip_tolerance = _optional_non_negative_int(
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX)
+        )
+        clip_tolerated = _optional_bool(
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED)
+        )
+        self.roi_clip_amount_value.setText(
+            _clip_status_text(
+                clip_max,
+                tolerance_px=clip_tolerance,
+                tolerated=clip_tolerated,
+            )
+        )
 
-        accepted = _optional_bool(payload.get("roi_accepted"))
-        reason = _text(payload.get("roi_rejection_reason"), default="")
+        accepted = _optional_bool(payload.get(contracts.PREPROCESSING_METADATA_ROI_ACCEPTED))
+        reason = _text(
+            payload.get(contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON),
+            default="",
+        )
         if accepted is True:
             self.roi_acceptance_value.setText("accepted")
         elif accepted is False:
@@ -1196,6 +1277,15 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_acceptance_value.setText("n/a")
 
         self.roi_locator_transforms_value.setText(_locator_transform_status(payload))
+        self.roi_locator_status_label.setText(
+            _roi_locator_status_text(
+                confidence=confidence,
+                clip_max_px=clip_max,
+                clip_tolerance_px=clip_tolerance,
+                accepted=accepted,
+                reason=reason,
+            )
+        )
 
     def _update_debug_artifact_paths(self, result: object) -> None:
         debug_paths = _mapping_payload(_payload_value(result, "debug_paths"))
@@ -1439,10 +1529,17 @@ def _is_roi_rejection_error(error: object) -> bool:
     if _text(_payload_value(error, "error_type"), default="") == "roi_rejected":
         return True
     details = _mapping_payload(_payload_value(error, "details"))
-    return _optional_bool(details.get("roi_accepted")) is False
+    return (
+        _optional_bool(details.get(contracts.PREPROCESSING_METADATA_ROI_ACCEPTED))
+        is False
+    )
 
 
 def _locator_transform_status(payload: Mapping[str, object]) -> str:
+    polarity = _text(
+        payload.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY),
+        default="",
+    )
     manual_configured = _optional_bool(payload.get("apply_manual_mask_to_roi_locator"))
     manual_applied = _optional_bool(payload.get("manual_mask_applied_to_roi_locator"))
     background_configured = _optional_bool(
@@ -1456,16 +1553,58 @@ def _locator_transform_status(payload: Mapping[str, object]) -> str:
         and manual_applied is None
         and background_configured is None
         and background_applied is None
+        and not polarity
     ):
         return "n/a"
+    prefix = f"polarity {polarity or 'n/a'}; "
     return (
-        "mask "
+        prefix
+        + "mask "
         f"{_yes_no_unknown(manual_applied)}"
         f" (configured {_yes_no_unknown(manual_configured)}); "
         "background "
         f"{_yes_no_unknown(background_applied)}"
         f" (configured {_yes_no_unknown(background_configured)})"
     )
+
+
+def _clip_status_text(
+    max_px: int | None,
+    *,
+    tolerance_px: int | None,
+    tolerated: bool | None,
+) -> str:
+    if max_px is None:
+        return "n/a"
+    text = f"{int(max_px)} px"
+    if tolerance_px is not None:
+        text = f"{text} / tol {int(tolerance_px)} px"
+    if tolerated is True:
+        text = f"{text} tolerated"
+    return text
+
+
+def _roi_locator_status_text(
+    *,
+    confidence: object | None,
+    clip_max_px: int | None,
+    clip_tolerance_px: int | None,
+    accepted: bool | None,
+    reason: str,
+) -> str:
+    confidence_text = _format_optional_float(confidence, precision=3)
+    clip_text = _clip_status_text(
+        clip_max_px,
+        tolerance_px=clip_tolerance_px,
+        tolerated=None,
+    )
+    if accepted is True:
+        status = "accepted"
+    elif accepted is False:
+        status = f"rejected - {reason}" if reason else "rejected"
+    else:
+        status = "n/a"
+    return f"ROI confidence {confidence_text}; clip {clip_text}; {status}"
 
 
 def _optional_bool(value: object | None) -> bool | None:
@@ -1595,6 +1734,16 @@ def _optional_int(value: object | None) -> int | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _optional_non_negative_int(value: object | None) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
 
 
 def _float_tuple(value: object | None, *, width: int) -> tuple[float, ...] | None:

@@ -165,17 +165,21 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             recorder = InferenceTraceRecorder(output_dir=base_dir / "traces")
             request = _request()
             prepared = _prepared_inputs(
-                debug_paths={"final_locator_input": final_locator},
+                debug_paths={contracts.DISPLAY_ARTIFACT_FINAL_LOCATOR_INPUT: final_locator},
                 extra_metadata={
+                    contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY: "inverted",
                     "apply_manual_mask_to_roi_locator": False,
                     "apply_background_removal_to_roi_locator": True,
                     "apply_manual_mask_to_regressor_preprocessing": True,
                     "apply_background_removal_to_regressor_preprocessing": False,
                     "manual_mask_applied_to_roi_locator": False,
                     "background_removal_applied_to_roi_locator": True,
-                    "roi_confidence": 0.42,
-                    "roi_clipped": False,
-                    "roi_accepted": True,
+                    contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE: 0.42,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIPPED: False,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX: 0,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX: 10,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED: False,
+                    contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: True,
                     contracts.PREPROCESSING_METADATA_BACKGROUND_THRESHOLD: 17,
                     "frame_mask_fill_value": 255,
                 },
@@ -197,7 +201,10 @@ class InferenceTraceRecorderTests(unittest.TestCase):
 
             self.assertEqual((trace_dir / "final_locator_input.png").read_bytes(), b"locator")
             manifest = json.loads((trace_dir / "trace_manifest.json").read_text())
+            self.assertEqual(manifest["roi_locator_input_polarity"], "inverted")
             self.assertEqual(manifest["roi_confidence"], 0.42)
+            self.assertEqual(manifest["roi_clip_max_px"], 0)
+            self.assertEqual(manifest["roi_clip_tolerance_px"], 10)
             self.assertFalse(manifest["apply_manual_mask_to_roi_locator"])
             self.assertTrue(manifest["apply_background_removal_to_roi_locator"])
             self.assertTrue(manifest["background_removal_applied_to_roi_locator"])
@@ -214,12 +221,18 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             recorder = InferenceTraceRecorder(output_dir=base_dir / "traces")
             request = _request()
             metadata = _prepared_inputs(
-                debug_paths={"final_locator_input": final_locator},
+                debug_paths={contracts.DISPLAY_ARTIFACT_FINAL_LOCATOR_INPUT: final_locator},
                 extra_metadata={
-                    "roi_confidence": 0.12,
-                    "roi_clipped": True,
-                    "roi_accepted": False,
-                    "roi_rejection_reason": "low_confidence:0.120<min:0.300",
+                    contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY: "inverted",
+                    contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE: 0.12,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIPPED: True,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX: 126,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX: 10,
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED: False,
+                    contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: False,
+                    contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON: (
+                        "low_confidence:0.120<min:0.300"
+                    ),
                     contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA: {
                         "heatmap_peak_confidence": 0.12
                     },
@@ -234,8 +247,10 @@ class InferenceTraceRecorderTests(unittest.TestCase):
                 failure_stage=FrameFailureStage.PREPROCESS,
                 details={
                     "preprocessing_metadata": metadata,
-                    "debug_paths": {"final_locator_input": final_locator},
-                    "roi_accepted": False,
+                    "debug_paths": {
+                        contracts.DISPLAY_ARTIFACT_FINAL_LOCATOR_INPUT: final_locator
+                    },
+                    contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: False,
                 },
             )
             trace_dir = recorder.create_trace_directory(
@@ -260,8 +275,62 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             self.assertEqual((trace_dir / "final_locator_input.png").read_bytes(), b"locator")
             manifest = json.loads((trace_dir / "trace_manifest.json").read_text())
             self.assertFalse(manifest["roi_accepted"])
+            self.assertEqual(manifest["roi_clip_max_px"], 126)
+            self.assertEqual(manifest["roi_clip_tolerance_px"], 10)
             self.assertEqual(manifest["error_type"], "roi_rejected")
             self.assertEqual(manifest["failure_stage"], "preprocess")
+
+            roi_metadata = json.loads((trace_dir / "roi_fcn_metadata.json").read_text())
+            self.assertEqual(roi_metadata["roi_locator_input_polarity"], "inverted")
+            self.assertFalse(roi_metadata["roi_clip_tolerated"])
+
+    def test_trace_copies_locator_inputs_before_and_after_polarity(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir)
+            debug_dir = base_dir / "debug-source"
+            debug_dir.mkdir()
+            before = debug_dir / "before.png"
+            after = debug_dir / "after.png"
+            before.write_bytes(b"before polarity")
+            after.write_bytes(b"after polarity")
+            recorder = InferenceTraceRecorder(output_dir=base_dir / "traces")
+            request = _request()
+            prepared = _prepared_inputs(
+                debug_paths={
+                    contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY: before,
+                    contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY: after,
+                },
+                extra_metadata={
+                    contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY: "inverted",
+                    contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX: 10,
+                },
+            )
+            trace_dir = recorder.create_trace_directory(
+                request_id=request.request_id,
+                frame_hash=request.frame.frame_hash,
+                created_at_utc=CREATED_AT,
+            )
+
+            recorder.record_trace(
+                trace_dir=trace_dir,
+                image_bytes=b"raw",
+                request=request,
+                prepared_inputs=prepared,
+                result=_result(),
+                created_at_utc=CREATED_AT,
+            )
+
+            self.assertEqual(
+                (trace_dir / "locator_input_before_polarity.png").read_bytes(),
+                b"before polarity",
+            )
+            self.assertEqual(
+                (trace_dir / "locator_input_after_polarity.png").read_bytes(),
+                b"after polarity",
+            )
+            manifest = json.loads((trace_dir / "trace_manifest.json").read_text())
+            self.assertEqual(manifest["roi_locator_input_polarity"], "inverted")
+            self.assertEqual(manifest["roi_clip_tolerance_px"], 10)
 
 
 def _request() -> InferenceRequest:

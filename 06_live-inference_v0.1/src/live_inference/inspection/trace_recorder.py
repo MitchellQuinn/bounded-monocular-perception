@@ -227,6 +227,9 @@ class InferenceTraceRecorder:
             "orientation_source_mode": preprocessing_metadata.get(
                 "orientation_source_mode"
             ),
+            "roi_locator_input_polarity": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY
+            ),
             "preprocessing_parameter_revision": preprocessing_revision,
             "mask_revision": preprocessing_metadata.get("frame_mask_revision"),
             "background_revision": preprocessing_metadata.get(
@@ -263,23 +266,47 @@ class InferenceTraceRecorder:
                     "background_removal_applied_to_roi_locator"
                 )
             ),
-            "roi_confidence": preprocessing_metadata.get("roi_confidence"),
+            "roi_confidence": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE
+            ),
+            "roi_locator_confidence": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CONFIDENCE
+            ),
             "roi_center_canvas_xy_px": preprocessing_metadata.get(
                 "roi_center_canvas_xy_px"
             ),
             "roi_center_source_xy_px": preprocessing_metadata.get(
                 "roi_center_source_xy_px"
             ),
+            "roi_locator_center_source_xy_px": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CENTER_SOURCE_XY_PX
+            ),
             "roi_requested_bounds_xyxy_px": preprocessing_metadata.get(
                 contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX
+            ),
+            "roi_requested_xyxy_px": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX
             ),
             "roi_source_bounds_xyxy_px": preprocessing_metadata.get(
                 contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX
             ),
-            "roi_clipped": preprocessing_metadata.get("roi_clipped"),
-            "roi_accepted": preprocessing_metadata.get("roi_accepted"),
+            "roi_clipped": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_CLIPPED
+            ),
+            "roi_clip_max_px": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX
+            ),
+            "roi_clip_tolerance_px": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX
+            ),
+            "roi_clip_tolerated": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED
+            ),
+            "roi_accepted": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_ACCEPTED
+            ),
             "roi_rejection_reason": preprocessing_metadata.get(
-                "roi_rejection_reason"
+                contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON
             ),
             "failure_stage": (
                 error.failure_stage.value
@@ -317,12 +344,18 @@ def _canonical_artifact_name(kind: str, source: Path) -> str:
         contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT: "locator_input.png",
         contracts.DISPLAY_ARTIFACT_ROI_OVERLAY_METADATA: "roi_overlay_metadata.json",
         contracts.DISPLAY_ARTIFACT_ROI_OVERLAY: "roi_overlay.png",
+        contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY: (
+            "locator_input_before_polarity.png"
+        ),
+        contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY: (
+            "locator_input_after_polarity.png"
+        ),
+        contracts.DISPLAY_ARTIFACT_FINAL_LOCATOR_INPUT: "final_locator_input.png",
         "locator_input_raw_or_pretransform": "locator_input_raw_or_pretransform.png",
         "locator_input_after_manual_mask": "locator_input_after_manual_mask.png",
         "locator_input_after_background_removal": (
             "locator_input_after_background_removal.png"
         ),
-        "final_locator_input": "final_locator_input.png",
         "roi_fcn_heatmap_pre_exclusion": "roi_fcn_heatmap_pre_exclusion.png",
         "roi_fcn_heatmap_post_exclusion": "roi_fcn_heatmap_post_exclusion.png",
         "preprocessor_source_before_regressor_masks": (
@@ -375,13 +408,26 @@ def _roi_fcn_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
     raw = metadata.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA)
     payload = dict(raw) if isinstance(raw, Mapping) else {}
     for key in (
-        "roi_confidence",
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY,
+        contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE,
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CONFIDENCE,
         "roi_center_canvas_xy_px",
         "roi_center_source_xy_px",
-        "roi_clipped",
-        "roi_accepted",
-        "roi_rejection_reason",
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_CENTER_SOURCE_XY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIPPED,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_LEFT_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_RIGHT_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOP_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_BOTTOM_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX,
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED,
+        contracts.PREPROCESSING_METADATA_ROI_ACCEPTED,
+        contracts.PREPROCESSING_METADATA_ROI_REJECTED,
+        contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON,
+        contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASONS,
         contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
+        contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_CANVAS_INSERT_XYXY_PX,
     ):

@@ -246,6 +246,18 @@ class LiveInferenceContractTests(unittest.TestCase):
         self.assertEqual(contracts.DISPLAY_ARTIFACT_ROI_CROP, "roi_crop")
         self.assertEqual(contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT, "locator_input")
         self.assertEqual(
+            contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY,
+            "locator_input_before_polarity",
+        )
+        self.assertEqual(
+            contracts.DISPLAY_ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY,
+            "locator_input_after_polarity",
+        )
+        self.assertEqual(
+            contracts.DISPLAY_ARTIFACT_FINAL_LOCATOR_INPUT,
+            "final_locator_input",
+        )
+        self.assertEqual(
             contracts.DISPLAY_ARTIFACT_ROI_OVERLAY_METADATA,
             "roi_overlay_metadata",
         )
@@ -258,6 +270,18 @@ class LiveInferenceContractTests(unittest.TestCase):
         self.assertEqual(
             contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA,
             "roi_locator_metadata",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY,
+            "roi_locator_input_polarity",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX,
+            "roi_clip_tolerance_px",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED,
+            "roi_clip_tolerated",
         )
         self.assertEqual(
             contracts.PREPROCESSING_METADATA_BACKGROUND_APPLICATION_SPACE,
@@ -281,6 +305,14 @@ class LiveInferenceContractTests(unittest.TestCase):
         )
         self.assertIn(
             contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA,
+            contracts.ROI_METADATA_EXTRA_KEYS,
+        )
+        self.assertIn(
+            contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY,
+            contracts.ROI_METADATA_EXTRA_KEYS,
+        )
+        self.assertIn(
+            contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX,
             contracts.ROI_METADATA_EXTRA_KEYS,
         )
         self.assertIn(

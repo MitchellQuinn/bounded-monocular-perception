@@ -34,6 +34,8 @@ from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
 )
 from live_inference.preprocessing import (  # noqa: E402
+    ROI_LOCATOR_INPUT_POLARITY_AS_IS,
+    ROI_LOCATOR_INPUT_POLARITY_INVERTED,
     RoiLocation,
     RoiRejectedError,
     StageTransformPolicySnapshot,
@@ -44,8 +46,10 @@ from live_inference.preprocessing.debug_artifacts import (  # noqa: E402
     ARTIFACT_DISTANCE_IMAGE,
     ARTIFACT_FINAL_LOCATOR_INPUT,
     ARTIFACT_LOCATOR_INPUT,
+    ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY,
     ARTIFACT_LOCATOR_INPUT_AFTER_BACKGROUND_REMOVAL,
     ARTIFACT_LOCATOR_INPUT_AFTER_MANUAL_MASK,
+    ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY,
     ARTIFACT_LOCATOR_INPUT_RAW_OR_PRETRANSFORM,
     ARTIFACT_ORIENTATION_IMAGE,
     ARTIFACT_ROI_OVERLAY_METADATA,
@@ -149,6 +153,51 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         assert locator.last_source_gray is not None
         self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
 
+    def test_default_roi_locator_polarity_leaves_grayscale_unchanged(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 95)
+        self.assertEqual(
+            prepared.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY
+            ],
+            ROI_LOCATOR_INPUT_POLARITY_AS_IS,
+        )
+
+    def test_inverted_roi_locator_polarity_inverts_only_locator_input(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            stage_policy=StageTransformPolicySnapshot(
+                roi_locator_input_polarity=ROI_LOCATOR_INPUT_POLARITY_INVERTED
+            ),
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 160)
+        self.assertEqual(
+            prepared.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY
+            ],
+            ROI_LOCATOR_INPUT_POLARITY_INVERTED,
+        )
+        self.assertEqual(
+            prepared.preprocessing_metadata["orientation_source_mode"],
+            ORIENTATION_SOURCE_RAW_GRAYSCALE,
+        )
+
     def test_mask_state_with_no_mask_leaves_roi_locator_input_unchanged(self) -> None:
         image_bytes = _fixture_image_bytes()
         locator = InspectingRoiLocator()
@@ -236,10 +285,32 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
 
         self.assertIsNotNone(locator.last_source_gray)
         assert locator.last_source_gray is not None
-        self.assertEqual(int(locator.last_source_gray[130, 220]), 255)
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 0)
         self.assertTrue(
             prepared.preprocessing_metadata["manual_mask_applied_to_roi_locator"]
         )
+
+    def test_manual_mask_to_roi_locator_uses_locator_background_fill_after_polarity(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+        mask = np.zeros((300, 480), dtype=bool)
+        mask[130, 220] = True
+        mask_state.commit_mask(mask, 480, 300, 255)
+
+        TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+            stage_policy=StageTransformPolicySnapshot(
+                roi_locator_input_polarity=ROI_LOCATOR_INPUT_POLARITY_INVERTED,
+                apply_manual_mask_to_roi_locator=True,
+            ),
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 0)
 
     def test_applied_mask_is_passed_as_roi_locator_exclusion_when_supported(self) -> None:
         image_bytes = _fixture_image_bytes()
@@ -462,7 +533,7 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
             )
             self.assertIsNotNone(final)
             assert final is not None
-            self.assertEqual(int(final[130, 220]), 255)
+            self.assertEqual(int(final[130, 220]), 0)
 
     def test_background_removal_cannot_empty_silhouette_foreground(self) -> None:
         image_bytes = _fixture_image_bytes()
@@ -624,6 +695,59 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertIn("clipped_roi", raised.exception.failure_details["roi_rejection_reason"])
         self.assertTrue(raised.exception.failure_details["roi_clipped"])
 
+    def test_large_clipped_roi_still_rejects_with_clip_tolerance(self) -> None:
+        image_bytes = _fixture_image_bytes()
+
+        with self.assertRaises(RoiRejectedError) as raised:
+            TriStreamLivePreprocessor(
+                model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+                roi_locator=CenteredRoiLocator(center_xy_px=(240.0, 276.0)),
+                stage_policy=StageTransformPolicySnapshot(roi_clip_tolerance_px=10),
+            ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = raised.exception.preprocessing_metadata
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_BOTTOM_PX], 126)
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX], 126)
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX], 10)
+        self.assertFalse(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED])
+        self.assertIn(
+            "clipped_roi",
+            metadata[contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON],
+        )
+
+    def test_slightly_clipped_roi_is_allowed_with_clip_tolerance(self) -> None:
+        image_bytes = _fixture_image_bytes()
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=CenteredRoiLocator(center_xy_px=(240.0, 156.0)),
+            stage_policy=StageTransformPolicySnapshot(roi_clip_tolerance_px=10),
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertTrue(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIPPED])
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_BOTTOM_PX], 6)
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX], 6)
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX], 10)
+        self.assertTrue(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED])
+        self.assertTrue(metadata[contracts.PREPROCESSING_METADATA_ROI_ACCEPTED])
+        self.assertIn(contracts.TRI_STREAM_DISTANCE_IMAGE_KEY, prepared.model_inputs)
+
+    def test_unclipped_roi_allows_and_records_zero_clip_amounts(self) -> None:
+        image_bytes = _fixture_image_bytes()
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=FakeRoiLocator(),
+            stage_policy=StageTransformPolicySnapshot(roi_clip_tolerance_px=10),
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertFalse(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIPPED])
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX], 0)
+        self.assertEqual(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX], 10)
+        self.assertFalse(metadata[contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERATED])
+
     def test_invalid_image_bytes_fail_clearly(self) -> None:
         preprocessor = TriStreamLivePreprocessor(
             model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
@@ -763,6 +887,41 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
             self.assertEqual(metadata["input_image_hash"], request.frame.frame_hash.value)
             self.assertEqual(metadata["orientation_source_mode"], ORIENTATION_SOURCE_RAW_GRAYSCALE)
 
+    def test_debug_trace_images_include_locator_input_before_and_after_polarity(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        with TemporaryDirectory() as tmp_dir:
+            request = _request(
+                image_bytes,
+                save_debug_images=True,
+                debug_output_dir=Path(tmp_dir),
+            )
+
+            prepared = TriStreamLivePreprocessor(
+                model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+                roi_locator=FakeDebugRoiLocator(),
+                stage_policy=StageTransformPolicySnapshot(
+                    roi_locator_input_polarity=ROI_LOCATOR_INPUT_POLARITY_INVERTED
+                ),
+            ).prepare_model_inputs(request, image_bytes)
+
+            paths = prepared.preprocessing_metadata["debug_paths"]
+            self.assertIn(ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY, paths)
+            self.assertIn(ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY, paths)
+            before = cv2.imread(
+                str(paths[ARTIFACT_LOCATOR_INPUT_BEFORE_POLARITY]),
+                cv2.IMREAD_GRAYSCALE,
+            )
+            after = cv2.imread(
+                str(paths[ARTIFACT_LOCATOR_INPUT_AFTER_POLARITY]),
+                cv2.IMREAD_GRAYSCALE,
+            )
+            self.assertIsNotNone(before)
+            self.assertIsNotNone(after)
+            assert before is not None
+            assert after is not None
+            self.assertEqual(int(before[130, 220]), 95)
+            self.assertEqual(int(after[130, 220]), 160)
+
     def test_debug_disabled_does_not_write_debug_paths(self) -> None:
         image_bytes = _fixture_image_bytes()
         with TemporaryDirectory() as tmp_dir:
@@ -869,6 +1028,28 @@ class ClippedRoiLocator:
         return RoiLocation(
             center_xy_px=(470.0, 290.0),
             roi_bounds_xyxy_px=(320.0, 140.0, 620.0, 440.0),
+            metadata={
+                "heatmap_peak_confidence": 0.95,
+                "locator_canvas_width_px": 480,
+                "locator_canvas_height_px": 300,
+            },
+        )
+
+
+class CenteredRoiLocator:
+    def __init__(self, *, center_xy_px: tuple[float, float]) -> None:
+        self.center_xy_px = center_xy_px
+
+    def locate(self, source_gray_image: object) -> RoiLocation:
+        center_x, center_y = self.center_xy_px
+        return RoiLocation(
+            center_xy_px=(float(center_x), float(center_y)),
+            roi_bounds_xyxy_px=(
+                float(center_x) - 150.0,
+                float(center_y) - 150.0,
+                float(center_x) + 150.0,
+                float(center_y) + 150.0,
+            ),
             metadata={
                 "heatmap_peak_confidence": 0.95,
                 "locator_canvas_width_px": 480,
