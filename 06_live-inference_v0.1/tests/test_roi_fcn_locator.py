@@ -18,6 +18,7 @@ if str(SRC_ROOT) not in sys.path:
 
 import numpy as np  # noqa: E402
 
+import interfaces.contracts as contracts  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     RoiFcnLocator,
     RoiLocator,
@@ -142,6 +143,12 @@ class RoiFcnLocatorGeometryTests(unittest.TestCase):
         self.assertEqual(location.roi_bounds_xyxy_px, (90.0, 0.0, 390.0, 300.0))
         self.assertEqual(location.metadata["heatmap_shape"], (300, 480))
         self.assertEqual(location.metadata["heatmap_peak_confidence"], 1.0)
+        heatmap_u8 = location.metadata[
+            contracts.PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8
+        ]
+        self.assertEqual(heatmap_u8.shape, (300, 480))
+        self.assertEqual(heatmap_u8.dtype, np.uint8)
+        self.assertEqual(int(heatmap_u8[150, 240]), 255)
 
     def test_heatmap_decode_ignores_peak_inside_excluded_source_mask(self) -> None:
         source_gray = _generated_source_image(width=480, height=300)

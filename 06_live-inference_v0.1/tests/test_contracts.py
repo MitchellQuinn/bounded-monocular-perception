@@ -264,6 +264,18 @@ class LiveInferenceContractTests(unittest.TestCase):
             "background_application_space",
         )
         self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_FCN_HEATMAP_U8,
+            "roi_fcn_heatmap_u8",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_FCN_RESIZED_IMAGE_WH_PX,
+            "resized_image_wh_px",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_ROI_FCN_PADDING_LTRB_PX,
+            "padding_ltrb_px",
+        )
+        self.assertEqual(
             contracts.BACKGROUND_APPLICATION_SPACE_ROI_FCN_INPUT_AND_ROI_CROP,
             "roi_fcn_input_and_roi_crop",
         )
