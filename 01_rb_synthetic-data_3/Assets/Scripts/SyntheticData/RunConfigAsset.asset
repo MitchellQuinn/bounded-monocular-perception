@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: RunConfigAsset
   m_EditorClassIdentifier: Assembly-CSharp::RaccoonBall.SyntheticData.Config.RunConfigAsset
   _config:
-    RunId: v28-train
-    DatasetName: def90_synth_v28-train
+    RunId: v28-validate
+    DatasetName: def90_synth_v28-validate
     Output:
       OutputRoot: SyntheticDataset
       ImagesFolderName: images
@@ -25,7 +25,7 @@ MonoBehaviour:
       ImageWidthPx: 1920
       ImageHeightPx: 1200
     Sweep:
-      TotalSamples: 250000
+      TotalSamples: 60000
       MovementPlaneY: 0.5
       DepthBandCount: 12
       LateralBinCount: 10
@@ -66,6 +66,5 @@ MonoBehaviour:
     VehicleJitter:
       RotYMinDeg: -180
       RotYMaxDeg: 180
-    RandomSeed: 42
-    Notes: Stratified camera-footprint placement over flat movement plane; vehicle yaw
-      jitter plus camera Y position and X rotation jitter.
+    RandomSeed: 13
+    Notes: 
