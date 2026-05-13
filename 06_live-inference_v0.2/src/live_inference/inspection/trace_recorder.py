@@ -6,11 +6,15 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
 import json
 import math
 from pathlib import Path
 import re
+import shlex
 import shutil
+import subprocess
+import sys
 from typing import Any
 
 import interfaces.contracts as contracts
@@ -23,8 +27,18 @@ from interfaces import (
 )
 
 
-DEFAULT_TRACE_OUTPUT_DIR = Path(__file__).resolve().parents[3] / "live_traces"
+APP_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+APP_PROJECT_NAME = APP_PROJECT_ROOT.name
+LIVE_INFERENCE_VERSION = "v0.2"
+DEFAULT_TRACE_OUTPUT_DIR = APP_PROJECT_ROOT / "live_traces"
 _HASH_PREFIX_LENGTH = 8
+_MAX_CHECKPOINT_HASH_BYTES = 256 * 1024 * 1024
+
+
+def default_trace_output_dir(app_root_path: Path | str | None = None) -> Path:
+    """Return a trace root derived from the resolved live app root."""
+    root = Path(app_root_path) if app_root_path is not None else APP_PROJECT_ROOT
+    return root.expanduser().resolve(strict=False) / "live_traces"
 
 
 def _utc_now_iso() -> str:
@@ -41,8 +55,41 @@ class InferenceTraceRecorder:
         context_metadata: Mapping[str, Any] | None = None,
         now_utc_fn: Callable[[], str] | None = None,
     ) -> None:
-        self.output_dir = Path(output_dir) if output_dir is not None else DEFAULT_TRACE_OUTPUT_DIR
-        self._context_metadata = dict(context_metadata or {})
+        raw_context = dict(context_metadata or {})
+        self.app_root_path = Path(
+            raw_context.get("app_root_path") or APP_PROJECT_ROOT
+        ).expanduser().resolve(strict=False)
+        default_output_dir = default_trace_output_dir(self.app_root_path)
+        self.output_dir = (
+            Path(output_dir).expanduser().resolve(strict=False)
+            if output_dir is not None
+            else default_output_dir
+        )
+        trace_root_overridden = bool(
+            raw_context.get(
+                "trace_root_overridden",
+                output_dir is not None
+                and self.output_dir.resolve(strict=False)
+                != default_output_dir.resolve(strict=False),
+            )
+        )
+        self._context_metadata = {
+            "app_project_name": raw_context.get("app_project_name") or APP_PROJECT_NAME,
+            "app_version": raw_context.get("app_version") or LIVE_INFERENCE_VERSION,
+            "live_inference_version": (
+                raw_context.get("live_inference_version") or LIVE_INFERENCE_VERSION
+            ),
+            "app_root_path": str(self.app_root_path),
+            "trace_root_path": str(self.output_dir),
+            "trace_root_overridden": trace_root_overridden,
+            "git_commit_sha": raw_context.get("git_commit_sha")
+            if "git_commit_sha" in raw_context
+            else _git_commit_sha(self.app_root_path),
+            "git_dirty": raw_context.get("git_dirty")
+            if "git_dirty" in raw_context
+            else _git_dirty(self.app_root_path),
+            **raw_context,
+        }
         self._now_utc_fn = now_utc_fn or _utc_now_iso
 
     def create_trace_directory(
@@ -195,7 +242,7 @@ class InferenceTraceRecorder:
         error: WorkerError | None,
     ) -> dict[str, Any]:
         result_extras = dict(result.extras) if result is not None else {}
-        context = dict(self._context_metadata)
+        context = self._manifest_context()
         preprocessing_revision = _first_present(
             getattr(result, "preprocessing_parameter_revision", None),
             preprocessing_metadata.get(
@@ -203,8 +250,27 @@ class InferenceTraceRecorder:
             ),
             preprocessing_metadata.get("preprocessing_parameter_revision"),
         )
+        checkpoint_paths = _checkpoint_paths(context, result_extras)
+        stage_policy_snapshot = _stage_policy_snapshot(preprocessing_metadata)
+        ui_state_snapshot = _ui_state_snapshot(preprocessing_metadata)
+        distance_orientation_reached = _distance_orientation_regressor_reached(
+            preprocessing_metadata,
+            result=result,
+        )
         return {
             "trace_kind": "single_frame_inference",
+            "app_project_name": context.get("app_project_name"),
+            "app_version": context.get("app_version"),
+            "live_inference_version": context.get("live_inference_version"),
+            "app_root_path": context.get("app_root_path"),
+            "trace_root_path": context.get("trace_root_path"),
+            "trace_root_overridden": context.get("trace_root_overridden"),
+            "process_cwd": context.get("process_cwd"),
+            "argv": context.get("argv"),
+            "command_line": context.get("command_line"),
+            "python_executable": context.get("python_executable"),
+            "git_commit_sha": context.get("git_commit_sha"),
+            "git_dirty": context.get("git_dirty"),
             "request_id": request.request_id,
             "frame_hash": frame_hash.value,
             "input_image_hash": frame_hash.to_dict(),
@@ -215,11 +281,22 @@ class InferenceTraceRecorder:
             "trace_dir": str(trace_dir),
             "model_selection_path": context.get("model_selection_path"),
             "model_root": result_extras.get("model_root") or context.get("model_root"),
+            "distance_orientation_root": (
+                context.get("distance_orientation_root")
+                or result_extras.get("model_root")
+            ),
             "distance_orientation_artifact_root": (
                 context.get("distance_orientation_root")
                 or result_extras.get("model_root")
             ),
+            "roi_fcn_root": context.get("roi_fcn_root"),
             "roi_fcn_artifact_root": context.get("roi_fcn_root"),
+            "distance_orientation_checkpoint_path": checkpoint_paths.get(
+                "distance_orientation"
+            ),
+            "roi_fcn_checkpoint_path": checkpoint_paths.get("roi_fcn"),
+            "checkpoint_paths": checkpoint_paths,
+            "checkpoint_file_hashes": _checkpoint_file_hashes(checkpoint_paths),
             "preprocessing_contract_name": (
                 preprocessing_metadata.get("preprocessing_contract_name")
                 or contracts.PREPROCESSING_CONTRACT_NAME
@@ -265,6 +342,11 @@ class InferenceTraceRecorder:
             "stage_policy_revision": preprocessing_metadata.get(
                 "stage_policy_revision"
             ),
+            "diagnostic_profile_name": preprocessing_metadata.get(
+                "diagnostic_profile_name"
+            ),
+            "stage_policy_snapshot": stage_policy_snapshot,
+            "ui_state_snapshot": ui_state_snapshot,
             "apply_manual_mask_to_roi_locator": preprocessing_metadata.get(
                 "apply_manual_mask_to_roi_locator"
             ),
@@ -310,7 +392,19 @@ class InferenceTraceRecorder:
             "roi_requested_xyxy_px": preprocessing_metadata.get(
                 contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX
             ),
+            "roi_pre_clip_bounds_xyxy_px": preprocessing_metadata.get(
+                "roi_pre_clip_bounds_xyxy_px"
+            )
+            or preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX
+            ),
             "roi_source_bounds_xyxy_px": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX
+            ),
+            "roi_clipped_bounds_xyxy_px": preprocessing_metadata.get(
+                "roi_clipped_bounds_xyxy_px"
+            )
+            or preprocessing_metadata.get(
                 contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX
             ),
             "roi_clipped": preprocessing_metadata.get(
@@ -328,13 +422,43 @@ class InferenceTraceRecorder:
             "roi_accepted": preprocessing_metadata.get(
                 contracts.PREPROCESSING_METADATA_ROI_ACCEPTED
             ),
+            "roi_rejected": preprocessing_metadata.get(
+                contracts.PREPROCESSING_METADATA_ROI_REJECTED
+            ),
             "roi_rejection_reason": preprocessing_metadata.get(
                 contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON
             ),
             "foreground_mask_empty": preprocessing_metadata.get("foreground_mask_empty"),
-            "distance_orientation_regressor_reached": preprocessing_metadata.get(
-                "distance_orientation_regressor_reached"
+            "foreground_pixel_count": preprocessing_metadata.get(
+                "foreground_pixel_count"
             ),
+            "silhouette_diagnostics": preprocessing_metadata.get(
+                "silhouette_diagnostics"
+            ),
+            "final_locator_input_stats": preprocessing_metadata.get(
+                "final_locator_input_stats"
+            ),
+            "final_locator_input_min": preprocessing_metadata.get(
+                "final_locator_input_min"
+            ),
+            "final_locator_input_max": preprocessing_metadata.get(
+                "final_locator_input_max"
+            ),
+            "final_locator_input_mean": preprocessing_metadata.get(
+                "final_locator_input_mean"
+            ),
+            "final_locator_input_median": preprocessing_metadata.get(
+                "final_locator_input_median"
+            ),
+            "final_locator_input_nonzero_pixel_count": preprocessing_metadata.get(
+                "final_locator_input_nonzero_pixel_count"
+            ),
+            "final_locator_input_non_whiteish_pixel_count": (
+                preprocessing_metadata.get(
+                    "final_locator_input_non_whiteish_pixel_count"
+                )
+            ),
+            "distance_orientation_regressor_reached": distance_orientation_reached,
             "failure_stage": (
                 error.failure_stage.value
                 if error is not None and error.failure_stage is not None
@@ -346,6 +470,21 @@ class InferenceTraceRecorder:
             "missing_optional_artifacts": missing_optional_artifacts,
             "artifacts": artifacts,
         }
+
+    def _manifest_context(self) -> dict[str, Any]:
+        context = dict(self._context_metadata)
+        argv = list(sys.argv)
+        context.update(
+            {
+                "app_root_path": str(self.app_root_path),
+                "trace_root_path": str(self.output_dir),
+                "process_cwd": str(Path.cwd()),
+                "argv": argv,
+                "command_line": shlex.join(argv),
+                "python_executable": sys.executable,
+            }
+        )
+        return context
 
 
 def _copy_optional_debug_artifact(
@@ -437,6 +576,172 @@ def _preprocessing_metadata_from_error(error: WorkerError | None) -> dict[str, A
     return dict(raw) if isinstance(raw, Mapping) else {}
 
 
+def _stage_policy_snapshot(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    keys = (
+        "stage_policy_revision",
+        "diagnostic_profile_name",
+        "roi_locator_input_mode",
+        contracts.PREPROCESSING_METADATA_ROI_LOCATOR_INPUT_POLARITY,
+        "apply_manual_mask_to_roi_locator",
+        "apply_manual_mask_to_regressor_preprocessing",
+        "apply_background_removal_to_roi_locator",
+        "apply_background_removal_to_regressor_preprocessing",
+        "roi_min_confidence",
+        "reject_clipped_roi",
+        contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX,
+        "roi_min_content_fraction",
+        "roi_locator_sheet_min_gray",
+        "roi_locator_target_max_gray",
+        "roi_locator_min_component_area_px",
+        "roi_locator_morphology_close_kernel_px",
+        "roi_locator_dilate_kernel_px",
+        "roi_locator_restrict_to_lower_frame_fraction",
+    )
+    return {str(key): metadata.get(key) for key in keys if key in metadata}
+
+
+def _ui_state_snapshot(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    mode = metadata.get("roi_locator_input_mode")
+    invert_checked: bool | None
+    if mode in {"as_is", "inverted"}:
+        invert_checked = mode == "inverted"
+    else:
+        invert_checked = None
+    return {
+        "diagnostic_profile_name": metadata.get("diagnostic_profile_name"),
+        "roi_locator_input_mode_dropdown": mode,
+        "invert_roi_locator_input_checkbox_checked": invert_checked,
+        "invert_roi_locator_input_checkbox_enabled": mode in {"as_is", "inverted"},
+        "apply_manual_mask_to_roi_locator_checkbox": metadata.get(
+            "apply_manual_mask_to_roi_locator"
+        ),
+        "apply_manual_mask_to_model_preprocessing_checkbox": metadata.get(
+            "apply_manual_mask_to_regressor_preprocessing"
+        ),
+        "apply_background_removal_to_roi_locator_checkbox": metadata.get(
+            "apply_background_removal_to_roi_locator"
+        ),
+        "apply_background_removal_to_model_preprocessing_checkbox": metadata.get(
+            "apply_background_removal_to_regressor_preprocessing"
+        ),
+        "mask_fill_value": metadata.get("frame_mask_fill_value"),
+        "mask_revision": metadata.get("frame_mask_revision"),
+        "mask_pixel_count": metadata.get("frame_mask_pixel_count"),
+        "background_captured": metadata.get(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_CAPTURED
+        ),
+        "background_enabled": metadata.get(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_ENABLED
+        ),
+        "background_revision": metadata.get(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_REVISION
+        ),
+        "background_threshold": metadata.get(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_THRESHOLD
+        ),
+    }
+
+
+def _distance_orientation_regressor_reached(
+    metadata: Mapping[str, Any],
+    *,
+    result: InferenceResult | None,
+) -> bool:
+    value = metadata.get("distance_orientation_regressor_reached")
+    if isinstance(value, bool):
+        return value
+    if value is not None:
+        return bool(value)
+    return result is not None
+
+
+def _checkpoint_paths(
+    context: Mapping[str, Any],
+    result_extras: Mapping[str, Any],
+) -> dict[str, str]:
+    paths: dict[str, str] = {}
+    distance = (
+        context.get("distance_orientation_checkpoint_path")
+        or result_extras.get("distance_orientation_checkpoint_path")
+    )
+    roi = context.get("roi_fcn_checkpoint_path") or result_extras.get(
+        "roi_fcn_checkpoint_path"
+    )
+    if distance:
+        paths["distance_orientation"] = str(distance)
+    if roi:
+        paths["roi_fcn"] = str(roi)
+    return paths
+
+
+def _checkpoint_file_hashes(
+    checkpoint_paths: Mapping[str, str],
+) -> dict[str, dict[str, Any]]:
+    return {
+        str(name): _hash_checkpoint_file(Path(path))
+        for name, path in checkpoint_paths.items()
+    }
+
+
+def _hash_checkpoint_file(path: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "algorithm": "sha256",
+        "value": None,
+        "size_bytes": None,
+        "skipped": None,
+    }
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        payload["skipped"] = f"unavailable: {exc}"
+        return payload
+    payload["size_bytes"] = int(stat.st_size)
+    if stat.st_size > _MAX_CHECKPOINT_HASH_BYTES:
+        payload["skipped"] = (
+            f"file larger than {_MAX_CHECKPOINT_HASH_BYTES} bytes"
+        )
+        return payload
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        payload["skipped"] = f"read failed: {exc}"
+        return payload
+    payload["value"] = digest.hexdigest()
+    return payload
+
+
+def _git_commit_sha(app_root: Path) -> str | None:
+    return _git_output(app_root, "rev-parse", "HEAD")
+
+
+def _git_dirty(app_root: Path) -> bool | None:
+    output = _git_output(app_root, "status", "--porcelain")
+    if output is None:
+        return None
+    return bool(output.strip())
+
+
+def _git_output(app_root: Path, *args: str) -> str | None:
+    try:
+        completed = subprocess.run(
+            ("git", *args),
+            cwd=app_root,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
 def _roi_fcn_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
     raw = metadata.get(contracts.PREPROCESSING_METADATA_ROI_LOCATOR_METADATA)
     payload = dict(raw) if isinstance(raw, Mapping) else {}
@@ -469,8 +774,19 @@ def _roi_fcn_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
         contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
+        "roi_pre_clip_bounds_xyxy_px",
+        "roi_clipped_bounds_xyxy_px",
         contracts.PREPROCESSING_METADATA_ROI_CANVAS_INSERT_XYXY_PX,
         "foreground_mask_empty",
+        "foreground_pixel_count",
+        "silhouette_diagnostics",
+        "final_locator_input_stats",
+        "final_locator_input_min",
+        "final_locator_input_max",
+        "final_locator_input_mean",
+        "final_locator_input_median",
+        "final_locator_input_nonzero_pixel_count",
+        "final_locator_input_non_whiteish_pixel_count",
         "preprocessing_failure_type",
         "preprocessing_failure_message",
         "distance_orientation_regressor_reached",
@@ -594,6 +910,10 @@ def _first_present(*values: Any) -> Any:
 
 
 __all__ = [
+    "APP_PROJECT_NAME",
+    "APP_PROJECT_ROOT",
     "DEFAULT_TRACE_OUTPUT_DIR",
     "InferenceTraceRecorder",
+    "LIVE_INFERENCE_VERSION",
+    "default_trace_output_dir",
 ]

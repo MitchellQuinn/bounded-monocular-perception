@@ -34,6 +34,7 @@ from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
 )
 from live_inference.preprocessing import (  # noqa: E402
+    DIAGNOSTIC_PROFILE_BASELINE_INVERTED_MASKED_LOCATOR,
     ROI_LOCATOR_INPUT_MODE_SHEET_DARK_FOREGROUND,
     ROI_LOCATOR_INPUT_POLARITY_AS_IS,
     ROI_LOCATOR_INPUT_POLARITY_INVERTED,
@@ -42,6 +43,7 @@ from live_inference.preprocessing import (  # noqa: E402
     PreprocessingDebugError,
     RoiRejectedError,
     StageTransformPolicySnapshot,
+    StageTransformPolicyState,
     TriStreamLivePreprocessor,
 )
 from live_inference.preprocessing.debug_artifacts import (  # noqa: E402
@@ -292,6 +294,42 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertEqual(int(locator.last_source_gray[130, 220]), 0)
         self.assertTrue(
             prepared.preprocessing_metadata["manual_mask_applied_to_roi_locator"]
+        )
+
+    def test_baseline_profile_updates_preprocessing_effective_policy(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        locator = InspectingRoiLocator()
+        mask_state = FrameMaskState()
+        mask = np.zeros((300, 480), dtype=bool)
+        mask[130, 220] = True
+        mask_state.commit_mask(mask, 480, 300, 255)
+        stage_policy_state = StageTransformPolicyState()
+        stage_policy_state.apply_diagnostic_profile(
+            DIAGNOSTIC_PROFILE_BASELINE_INVERTED_MASKED_LOCATOR
+        )
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            roi_locator=locator,
+            mask_state=mask_state,
+            stage_policy_state=stage_policy_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(locator.last_source_gray)
+        assert locator.last_source_gray is not None
+        self.assertEqual(int(locator.last_source_gray[130, 220]), 0)
+        metadata = prepared.preprocessing_metadata
+        self.assertEqual(metadata["roi_locator_input_mode"], "inverted")
+        self.assertTrue(metadata["apply_manual_mask_to_roi_locator"])
+        self.assertTrue(metadata["manual_mask_applied_to_roi_locator"])
+        self.assertTrue(metadata["apply_manual_mask_to_regressor_preprocessing"])
+        self.assertFalse(metadata["apply_background_removal_to_roi_locator"])
+        self.assertFalse(
+            metadata["apply_background_removal_to_regressor_preprocessing"]
+        )
+        self.assertEqual(
+            metadata["diagnostic_profile_name"],
+            "baseline_inverted_masked_locator",
         )
 
     def test_manual_mask_to_roi_locator_uses_locator_background_fill_after_polarity(self) -> None:
@@ -1005,8 +1043,11 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
             self.assertEqual(metadata["roi_center_source_xy_px"], (240.0, 150.0))
             self.assertFalse(metadata["distance_orientation_regressor_reached"])
             self.assertFalse(metadata["foreground_mask_empty"])
+            self.assertGreater(metadata["foreground_pixel_count"], 0)
             self.assertIn("empty foreground mask", metadata["preprocessing_failure_message"])
             self.assertIn(ARTIFACT_FINAL_LOCATOR_INPUT, raised.exception.debug_paths)
+            self.assertIn("final_locator_input_stats", metadata)
+            self.assertIn("roi_pre_clip_bounds_xyxy_px", metadata)
 
     def test_debug_disabled_does_not_write_debug_paths(self) -> None:
         image_bytes = _fixture_image_bytes()

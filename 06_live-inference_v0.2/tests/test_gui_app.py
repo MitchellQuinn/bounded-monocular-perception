@@ -40,7 +40,9 @@ class GuiAppCliParserTests(unittest.TestCase):
         self.assertIsNone(args.debug_output_dir)
         self.assertIsNone(args.device)
         self.assertEqual(args.roi_locator_polarity, "as_is")
+        self.assertIsNone(args.roi_locator_input_mode)
         self.assertEqual(args.roi_clip_tolerance_px, 0)
+        self.assertIsNone(args.diagnostic_profile)
 
     def test_cli_parser_parses_camera_sources(self) -> None:
         for value in ("synthetic", "opencv-v4l2"):
@@ -116,13 +118,28 @@ class GuiAppCliParserTests(unittest.TestCase):
             [
                 "--roi-locator-polarity",
                 "inverted",
+                "--roi-locator-input-mode",
+                "sheet_dark_foreground",
                 "--roi-clip-tolerance-px",
                 "10",
             ]
         )
 
         self.assertEqual(args.roi_locator_polarity, "inverted")
+        self.assertEqual(args.roi_locator_input_mode, "sheet_dark_foreground")
         self.assertEqual(args.roi_clip_tolerance_px, 10)
+
+    def test_cli_parser_parses_diagnostic_profile(self) -> None:
+        args = gui_app._argument_parser().parse_args(
+            ["--diagnostic-profile", "baseline_inverted_masked_locator"]
+        )
+
+        self.assertEqual(args.diagnostic_profile, "baseline_inverted_masked_locator")
+
+    def test_cli_parser_parses_known_good_policy_alias(self) -> None:
+        args = gui_app._argument_parser().parse_args(["--use-known-good-live-policy"])
+
+        self.assertEqual(args.diagnostic_profile, "baseline_inverted_masked_locator")
 
     def test_cli_parser_rejects_invalid_device_override(self) -> None:
         with redirect_stderr(StringIO()):
@@ -173,9 +190,32 @@ class GuiAppCompositionTests(unittest.TestCase):
             context.stage_policy_state.get_snapshot().roi_locator_input_polarity,
             "inverted",
         )
+        self.assertEqual(context.trace_output_dir, PROJECT_ROOT / "live_traces")
+        self.assertEqual(context.single_frame_runner.trace_output_dir, PROJECT_ROOT / "live_traces")
         self.assertEqual(
             context.stage_policy_state.get_snapshot().roi_clip_tolerance_px,
             10,
+        )
+
+    def test_composition_applies_diagnostic_profile_to_shared_policy(self) -> None:
+        records: dict[str, Any] = {}
+
+        context = gui_app.build_live_inference_gui_context(
+            model_selection_path=PROJECT_ROOT / "models/selections/current.toml",
+            synthetic_camera_config_path=PROJECT_ROOT / "config/synthetic_camera.toml.example",
+            diagnostic_profile="baseline_inverted_masked_locator",
+            dependency_loader=lambda: _fake_dependencies(records),
+        )
+
+        snapshot = context.stage_policy_state.get_snapshot()
+        self.assertEqual(snapshot.roi_locator_input_mode, "inverted")
+        self.assertTrue(snapshot.apply_manual_mask_to_roi_locator)
+        self.assertTrue(snapshot.apply_manual_mask_to_regressor_preprocessing)
+        self.assertFalse(snapshot.apply_background_removal_to_roi_locator)
+        self.assertFalse(snapshot.apply_background_removal_to_regressor_preprocessing)
+        self.assertEqual(
+            snapshot.diagnostic_profile_name,
+            "baseline_inverted_masked_locator",
         )
 
     def test_real_camera_composition_uses_fake_real_camera_publisher(self) -> None:

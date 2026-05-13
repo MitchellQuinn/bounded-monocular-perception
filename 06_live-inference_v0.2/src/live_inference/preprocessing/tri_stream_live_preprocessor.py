@@ -296,6 +296,11 @@ class TriStreamLivePreprocessor:
             decoded_source_gray,
             stage_policy=stage_policy,
         )
+        final_locator_input_image = self._final_locator_input_canvas(
+            mask_preparation.locator_source_gray,
+            background_snapshot=mask_preparation.locator_background_snapshot,
+            fill_value=mask_preparation.locator_fill_value,
+        )
         source_gray = mask_preparation.source_gray
         source_h, source_w = (
             int(decoded_source_gray.shape[0]),
@@ -329,6 +334,7 @@ class TriStreamLivePreprocessor:
             canvas_height_px=silhouette_h,
         )
         mask_metadata = dict(mask_preparation.metadata)
+        mask_metadata.update(_locator_input_stats_metadata(final_locator_input_image))
         mask_metadata.update(
             _localized_background_metadata(
                 base=mask_metadata,
@@ -391,15 +397,10 @@ class TriStreamLivePreprocessor:
             metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS] = {
                 str(kind): str(path) for kind, path in debug_paths.items()
             }
-        locator_input_image = self._final_locator_input_canvas(
-            mask_preparation.locator_source_gray,
-            background_snapshot=mask_preparation.locator_background_snapshot,
-            fill_value=mask_preparation.locator_fill_value,
-        )
         return RoiLocatorDiagnosticResult(
             request_id=request.request_id,
             input_image_hash=input_image_hash,
-            locator_input_image=locator_input_image,
+            locator_input_image=final_locator_input_image,
             preprocessing_metadata=metadata,
             roi_location=roi_location,
             debug_paths=debug_paths,
@@ -417,8 +418,14 @@ class TriStreamLivePreprocessor:
             decoded_source_gray,
             stage_policy=stage_policy,
         )
+        final_locator_input_image = self._final_locator_input_canvas(
+            mask_preparation.locator_source_gray,
+            background_snapshot=mask_preparation.locator_background_snapshot,
+            fill_value=mask_preparation.locator_fill_value,
+        )
         source_gray = mask_preparation.source_gray
-        mask_metadata = mask_preparation.metadata
+        mask_metadata = dict(mask_preparation.metadata)
+        mask_metadata.update(_locator_input_stats_metadata(final_locator_input_image))
         source_h, source_w = (
             int(decoded_source_gray.shape[0]),
             int(decoded_source_gray.shape[1]),
@@ -534,6 +541,7 @@ class TriStreamLivePreprocessor:
         foreground_mask: np.ndarray | None = None
         distance_image_2d: np.ndarray | None = None
         orientation_image_2d: np.ndarray | None = None
+        silhouette_result: _SilhouetteResult | None = None
         try:
             silhouette_result = self._render_silhouette(
                 roi_gray=roi_gray,
@@ -610,6 +618,16 @@ class TriStreamLivePreprocessor:
                         if foreground_mask is None
                         else not bool(np.any(foreground_mask))
                     ),
+                    "foreground_pixel_count": (
+                        None
+                        if foreground_mask is None
+                        else int(np.count_nonzero(foreground_mask))
+                    ),
+                    "silhouette_diagnostics": (
+                        None
+                        if silhouette_result is None
+                        else dict(silhouette_result.diagnostics)
+                    ),
                     "roi_crop_available": True,
                 }
             )
@@ -682,6 +700,8 @@ class TriStreamLivePreprocessor:
                     silhouette_result.primary_break_reason
                 ),
                 "silhouette_diagnostics": dict(silhouette_result.diagnostics),
+                "foreground_mask_empty": not bool(np.any(foreground_mask)),
+                "foreground_pixel_count": int(np.count_nonzero(foreground_mask)),
                 "brightness_normalization": brightness_payload,
                 "distance_clipped": bool(distance_clipped),
                 "orientation_context_scale": float(
@@ -696,6 +716,7 @@ class TriStreamLivePreprocessor:
                 contracts.PREPROCESSING_METADATA_ORIENTATION_CROP_SIZE_PX: float(
                     orientation_crop_size_px
                 ),
+                "distance_orientation_regressor_reached": True,
             }
         )
         debug_paths = self._write_debug_artifacts(
@@ -791,9 +812,11 @@ class TriStreamLivePreprocessor:
             contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX: (
                 _array_xyxy_to_tuple(request_bounds)
             ),
+            "roi_pre_clip_bounds_xyxy_px": _array_xyxy_to_tuple(request_bounds),
             contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX: (
                 _array_xyxy_to_tuple(source_bounds)
             ),
+            "roi_clipped_bounds_xyxy_px": _array_xyxy_to_tuple(source_bounds),
             contracts.PREPROCESSING_METADATA_ROI_CANVAS_INSERT_XYXY_PX: (
                 _array_xyxy_to_tuple(roi_bounds)
             ),
@@ -1381,6 +1404,7 @@ class TriStreamLivePreprocessor:
         }
         metadata.update(stage_policy.to_metadata())
         metadata.update(mask_preparation.metadata)
+        metadata.update(_locator_input_stats_metadata(locator_input_image))
         return metadata
 
     def _write_locator_preview_artifacts(
@@ -1586,6 +1610,8 @@ def _roi_rejection_details(
         contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
+        "roi_pre_clip_bounds_xyxy_px",
+        "roi_clipped_bounds_xyxy_px",
         contracts.PREPROCESSING_METADATA_ROI_CLIPPED,
         contracts.PREPROCESSING_METADATA_ROI_CLIP_LEFT_PX,
         contracts.PREPROCESSING_METADATA_ROI_CLIP_RIGHT_PX,
@@ -1603,6 +1629,13 @@ def _roi_rejection_details(
         "apply_background_removal_to_regressor_preprocessing",
         "manual_mask_applied_to_roi_locator",
         "background_removal_applied_to_roi_locator",
+        "final_locator_input_stats",
+        "final_locator_input_min",
+        "final_locator_input_max",
+        "final_locator_input_mean",
+        "final_locator_input_median",
+        "final_locator_input_nonzero_pixel_count",
+        "final_locator_input_non_whiteish_pixel_count",
         contracts.PREPROCESSING_METADATA_DEBUG_PATHS,
     )
     details = {key: metadata.get(key) for key in keys if key in metadata}
@@ -1637,16 +1670,27 @@ def _preprocessing_failure_details(
         contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
+        "roi_pre_clip_bounds_xyxy_px",
+        "roi_clipped_bounds_xyxy_px",
         contracts.PREPROCESSING_METADATA_ROI_CLIPPED,
         contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX,
         contracts.PREPROCESSING_METADATA_ROI_CLIP_TOLERANCE_PX,
         contracts.PREPROCESSING_METADATA_ROI_ACCEPTED,
         contracts.PREPROCESSING_METADATA_ROI_REJECTION_REASON,
         "foreground_mask_empty",
+        "foreground_pixel_count",
+        "silhouette_diagnostics",
         "roi_crop_available",
         "preprocessing_failure_type",
         "preprocessing_failure_message",
         "distance_orientation_regressor_reached",
+        "final_locator_input_stats",
+        "final_locator_input_min",
+        "final_locator_input_max",
+        "final_locator_input_mean",
+        "final_locator_input_median",
+        "final_locator_input_nonzero_pixel_count",
+        "final_locator_input_non_whiteish_pixel_count",
         contracts.PREPROCESSING_METADATA_DEBUG_PATHS,
     )
     details = {key: metadata.get(key) for key in keys if key in metadata}
@@ -2332,10 +2376,48 @@ def _debug_locator_background_mask(
 
 
 def _locator_input_uint8(locator_image: np.ndarray) -> np.ndarray:
-    image = np.asarray(locator_image, dtype=np.float32)
+    image = np.asarray(locator_image)
     if image.ndim == 3 and int(image.shape[0]) == 1:
         image = image[0]
-    return np.ascontiguousarray(np.clip(image * 255.0, 0.0, 255.0).astype(np.uint8))
+    if image.dtype == np.uint8:
+        return np.ascontiguousarray(image)
+    numeric = np.asarray(image, dtype=np.float32)
+    if numeric.size and float(np.nanmax(numeric)) <= 1.0:
+        numeric = numeric * 255.0
+    return np.ascontiguousarray(np.clip(numeric, 0.0, 255.0).astype(np.uint8))
+
+
+def _locator_input_stats_metadata(locator_image: np.ndarray) -> dict[str, Any]:
+    image = _locator_input_uint8(locator_image)
+    if image.size <= 0:
+        stats: dict[str, Any] = {
+            "min": None,
+            "max": None,
+            "mean": None,
+            "median": None,
+            "nonzero_pixel_count": 0,
+            "non_whiteish_pixel_count": 0,
+        }
+    else:
+        stats = {
+            "min": int(np.min(image)),
+            "max": int(np.max(image)),
+            "mean": float(np.mean(image)),
+            "median": float(np.median(image)),
+            "nonzero_pixel_count": int(np.count_nonzero(image)),
+            "non_whiteish_pixel_count": int(np.count_nonzero(image < 250)),
+        }
+    return {
+        "final_locator_input_stats": stats,
+        "final_locator_input_min": stats["min"],
+        "final_locator_input_max": stats["max"],
+        "final_locator_input_mean": stats["mean"],
+        "final_locator_input_median": stats["median"],
+        "final_locator_input_nonzero_pixel_count": stats["nonzero_pixel_count"],
+        "final_locator_input_non_whiteish_pixel_count": stats[
+            "non_whiteish_pixel_count"
+        ],
+    }
 
 
 def _coerce_fill_value(fill_value: int) -> int:

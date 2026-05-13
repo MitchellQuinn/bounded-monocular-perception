@@ -43,11 +43,11 @@ from live_inference.masking import (
     FrameMaskState,
 )
 from live_inference.preprocessing import (
+    DIAGNOSTIC_PROFILE_BASELINE_INVERTED_MASKED_LOCATOR,
     ROI_LOCATOR_INPUT_MODE_AS_IS,
     ROI_LOCATOR_INPUT_MODE_INVERTED,
     ROI_LOCATOR_INPUT_MODE_SHEET_DARK_FOREGROUND,
-    ROI_LOCATOR_INPUT_POLARITY_AS_IS,
-    ROI_LOCATOR_INPUT_POLARITY_INVERTED,
+    StageTransformPolicySnapshot,
     StageTransformPolicyState,
 )
 
@@ -371,8 +371,7 @@ class LiveInferenceMainWindow(QMainWindow):
             "invert_roi_locator_input_checkbox"
         )
         self.invert_roi_locator_input_checkbox.setChecked(
-            stage_policy.roi_locator_input_polarity
-            == ROI_LOCATOR_INPUT_POLARITY_INVERTED
+            stage_policy.roi_locator_input_mode == ROI_LOCATOR_INPUT_MODE_INVERTED
         )
         self.roi_clip_tolerance_input = QSpinBox()
         self.roi_clip_tolerance_input.setObjectName("roi_clip_tolerance_input")
@@ -420,6 +419,13 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_locator_input_mode_dropdown,
             stage_policy.roi_locator_input_mode,
         )
+        self.apply_baseline_profile_button = QPushButton("Apply baseline profile")
+        self.apply_baseline_profile_button.setObjectName(
+            "apply_baseline_diagnostic_profile_button"
+        )
+        self.effective_stage_policy_value = QLabel()
+        self.effective_stage_policy_value.setObjectName("effective_stage_policy_value")
+        self.effective_stage_policy_value.setWordWrap(True)
 
         self.sheet_min_gray_input = QSpinBox()
         self.sheet_min_gray_input.setObjectName("sheet_min_gray_input")
@@ -481,22 +487,25 @@ class LiveInferenceMainWindow(QMainWindow):
 
         diagnostics_grid.addWidget(QLabel("Locator mode:"), 0, 0)
         diagnostics_grid.addWidget(self.roi_locator_input_mode_dropdown, 0, 1)
-        diagnostics_grid.addWidget(QLabel("Sheet min gray:"), 1, 0)
-        diagnostics_grid.addWidget(self.sheet_min_gray_input, 1, 1)
-        diagnostics_grid.addWidget(QLabel("Target max gray:"), 2, 0)
-        diagnostics_grid.addWidget(self.target_max_gray_input, 2, 1)
-        diagnostics_grid.addWidget(QLabel("Min area:"), 3, 0)
-        diagnostics_grid.addWidget(self.min_component_area_px_input, 3, 1)
-        diagnostics_grid.addWidget(QLabel("Close kernel:"), 4, 0)
-        diagnostics_grid.addWidget(self.morphology_close_kernel_px_input, 4, 1)
-        diagnostics_grid.addWidget(QLabel("Dilate kernel:"), 5, 0)
-        diagnostics_grid.addWidget(self.dilate_kernel_px_input, 5, 1)
-        diagnostics_grid.addWidget(QLabel("Lower frame:"), 6, 0)
-        diagnostics_grid.addWidget(self.restrict_lower_frame_percent_input, 6, 1)
-        diagnostics_grid.addWidget(self.preview_locator_input_button, 7, 0, 1, 2)
-        diagnostics_grid.addWidget(self.run_roi_locator_only_button, 8, 0, 1, 2)
-        diagnostics_grid.addWidget(self.roi_locator_next_action_label, 9, 0, 1, 2)
-        diagnostics_grid.addWidget(self.locator_input_preview_widget, 10, 0, 1, 2)
+        diagnostics_grid.addWidget(self.apply_baseline_profile_button, 1, 0, 1, 2)
+        diagnostics_grid.addWidget(QLabel("Effective policy:"), 2, 0)
+        diagnostics_grid.addWidget(self.effective_stage_policy_value, 2, 1)
+        diagnostics_grid.addWidget(QLabel("Sheet min gray:"), 3, 0)
+        diagnostics_grid.addWidget(self.sheet_min_gray_input, 3, 1)
+        diagnostics_grid.addWidget(QLabel("Target max gray:"), 4, 0)
+        diagnostics_grid.addWidget(self.target_max_gray_input, 4, 1)
+        diagnostics_grid.addWidget(QLabel("Min area:"), 5, 0)
+        diagnostics_grid.addWidget(self.min_component_area_px_input, 5, 1)
+        diagnostics_grid.addWidget(QLabel("Close kernel:"), 6, 0)
+        diagnostics_grid.addWidget(self.morphology_close_kernel_px_input, 6, 1)
+        diagnostics_grid.addWidget(QLabel("Dilate kernel:"), 7, 0)
+        diagnostics_grid.addWidget(self.dilate_kernel_px_input, 7, 1)
+        diagnostics_grid.addWidget(QLabel("Lower frame:"), 8, 0)
+        diagnostics_grid.addWidget(self.restrict_lower_frame_percent_input, 8, 1)
+        diagnostics_grid.addWidget(self.preview_locator_input_button, 9, 0, 1, 2)
+        diagnostics_grid.addWidget(self.run_roi_locator_only_button, 10, 0, 1, 2)
+        diagnostics_grid.addWidget(self.roi_locator_next_action_label, 11, 0, 1, 2)
+        diagnostics_grid.addWidget(self.locator_input_preview_widget, 12, 0, 1, 2)
         diagnostics_layout.addWidget(diagnostics_group)
         diagnostics_layout.addStretch(1)
         self.control_tabs.addTab(diagnostics_tab, "Diagnostics")
@@ -650,6 +659,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.setCentralWidget(central)
         self._set_mask_button_state(None)
         self._sync_background_controls_from_state()
+        self._refresh_stage_policy_ui(stage_policy)
 
     def _add_readout(
         self,
@@ -709,6 +719,9 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         self.roi_locator_input_mode_dropdown.currentIndexChanged.connect(
             self._on_roi_locator_input_mode_changed
+        )
+        self.apply_baseline_profile_button.clicked.connect(
+            self._on_apply_baseline_profile_clicked
         )
         self.sheet_min_gray_input.valueChanged.connect(
             self._on_roi_locator_diagnostic_config_changed
@@ -1164,6 +1177,7 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.stage_policy_state.update(
             apply_manual_mask_to_roi_locator=bool(checked)
         )
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "Manual mask ROI locator application "
@@ -1177,6 +1191,7 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.stage_policy_state.update(
             apply_manual_mask_to_regressor_preprocessing=bool(checked)
         )
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "Manual mask model preprocessing application "
@@ -1231,6 +1246,7 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.stage_policy_state.update(
             apply_background_removal_to_roi_locator=bool(checked)
         )
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "Background removal ROI locator application "
@@ -1244,6 +1260,7 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.stage_policy_state.update(
             apply_background_removal_to_regressor_preprocessing=bool(checked)
         )
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "Background removal model preprocessing application "
@@ -1257,6 +1274,9 @@ class LiveInferenceMainWindow(QMainWindow):
         self._sync_background_controls_from_state(snapshot)
 
     def _on_invert_roi_locator_input_toggled(self, checked: bool) -> None:
+        if not self.invert_roi_locator_input_checkbox.isEnabled():
+            self._refresh_stage_policy_ui(self.stage_policy_state.get_snapshot())
+            return
         mode = (
             ROI_LOCATOR_INPUT_MODE_INVERTED
             if checked
@@ -1264,12 +1284,8 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         snapshot = self.stage_policy_state.update(
             roi_locator_input_mode=mode,
-            roi_locator_input_polarity=mode,
         )
-        self._set_combo_data_value(
-            self.roi_locator_input_mode_dropdown,
-            snapshot.roi_locator_input_mode,
-        )
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "ROI locator input mode changed: "
@@ -1280,17 +1296,23 @@ class LiveInferenceMainWindow(QMainWindow):
         mode = self.roi_locator_input_mode_dropdown.currentData()
         snapshot = self.stage_policy_state.update(
             roi_locator_input_mode=str(mode),
-            roi_locator_input_polarity=str(mode),
         )
-        self.invert_roi_locator_input_checkbox.blockSignals(True)
-        self.invert_roi_locator_input_checkbox.setChecked(
-            snapshot.roi_locator_input_mode == ROI_LOCATOR_INPUT_MODE_INVERTED
-        )
-        self.invert_roi_locator_input_checkbox.blockSignals(False)
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "ROI locator input mode changed: "
             f"{snapshot.roi_locator_input_mode}, revision={snapshot.revision}.",
+        )
+
+    def _on_apply_baseline_profile_clicked(self) -> None:
+        snapshot = self.stage_policy_state.apply_diagnostic_profile(
+            DIAGNOSTIC_PROFILE_BASELINE_INVERTED_MASKED_LOCATOR
+        )
+        self._refresh_stage_policy_ui(snapshot)
+        self._append_log(
+            "INFO",
+            "Diagnostic profile applied: "
+            f"{snapshot.diagnostic_profile_name}, revision={snapshot.revision}.",
         )
 
     def _on_roi_locator_diagnostic_config_changed(self, _value: int) -> None:
@@ -1306,6 +1328,7 @@ class LiveInferenceMainWindow(QMainWindow):
                 float(self.restrict_lower_frame_percent_input.value()) / 100.0
             ),
         )
+        self._refresh_stage_policy_ui(snapshot)
         self.roi_locator_next_action_label.setText(
             "Next: preview locator input to check whether the target is bright on dark."
         )
@@ -1328,11 +1351,76 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def _on_roi_clip_tolerance_changed(self, value: int) -> None:
         snapshot = self.stage_policy_state.update(roi_clip_tolerance_px=int(value))
+        self._refresh_stage_policy_ui(snapshot)
         self._append_log(
             "INFO",
             "ROI clip tolerance changed: "
             f"{snapshot.roi_clip_tolerance_px}px, revision={snapshot.revision}.",
         )
+
+    def _refresh_stage_policy_ui(
+        self,
+        snapshot: StageTransformPolicySnapshot | None = None,
+    ) -> None:
+        snapshot = snapshot or self.stage_policy_state.get_snapshot()
+        self._set_combo_data_value(
+            self.roi_locator_input_mode_dropdown,
+            snapshot.roi_locator_input_mode,
+        )
+        self._set_checkbox_checked(
+            self.invert_roi_locator_input_checkbox,
+            snapshot.roi_locator_input_mode == ROI_LOCATOR_INPUT_MODE_INVERTED,
+        )
+        self.invert_roi_locator_input_checkbox.setEnabled(
+            snapshot.roi_locator_input_mode
+            in {ROI_LOCATOR_INPUT_MODE_AS_IS, ROI_LOCATOR_INPUT_MODE_INVERTED}
+        )
+        self._set_checkbox_checked(
+            self.apply_manual_mask_to_roi_locator_checkbox,
+            snapshot.apply_manual_mask_to_roi_locator,
+        )
+        self._set_checkbox_checked(
+            self.apply_manual_mask_to_model_preprocessing_checkbox,
+            snapshot.apply_manual_mask_to_regressor_preprocessing,
+        )
+        self._set_checkbox_checked(
+            self.apply_background_removal_to_roi_locator_checkbox,
+            snapshot.apply_background_removal_to_roi_locator,
+        )
+        self._set_checkbox_checked(
+            self.apply_background_removal_to_model_preprocessing_checkbox,
+            snapshot.apply_background_removal_to_regressor_preprocessing,
+        )
+        self._set_spinbox_value(
+            self.roi_clip_tolerance_input,
+            int(snapshot.roi_clip_tolerance_px),
+        )
+        self._set_spinbox_value(self.sheet_min_gray_input, int(snapshot.sheet_min_gray))
+        self._set_spinbox_value(self.target_max_gray_input, int(snapshot.target_max_gray))
+        self._set_spinbox_value(
+            self.min_component_area_px_input,
+            int(snapshot.min_component_area_px),
+        )
+        self._set_spinbox_value(
+            self.morphology_close_kernel_px_input,
+            int(snapshot.morphology_close_kernel_px),
+        )
+        self._set_spinbox_value(self.dilate_kernel_px_input, int(snapshot.dilate_kernel_px))
+        self._set_spinbox_value(
+            self.restrict_lower_frame_percent_input,
+            int(round(float(snapshot.restrict_to_lower_frame_fraction) * 100.0)),
+        )
+        self.effective_stage_policy_value.setText(_stage_policy_status_text(snapshot))
+
+    def _set_checkbox_checked(self, checkbox: QCheckBox, checked: bool) -> None:
+        checkbox.blockSignals(True)
+        checkbox.setChecked(bool(checked))
+        checkbox.blockSignals(False)
+
+    def _set_spinbox_value(self, spinbox: QSpinBox, value: int) -> None:
+        spinbox.blockSignals(True)
+        spinbox.setValue(int(value))
+        spinbox.blockSignals(False)
 
     def _on_roi_fcn_heatmap_overlay_toggled(self, checked: bool) -> None:
         self.frame_preview_widget.set_heatmap_overlay_enabled(bool(checked))
@@ -2005,6 +2093,22 @@ def _roi_locator_status_text(
     else:
         status = "n/a"
     return f"ROI confidence {confidence_text}; clip {clip_text}; {status}"
+
+
+def _stage_policy_status_text(snapshot: StageTransformPolicySnapshot) -> str:
+    profile = snapshot.diagnostic_profile_name or "custom"
+    return (
+        f"profile {profile}; "
+        f"mode {snapshot.roi_locator_input_mode}; "
+        "mask locator "
+        f"{_yes_no_unknown(bool(snapshot.apply_manual_mask_to_roi_locator))}; "
+        "mask model "
+        f"{_yes_no_unknown(bool(snapshot.apply_manual_mask_to_regressor_preprocessing))}; "
+        "background locator "
+        f"{_yes_no_unknown(bool(snapshot.apply_background_removal_to_roi_locator))}; "
+        "background model "
+        f"{_yes_no_unknown(bool(snapshot.apply_background_removal_to_regressor_preprocessing))}"
+    )
 
 
 def _format_optional_xy(value: tuple[float, float] | None) -> str:

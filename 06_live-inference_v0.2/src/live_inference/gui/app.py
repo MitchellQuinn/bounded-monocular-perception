@@ -23,6 +23,7 @@ DEFAULT_CAMERA_FPS = 80
 DEFAULT_CAMERA_PIXEL_FORMAT = "YUYV"
 DEFAULT_CAMERA_ENCODING = "png"
 DEFAULT_CAMERA_NAME = "Arducam B0495 AR0234"
+LIVE_INFERENCE_APP_VERSION = "v0.2"
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,11 @@ def default_synthetic_camera_config_path() -> Path:
     return _live_project_root() / "config/synthetic_camera.toml.example"
 
 
+def default_trace_output_dir() -> Path:
+    """Return the live-local default trace output directory."""
+    return _live_project_root() / "live_traces"
+
+
 def build_live_inference_gui_context(
     *,
     camera_source: str = DEFAULT_CAMERA_SOURCE,
@@ -96,7 +102,9 @@ def build_live_inference_gui_context(
     log_v4l2_controls_at_startup: bool = False,
     device: str | None = None,
     roi_locator_polarity: str = "as_is",
+    roi_locator_input_mode: str | None = None,
     roi_clip_tolerance_px: int = 0,
+    diagnostic_profile: str | None = None,
     save_debug_images: bool = False,
     debug_output_dir: Path | None = None,
     frame_interval_ms: int = DEFAULT_FRAME_INTERVAL_MS,
@@ -109,7 +117,7 @@ def build_live_inference_gui_context(
     from live_inference.preprocessing import (  # noqa: PLC0415
         StageTransformPolicySnapshot,
         StageTransformPolicyState,
-        normalize_roi_locator_input_polarity,
+        normalize_roi_locator_input_mode,
     )
     from live_inference.inspection import (  # noqa: PLC0415
         InferenceTraceRecorder,
@@ -119,14 +127,19 @@ def build_live_inference_gui_context(
     resolved_camera_source = _camera_source(camera_source)
     frame_mask_state = FrameMaskState()
     background_state = BackgroundState()
+    initial_locator_mode = normalize_roi_locator_input_mode(
+        roi_locator_input_mode
+        if roi_locator_input_mode is not None
+        else roi_locator_polarity
+    )
     stage_policy_state = StageTransformPolicyState(
         StageTransformPolicySnapshot(
-            roi_locator_input_polarity=normalize_roi_locator_input_polarity(
-                roi_locator_polarity
-            ),
+            roi_locator_input_mode=initial_locator_mode,
             roi_clip_tolerance_px=int(roi_clip_tolerance_px),
         )
     )
+    if diagnostic_profile is not None:
+        stage_policy_state.apply_diagnostic_profile(diagnostic_profile)
     project_root = _live_project_root()
     resolved_selection_path = _resolve_path(
         model_selection_path or selection_path or default_model_selection_path()
@@ -223,13 +236,25 @@ def build_live_inference_gui_context(
         device=distance_orientation_device,
     )
     core = deps.inference_processing_core_cls(selector, preprocessor, engine)
-    trace_output_dir = project_root / "live_traces"
+    trace_output_dir = default_trace_output_dir()
     trace_recorder = InferenceTraceRecorder(
         output_dir=trace_output_dir,
         context_metadata={
+            "app_project_name": project_root.name,
+            "app_version": LIVE_INFERENCE_APP_VERSION,
+            "live_inference_version": LIVE_INFERENCE_APP_VERSION,
+            "app_root_path": str(project_root),
+            "trace_root_path": str(trace_output_dir),
+            "trace_root_overridden": False,
             "model_selection_path": str(resolved_selection_path),
             "distance_orientation_root": str(selection.distance_orientation_root),
             "roi_fcn_root": str(selection.roi_fcn_root),
+            "distance_orientation_checkpoint_path": _optional_path_text(
+                getattr(manifest, "checkpoint_path", None)
+            ),
+            "roi_fcn_checkpoint_path": _optional_path_text(
+                getattr(getattr(roi_locator, "metadata", None), "checkpoint_path", None)
+            ),
             "distance_orientation_device": distance_orientation_device,
             "roi_fcn_device": roi_fcn_device,
             "device": distance_orientation_device,
@@ -301,7 +326,9 @@ def main(argv: list[str] | None = None) -> int:
             log_v4l2_controls_at_startup=args.log_v4l2_controls_at_startup,
             device=args.device,
             roi_locator_polarity=args.roi_locator_polarity,
+            roi_locator_input_mode=args.roi_locator_input_mode,
             roi_clip_tolerance_px=args.roi_clip_tolerance_px,
+            diagnostic_profile=args.diagnostic_profile,
             save_debug_images=args.save_debug_images,
             debug_output_dir=args.debug_output_dir,
             frame_interval_ms=args.frame_interval_ms,
@@ -450,10 +477,31 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="ROI-FCN locator input polarity.",
     )
     parser.add_argument(
+        "--roi-locator-input-mode",
+        type=_roi_locator_input_mode,
+        choices=("as_is", "inverted", "sheet_dark_foreground"),
+        default=None,
+        help="ROI-FCN locator input representation mode.",
+    )
+    parser.add_argument(
         "--roi-clip-tolerance-px",
         type=_non_negative_int,
         default=0,
         help="Maximum clipped ROI overflow in pixels allowed before rejection.",
+    )
+    parser.add_argument(
+        "--diagnostic-profile",
+        type=_diagnostic_profile,
+        choices=("baseline_inverted_masked_locator",),
+        default=None,
+        help="Apply a named diagnostic stage-policy profile at startup.",
+    )
+    parser.add_argument(
+        "--use-known-good-live-policy",
+        dest="diagnostic_profile",
+        action="store_const",
+        const="baseline_inverted_masked_locator",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--inference-poll-interval-ms",
@@ -624,6 +672,24 @@ def _roi_locator_polarity(value: str) -> str:
     raise argparse.ArgumentTypeError("value must be one of: as_is, inverted")
 
 
+def _roi_locator_input_mode(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_")
+    if text in {"as_is", "inverted", "sheet_dark_foreground"}:
+        return text
+    raise argparse.ArgumentTypeError(
+        "value must be one of: as_is, inverted, sheet_dark_foreground"
+    )
+
+
+def _diagnostic_profile(value: str) -> str:
+    text = str(value).strip().lower().replace("-", "_")
+    if text == "baseline_inverted_masked_locator":
+        return text
+    raise argparse.ArgumentTypeError(
+        "value must be one of: baseline_inverted_masked_locator"
+    )
+
+
 def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     synthetic_config = context.synthetic_camera_config
     print("Live inference GUI launch context:", file=sys.stderr)
@@ -636,7 +702,11 @@ def _print_launch_debug(context: LiveInferenceGuiContext) -> None:
     print(f"  roi_fcn_device = {context.roi_fcn_device}", file=sys.stderr)
     stage_policy = context.stage_policy_state.get_snapshot()
     print(
-        f"  roi_locator_input_polarity = {stage_policy.roi_locator_input_polarity}",
+        f"  roi_locator_input_mode = {stage_policy.roi_locator_input_mode}",
+        file=sys.stderr,
+    )
+    print(
+        f"  diagnostic_profile = {stage_policy.diagnostic_profile_name}",
         file=sys.stderr,
     )
     print(
@@ -691,6 +761,10 @@ def _live_project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _optional_path_text(path: object) -> str | None:
+    return str(path) if path is not None else None
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -708,10 +782,12 @@ __all__ = [
     "DEFAULT_CAMERA_WIDTH_PX",
     "DEFAULT_SYNTHETIC_OUTPUT_DIR",
     "DEFAULT_SYNTHETIC_SOURCE_DIR",
+    "LIVE_INFERENCE_APP_VERSION",
     "LiveInferenceGuiContext",
     "OPENCV_V4L2_CAMERA_SOURCE",
     "build_live_inference_gui_context",
     "default_model_selection_path",
     "default_synthetic_camera_config_path",
+    "default_trace_output_dir",
     "main",
 ]
