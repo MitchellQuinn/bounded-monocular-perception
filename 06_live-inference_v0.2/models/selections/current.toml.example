@@ -1,0 +1,9 @@
+[distance_orientation]
+root = "../distance-orientation/260504-1100_ts-2d-cnn"
+
+[roi_fcn]
+root = "../roi-fcn/<roi-fcn-run-id>"
+
+[device]
+distance_orientation = "auto"
+roi_fcn = "auto"

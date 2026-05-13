@@ -59,7 +59,9 @@ pip-wheel-metadata/
 05_inference-v0.3-ds/output/**/brightness-analysis_*.json
 05_inference-v0.4-ts/output/**/inference-output_*.json
 05_inference-v0.4-ts/output/**/brightness-analysis_*.json
-06_live-inference_v0.1/live_frames/
+06_live-inference_v*/live_debug/
+06_live-inference_v*/live_frames/
+06_live-inference_v*/live_traces/
 
 
 # ------------------------------

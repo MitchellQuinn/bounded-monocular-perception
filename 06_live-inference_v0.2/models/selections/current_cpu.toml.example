@@ -1,0 +1,9 @@
+[distance_orientation]
+root = "../distance-orientation/260504-1100_ts-2d-cnn__run_0001"
+
+[roi_fcn]
+root = "../roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
+
+[device]
+distance_orientation = "cpu"
+roi_fcn = "cpu"

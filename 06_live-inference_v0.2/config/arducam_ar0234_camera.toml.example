@@ -1,0 +1,21 @@
+[camera]
+kind = "opencv_v4l2"
+device = "/dev/video0"
+camera_name = "Arducam B0495 AR0234"
+
+width_px = 960
+height_px = 600
+fps = 80
+pixel_format = "YUYV"
+encoding = "png"
+
+auto_exposure = true
+auto_white_balance = true
+
+log_v4l2_controls_at_startup = true
+
+[camera.manual_controls]
+enabled = false
+exposure_time_absolute = 20
+gain = 168
+white_balance_temperature = 4500

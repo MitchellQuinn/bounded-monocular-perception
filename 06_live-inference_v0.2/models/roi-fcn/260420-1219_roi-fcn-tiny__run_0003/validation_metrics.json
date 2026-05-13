@@ -1,0 +1,11 @@
+{
+  "loss_mse": 0.00396923968126066,
+  "mean_center_error_px": 3.175694465637207,
+  "median_center_error_px": 2.435445547103882,
+  "p95_center_error_px": 7.709775924682617,
+  "roi_full_containment_evaluable_count": 20000,
+  "roi_full_containment_missing_bbox_count": 0,
+  "roi_full_containment_success_rate": 0.9891,
+  "sample_count": 20000,
+  "split_name": "validate"
+}
