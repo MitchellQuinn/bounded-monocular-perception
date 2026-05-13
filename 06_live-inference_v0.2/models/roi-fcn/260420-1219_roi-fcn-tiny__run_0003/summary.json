@@ -1,0 +1,42 @@
+{
+  "best_epoch": 15,
+  "best_validation_loss": 0.00396923968126066,
+  "best_validation_mean_center_error_px": 3.175694465637207,
+  "completed_at_utc": "2026-04-20T13:21:23+00:00",
+  "epochs_completed": 16,
+  "model_directory": "260420-1219_roi-fcn-tiny",
+  "resume": {
+    "additional_epochs": 6,
+    "enabled": true,
+    "source_run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0002",
+    "source_run_id": "run_0002",
+    "start_epoch": 11,
+    "total_target_epochs": 16
+  },
+  "resume_state_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003/resume_state.pt",
+  "run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003",
+  "run_id": "run_0003",
+  "train_metrics": {
+    "loss_mse": 0.003786287994366139,
+    "mean_center_error_px": 3.140146017074585,
+    "median_center_error_px": 2.4185261726379395,
+    "p95_center_error_px": 7.448360919952393,
+    "roi_full_containment_evaluable_count": 100000,
+    "roi_full_containment_missing_bbox_count": 0,
+    "roi_full_containment_success_rate": 0.99024,
+    "sample_count": 100000,
+    "split_name": "train"
+  },
+  "training_contract_version": "rb-roi-fcn-training-v0_1",
+  "validation_metrics": {
+    "loss_mse": 0.00396923968126066,
+    "mean_center_error_px": 3.175694465637207,
+    "median_center_error_px": 2.435445547103882,
+    "p95_center_error_px": 7.709775924682617,
+    "roi_full_containment_evaluable_count": 20000,
+    "roi_full_containment_missing_bbox_count": 0,
+    "roi_full_containment_success_rate": 0.9891,
+    "sample_count": 20000,
+    "split_name": "validate"
+  }
+}

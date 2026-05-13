@@ -1,0 +1,373 @@
+{
+  "accuracy_tolerance_m": 0.1,
+  "additional_epochs": null,
+  "batch_size": 8,
+  "cache_validation_in_ram": true,
+  "change_note": "tmux control-panel launch via notebook v0.9",
+  "created_utc": "2026-05-04T10:09:36+00:00",
+  "distance_loss_weight": 1.0,
+  "early_stopping_patience": 4,
+  "enable_internal_test_split": false,
+  "enable_lr_scheduler": true,
+  "entrypoint_path": "src/train.py",
+  "entrypoint_type": "cli",
+  "epochs": 32,
+  "extra_accuracy_tolerances_m": [
+    0.25,
+    0.5
+  ],
+  "huber_delta": 1.0,
+  "internal_test_fraction": 0.1,
+  "learning_rate": 0.001,
+  "lr_scheduler_factor": 0.5,
+  "lr_scheduler_min_lr": 1e-05,
+  "lr_scheduler_patience": 1,
+  "model_architecture_variant": "tri_stream_yaw_v0_1",
+  "model_name": "260504-1100_ts-2d-cnn",
+  "model_topology": {
+    "model_class_name": "DistanceRegressorTriStreamYaw",
+    "task_contract": {
+      "debug_target_columns": [
+        "yaw_deg"
+      ],
+      "heads": {
+        "distance": {
+          "loss_role": "distance",
+          "metrics_role": "distance",
+          "output_key": "distance_m",
+          "target_columns": [
+            "distance_m"
+          ],
+          "target_kind": "regression",
+          "target_npz_key": "y_distance_m"
+        },
+        "orientation": {
+          "debug_target_columns": [
+            "yaw_deg"
+          ],
+          "debug_target_npz_key": "y_yaw_deg",
+          "loss_role": "orientation",
+          "metrics_role": "orientation",
+          "output_key": "yaw_sin_cos",
+          "target_columns": [
+            "yaw_sin",
+            "yaw_cos"
+          ],
+          "target_kind": "circular_regression",
+          "target_npz_keys": [
+            "y_yaw_sin",
+            "y_yaw_cos"
+          ]
+        }
+      },
+      "input_mode": "tri_stream_distance_orientation_geometry",
+      "output_kind": "mapping",
+      "prediction_mode": "distance_yaw_sincos",
+      "reporting": {
+        "family": "distance_orientation_multitask",
+        "orientation_accuracy_thresholds_deg": [
+          5.0,
+          10.0,
+          15.0
+        ],
+        "train_losses": [
+          "total_loss",
+          "distance_loss",
+          "orientation_loss"
+        ],
+        "validation_metrics": [
+          "yaw_mean_error_deg",
+          "yaw_median_error_deg",
+          "yaw_p95_error_deg",
+          "yaw_acc@5deg",
+          "yaw_acc@10deg",
+          "yaw_acc@15deg"
+        ]
+      },
+      "target_columns": [
+        "distance_m",
+        "yaw_sin",
+        "yaw_cos"
+      ],
+      "task_family": "multitask_regression"
+    },
+    "topology_contract": {
+      "contract_version": "rb-topology-output-reporting-v1",
+      "outputs": {
+        "distance": {
+          "columns": [
+            "distance_m"
+          ],
+          "kind": "regression",
+          "output_key": "distance_m"
+        },
+        "yaw": {
+          "columns": [
+            "yaw_sin",
+            "yaw_cos"
+          ],
+          "kind": "circular_regression",
+          "output_key": "yaw_sin_cos"
+        }
+      },
+      "reporting": {
+        "family": "distance_orientation_multitask",
+        "orientation_accuracy_thresholds_deg": [
+          5.0,
+          10.0,
+          15.0
+        ],
+        "train_losses": [
+          "total_loss",
+          "distance_loss",
+          "orientation_loss"
+        ],
+        "validation_metrics": [
+          "yaw_mean_error_deg",
+          "yaw_median_error_deg",
+          "yaw_p95_error_deg",
+          "yaw_acc@5deg",
+          "yaw_acc@10deg",
+          "yaw_acc@15deg"
+        ]
+      },
+      "runtime": {
+        "heads": {
+          "distance": {
+            "loss_role": "distance",
+            "metrics_role": "distance",
+            "output": "distance",
+            "target": "distance"
+          },
+          "orientation": {
+            "loss_role": "orientation",
+            "metrics_role": "orientation",
+            "output": "yaw",
+            "target": "yaw"
+          }
+        },
+        "input_mode": "tri_stream_distance_orientation_geometry",
+        "output_kind": "mapping",
+        "prediction_mode": "distance_yaw_sincos"
+      },
+      "targets": {
+        "distance": {
+          "columns": [
+            "distance_m"
+          ],
+          "kind": "regression",
+          "target_npz_key": "y_distance_m"
+        },
+        "yaw": {
+          "columns": [
+            "yaw_sin",
+            "yaw_cos"
+          ],
+          "debug_columns": [
+            "yaw_deg"
+          ],
+          "debug_target_npz_key": "y_yaw_deg",
+          "kind": "circular_regression",
+          "target_npz_keys": [
+            "y_yaw_sin",
+            "y_yaw_cos"
+          ]
+        }
+      },
+      "task_family": "multitask_regression"
+    },
+    "topology_id": "distance_regressor_tri_stream_yaw",
+    "topology_metadata": {
+      "display_name": "Distance Regressor Tri Stream + Yaw",
+      "note": "Distance plus yaw multitask topology with distance image, orientation image, and geometry streams.",
+      "replacement": "",
+      "status": "experimental"
+    },
+    "topology_params": {
+      "dropout_p": 0.0
+    },
+    "topology_variant": "tri_stream_yaw_v0_1"
+  },
+  "orientation_loss_weight": 1.0,
+  "output_root": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/models",
+  "output_root_resolved": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/models",
+  "padding_mode": "disabled",
+  "position_loss_weight": 1.0,
+  "progress_log_interval_batches": 250,
+  "repo_root": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0",
+  "resume_from_run_dir": null,
+  "resume_from_run_dir_resolved": null,
+  "resume_from_run_id": null,
+  "run_id": "run_0001",
+  "run_name_suffix": null,
+  "seed": 42,
+  "target_height": 300,
+  "target_width": 300,
+  "task_contract": {
+    "debug_target_columns": [
+      "yaw_deg"
+    ],
+    "heads": {
+      "distance": {
+        "loss_role": "distance",
+        "metrics_role": "distance",
+        "output_key": "distance_m",
+        "target_columns": [
+          "distance_m"
+        ],
+        "target_kind": "regression",
+        "target_npz_key": "y_distance_m"
+      },
+      "orientation": {
+        "debug_target_columns": [
+          "yaw_deg"
+        ],
+        "debug_target_npz_key": "y_yaw_deg",
+        "loss_role": "orientation",
+        "metrics_role": "orientation",
+        "output_key": "yaw_sin_cos",
+        "target_columns": [
+          "yaw_sin",
+          "yaw_cos"
+        ],
+        "target_kind": "circular_regression",
+        "target_npz_keys": [
+          "y_yaw_sin",
+          "y_yaw_cos"
+        ]
+      }
+    },
+    "input_mode": "tri_stream_distance_orientation_geometry",
+    "output_kind": "mapping",
+    "prediction_mode": "distance_yaw_sincos",
+    "reporting": {
+      "family": "distance_orientation_multitask",
+      "orientation_accuracy_thresholds_deg": [
+        5.0,
+        10.0,
+        15.0
+      ],
+      "train_losses": [
+        "total_loss",
+        "distance_loss",
+        "orientation_loss"
+      ],
+      "validation_metrics": [
+        "yaw_mean_error_deg",
+        "yaw_median_error_deg",
+        "yaw_p95_error_deg",
+        "yaw_acc@5deg",
+        "yaw_acc@10deg",
+        "yaw_acc@15deg"
+      ]
+    },
+    "target_columns": [
+      "distance_m",
+      "yaw_sin",
+      "yaw_cos"
+    ],
+    "task_family": "multitask_regression"
+  },
+  "task_contract_signature": "8af91d55f29788bd31153641940107e8d9a156a940bdd9b88d646406f34509fe",
+  "topology_contract": {
+    "contract_version": "rb-topology-output-reporting-v1",
+    "outputs": {
+      "distance": {
+        "columns": [
+          "distance_m"
+        ],
+        "kind": "regression",
+        "output_key": "distance_m"
+      },
+      "yaw": {
+        "columns": [
+          "yaw_sin",
+          "yaw_cos"
+        ],
+        "kind": "circular_regression",
+        "output_key": "yaw_sin_cos"
+      }
+    },
+    "reporting": {
+      "family": "distance_orientation_multitask",
+      "orientation_accuracy_thresholds_deg": [
+        5.0,
+        10.0,
+        15.0
+      ],
+      "train_losses": [
+        "total_loss",
+        "distance_loss",
+        "orientation_loss"
+      ],
+      "validation_metrics": [
+        "yaw_mean_error_deg",
+        "yaw_median_error_deg",
+        "yaw_p95_error_deg",
+        "yaw_acc@5deg",
+        "yaw_acc@10deg",
+        "yaw_acc@15deg"
+      ]
+    },
+    "runtime": {
+      "heads": {
+        "distance": {
+          "loss_role": "distance",
+          "metrics_role": "distance",
+          "output": "distance",
+          "target": "distance"
+        },
+        "orientation": {
+          "loss_role": "orientation",
+          "metrics_role": "orientation",
+          "output": "yaw",
+          "target": "yaw"
+        }
+      },
+      "input_mode": "tri_stream_distance_orientation_geometry",
+      "output_kind": "mapping",
+      "prediction_mode": "distance_yaw_sincos"
+    },
+    "targets": {
+      "distance": {
+        "columns": [
+          "distance_m"
+        ],
+        "kind": "regression",
+        "target_npz_key": "y_distance_m"
+      },
+      "yaw": {
+        "columns": [
+          "yaw_sin",
+          "yaw_cos"
+        ],
+        "debug_columns": [
+          "yaw_deg"
+        ],
+        "debug_target_npz_key": "y_yaw_deg",
+        "kind": "circular_regression",
+        "target_npz_keys": [
+          "y_yaw_sin",
+          "y_yaw_cos"
+        ]
+      }
+    },
+    "task_family": "multitask_regression"
+  },
+  "topology_contract_signature": "14fc985ca8b2364ae54f82c30e5e82b570883ac01a63efe39924de6a5c1f9702",
+  "topology_id": "distance_regressor_tri_stream_yaw",
+  "topology_params": {
+    "dropout_p": 0.0
+  },
+  "topology_signature": "5bdd97ae016f39582760854678882a6d35f13c1ede46f316e1986cabe73bbcde",
+  "topology_variant": "tri_stream_yaw_v0_1",
+  "train_active_shard_count": 3,
+  "train_cache_budget_gb": 48.0,
+  "train_shuffle_mode": "shard",
+  "training_data_root": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data",
+  "training_data_root_resolved": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data",
+  "validation_cache_budget_gb": 40.0,
+  "validation_data_root": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream",
+  "validation_data_root_resolved": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream",
+  "weight_decay": 1e-05
+}

@@ -1,0 +1,11 @@
+{
+  "loss_mse": 0.003786287994366139,
+  "mean_center_error_px": 3.140146017074585,
+  "median_center_error_px": 2.4185261726379395,
+  "p95_center_error_px": 7.448360919952393,
+  "roi_full_containment_evaluable_count": 100000,
+  "roi_full_containment_missing_bbox_count": 0,
+  "roi_full_containment_success_rate": 0.99024,
+  "sample_count": 100000,
+  "split_name": "train"
+}

@@ -1,0 +1,95 @@
+{
+  "additional_epochs": 6,
+  "batch_size": 16,
+  "datasets_root": "datasets",
+  "device": "cuda",
+  "early_stopping_patience": 4,
+  "entrypoint_path": "src/roi_fcn_training_v0_1/train.py",
+  "entrypoint_type": "python",
+  "environment": {
+    "cuda_version": "12.1",
+    "cwd": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/src",
+    "device": "cuda",
+    "matplotlib_version": "3.10.8",
+    "numpy_version": "2.4.4",
+    "pandas_version": "3.0.1",
+    "pid": 21297,
+    "python_version": "3.12.3",
+    "torch_version": "2.5.1+cu121"
+  },
+  "epochs": 16,
+  "evaluation_max_visual_examples": 12,
+  "gaussian_sigma_px": 2.5,
+  "git": {
+    "dirty_worktree": true,
+    "git_branch": "master",
+    "git_commit": "990ad6b5468f6c729aa44cbf1b7a88cf1531548f"
+  },
+  "heatmap_loss_name": "balanced_mse_heatmap",
+  "heatmap_positive_threshold": 0.05,
+  "learning_rate": 0.001,
+  "model_directory": "260420-1219_roi-fcn-tiny",
+  "model_name": "roi-fcn-tiny",
+  "models_root": "models",
+  "output_hw": {
+    "height": 300,
+    "width": 480
+  },
+  "progress_log_interval_steps": 100,
+  "resume": {
+    "additional_epochs": 6,
+    "enabled": true,
+    "source_run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0002",
+    "source_run_id": "run_0002",
+    "start_epoch": 11,
+    "total_target_epochs": 16
+  },
+  "resume_from_run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0002",
+  "resume_from_run_dir_resolved": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0002",
+  "resume_from_run_id": "run_0002",
+  "roi_height_px": 300,
+  "roi_width_px": 300,
+  "run_id": "run_0003",
+  "run_name_suffix": null,
+  "seed": 42,
+  "started_at_utc": "2026-04-20T12:40:34+00:00",
+  "topology_contract": {
+    "contract_version": "rb-roi-fcn-topology-v0_1",
+    "family": "tiny_fcn_centre_localiser",
+    "input": {
+      "channels": 1,
+      "kind": "full_frame_locator_canvas",
+      "layout": "N,C,H,W"
+    },
+    "loss": {
+      "name": "mse_heatmap",
+      "target": "gaussian_heatmap_from_canvas_center"
+    },
+    "non_goals": [
+      "bbox_regression",
+      "classification",
+      "orientation_regression",
+      "segmentation",
+      "multi_object_support"
+    ],
+    "output": {
+      "channels": 1,
+      "coordinate_owner": "validated_output_shape_from_forward_pass",
+      "decode": "argmax",
+      "kind": "center_likelihood_heatmap"
+    },
+    "topology_id": "roi_fcn_tiny",
+    "topology_variant": "tiny_v1"
+  },
+  "topology_contract_signature": "0af211afa86afb2d70e22d04b80e369892edb02e5c17452d22c6f5c6ca7809c1",
+  "topology_id": "roi_fcn_tiny",
+  "topology_params": {},
+  "topology_spec_signature": "44d36eff764a6d026eaedde8322e4b29c8b2cd53a9b5bb4766f7678bb1c9af35",
+  "topology_variant": "tiny_v1",
+  "train_run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003",
+  "train_run_dir_relative": "04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003",
+  "training_contract_version": "rb-roi-fcn-training-v0_1",
+  "training_dataset": "linux_def90_synth_v25-shuffled",
+  "validation_dataset": "linux_def90_synth_v25-shuffled",
+  "weight_decay": 1e-05
+}
