@@ -26,7 +26,11 @@ from interfaces import (  # noqa: E402
     WorkerName,
     FrameFailureStage,
 )
-from live_inference.inspection import InferenceTraceRecorder  # noqa: E402
+from live_inference.inspection import (  # noqa: E402
+    DEFAULT_TRACE_OUTPUT_DIR,
+    InferenceTraceRecorder,
+    default_trace_output_dir,
+)
 
 
 CREATED_AT = "2026-05-10T10:30:12Z"
@@ -89,6 +93,11 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             self.assertEqual(manifest["orientation_source_mode"], "raw_grayscale")
             self.assertEqual(manifest["mask_revision"], 7)
             self.assertEqual(manifest["background_revision"], 11)
+            self.assertEqual(manifest["app_project_name"], "06_live-inference_v0.2")
+            self.assertEqual(manifest["app_root_path"], str(PROJECT_ROOT))
+            self.assertIn("argv", manifest)
+            self.assertIn("python_executable", manifest)
+            self.assertTrue(manifest["distance_orientation_regressor_reached"])
 
     def test_directory_name_includes_request_id_and_hash_prefix(self) -> None:
         with TemporaryDirectory() as tmp_dir:
@@ -206,6 +215,10 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             self.assertEqual((trace_dir / "final_locator_input.png").read_bytes(), b"locator")
             manifest = json.loads((trace_dir / "trace_manifest.json").read_text())
             self.assertEqual(manifest["locator_input_mode"], "sheet_dark_foreground")
+            self.assertEqual(
+                manifest["stage_policy_snapshot"]["roi_locator_input_mode"],
+                "sheet_dark_foreground",
+            )
             self.assertEqual(manifest["locator_input_parameters"]["sheet_min_gray"], 201)
             self.assertEqual(manifest["locator_input_parameters"]["target_max_gray"], 111)
             self.assertEqual(
@@ -221,6 +234,15 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             self.assertTrue(manifest["background_removal_applied_to_roi_locator"])
             self.assertEqual(manifest["background_threshold"], 17)
             self.assertEqual(manifest["fill_value"], 255)
+            self.assertEqual(
+                manifest["ui_state_snapshot"]["roi_locator_input_mode_dropdown"],
+                "sheet_dark_foreground",
+            )
+            self.assertIsNone(
+                manifest["ui_state_snapshot"][
+                    "invert_roi_locator_input_checkbox_checked"
+                ]
+            )
 
     def test_failure_trace_uses_preprocessing_metadata_from_worker_error(self) -> None:
         with TemporaryDirectory() as tmp_dir:
@@ -342,6 +364,162 @@ class InferenceTraceRecorderTests(unittest.TestCase):
             manifest = json.loads((trace_dir / "trace_manifest.json").read_text())
             self.assertEqual(manifest["roi_locator_input_polarity"], "inverted")
             self.assertEqual(manifest["roi_clip_tolerance_px"], 10)
+
+    def test_default_trace_root_is_derived_from_v02_project_root(self) -> None:
+        self.assertEqual(default_trace_output_dir(PROJECT_ROOT), PROJECT_ROOT / "live_traces")
+        self.assertEqual(DEFAULT_TRACE_OUTPUT_DIR, PROJECT_ROOT / "live_traces")
+        self.assertNotIn("06_live-inference_v0.1", str(DEFAULT_TRACE_OUTPUT_DIR))
+
+    def test_manifest_records_provenance_paths_and_checkpoint_hashes(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir)
+            distance_checkpoint = base_dir / "distance.pt"
+            roi_checkpoint = base_dir / "roi.pt"
+            distance_checkpoint.write_bytes(b"distance checkpoint")
+            roi_checkpoint.write_bytes(b"roi checkpoint")
+            recorder = InferenceTraceRecorder(
+                output_dir=base_dir / "traces",
+                context_metadata={
+                    "app_root_path": str(PROJECT_ROOT),
+                    "model_selection_path": str(PROJECT_ROOT / "models/selections/current.toml"),
+                    "distance_orientation_root": str(PROJECT_ROOT / "models/distance-orientation/test"),
+                    "roi_fcn_root": str(PROJECT_ROOT / "models/roi-fcn/test"),
+                    "distance_orientation_checkpoint_path": str(distance_checkpoint),
+                    "roi_fcn_checkpoint_path": str(roi_checkpoint),
+                    "trace_root_overridden": True,
+                },
+            )
+            request = _request()
+            trace_dir = recorder.create_trace_directory(
+                request_id=request.request_id,
+                frame_hash=request.frame.frame_hash,
+                created_at_utc=CREATED_AT,
+            )
+
+            recorder.record_trace(
+                trace_dir=trace_dir,
+                image_bytes=b"raw",
+                request=request,
+                prepared_inputs=_prepared_inputs(
+                    extra_metadata={
+                        "diagnostic_profile_name": "baseline_inverted_masked_locator",
+                        "roi_locator_input_mode": "inverted",
+                        "apply_manual_mask_to_roi_locator": True,
+                        "apply_manual_mask_to_regressor_preprocessing": True,
+                        "apply_background_removal_to_roi_locator": False,
+                        "apply_background_removal_to_regressor_preprocessing": False,
+                        "frame_mask_pixel_count": 5,
+                        "frame_mask_fill_value": 255,
+                        "background_captured": True,
+                        "background_removal_enabled": False,
+                        "distance_orientation_regressor_reached": True,
+                    }
+                ),
+                result=_result(),
+                created_at_utc=CREATED_AT,
+            )
+
+            manifest_text = (trace_dir / "trace_manifest.json").read_text()
+            manifest = json.loads(manifest_text)
+            self.assertEqual(manifest["app_root_path"], str(PROJECT_ROOT))
+            self.assertEqual(manifest["trace_root_path"], str(base_dir / "traces"))
+            self.assertTrue(manifest["trace_root_overridden"])
+            self.assertEqual(
+                manifest["diagnostic_profile_name"],
+                "baseline_inverted_masked_locator",
+            )
+            self.assertEqual(
+                manifest["stage_policy_snapshot"][
+                    "apply_manual_mask_to_roi_locator"
+                ],
+                True,
+            )
+            self.assertEqual(
+                manifest["ui_state_snapshot"]["mask_pixel_count"],
+                5,
+            )
+            self.assertEqual(
+                manifest["checkpoint_paths"]["distance_orientation"],
+                str(distance_checkpoint),
+            )
+            self.assertIsNotNone(
+                manifest["checkpoint_file_hashes"]["distance_orientation"]["value"]
+            )
+            self.assertIn("command_line", manifest)
+            self.assertNotIn("06_live-inference_v0.1", manifest_text)
+
+    def test_failure_manifest_preserves_foreground_and_locator_stats(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir)
+            recorder = InferenceTraceRecorder(output_dir=base_dir / "traces")
+            request = _request()
+            metadata = _prepared_inputs(
+                extra_metadata={
+                    "roi_locator_input_mode": "inverted",
+                    contracts.PREPROCESSING_METADATA_ROI_CONFIDENCE: 0.9,
+                    "roi_center_source_xy_px": (240.0, 150.0),
+                    contracts.PREPROCESSING_METADATA_ROI_REQUEST_XYXY_PX: (
+                        90.0,
+                        0.0,
+                        390.0,
+                        300.0,
+                    ),
+                    contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX: (
+                        90.0,
+                        0.0,
+                        390.0,
+                        300.0,
+                    ),
+                    contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: True,
+                    "foreground_mask_empty": True,
+                    "foreground_pixel_count": 0,
+                    "distance_orientation_regressor_reached": False,
+                    "final_locator_input_stats": {
+                        "min": 0,
+                        "max": 255,
+                        "mean": 12.5,
+                        "median": 0.0,
+                        "nonzero_pixel_count": 12,
+                        "non_whiteish_pixel_count": 140000,
+                    },
+                    "final_locator_input_nonzero_pixel_count": 12,
+                },
+            ).preprocessing_metadata
+            error = WorkerError(
+                worker_name=WorkerName.INFERENCE,
+                error_type="preprocess_failed",
+                message="empty foreground",
+                recoverable=True,
+                timestamp_utc=CREATED_AT,
+                failure_stage=FrameFailureStage.PREPROCESS,
+                details={"preprocessing_metadata": metadata},
+            )
+            trace_dir = recorder.create_trace_directory(
+                request_id=request.request_id,
+                frame_hash=request.frame.frame_hash,
+                created_at_utc=CREATED_AT,
+            )
+
+            recorder.record_trace(
+                trace_dir=trace_dir,
+                image_bytes=b"raw",
+                request=request,
+                prepared_inputs=None,
+                result=None,
+                error=error,
+                created_at_utc=CREATED_AT,
+            )
+
+            manifest = json.loads((trace_dir / "trace_manifest.json").read_text())
+            self.assertEqual(manifest["foreground_pixel_count"], 0)
+            self.assertTrue(manifest["foreground_mask_empty"])
+            self.assertEqual(
+                manifest["final_locator_input_stats"]["nonzero_pixel_count"],
+                12,
+            )
+            self.assertFalse(manifest["distance_orientation_regressor_reached"])
+            roi_metadata = json.loads((trace_dir / "roi_fcn_metadata.json").read_text())
+            self.assertEqual(roi_metadata["foreground_pixel_count"], 0)
 
 
 def _request() -> InferenceRequest:

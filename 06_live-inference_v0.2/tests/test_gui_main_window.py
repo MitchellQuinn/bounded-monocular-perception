@@ -164,6 +164,15 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             self.window.findChild(QComboBox, "roi_locator_input_mode_dropdown")
         )
         self.assertIsNotNone(
+            self.window.findChild(
+                QPushButton,
+                "apply_baseline_diagnostic_profile_button",
+            )
+        )
+        self.assertIsNotNone(
+            self.window.findChild(QLabel, "effective_stage_policy_value")
+        )
+        self.assertIsNotNone(
             self.window.findChild(QSpinBox, "sheet_min_gray_input")
         )
         self.assertIsNotNone(
@@ -255,6 +264,63 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
 
         snapshot = self.window.stage_policy_state.get_snapshot()
         self.assertEqual(snapshot.roi_locator_input_mode, "sheet_dark_foreground")
+        self.assertFalse(invert.isEnabled())
+        self.assertFalse(invert.isChecked())
+
+        invert.setChecked(True)
+        _process_events(self.app)
+
+        snapshot = self.window.stage_policy_state.get_snapshot()
+        self.assertEqual(snapshot.roi_locator_input_mode, "sheet_dark_foreground")
+        self.assertFalse(invert.isChecked())
+
+    def test_baseline_profile_button_updates_shared_state_and_controls(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QPushButton
+
+        button = self.window.findChild(
+            QPushButton,
+            "apply_baseline_diagnostic_profile_button",
+        )
+        mode = self.window.findChild(QComboBox, "roi_locator_input_mode_dropdown")
+        invert = self.window.findChild(
+            QCheckBox,
+            "invert_roi_locator_input_checkbox",
+        )
+        manual_locator = self.window.findChild(
+            QCheckBox,
+            "apply_manual_mask_to_roi_locator_checkbox",
+        )
+        background_locator = self.window.findChild(
+            QCheckBox,
+            "apply_background_removal_to_roi_locator_checkbox",
+        )
+        effective = self.window.findChild(QLabel, "effective_stage_policy_value")
+        assert button is not None
+        assert mode is not None
+        assert invert is not None
+        assert manual_locator is not None
+        assert background_locator is not None
+        assert effective is not None
+
+        button.click()
+        _process_events(self.app)
+
+        snapshot = self.window.stage_policy_state.get_snapshot()
+        self.assertEqual(snapshot.roi_locator_input_mode, "inverted")
+        self.assertTrue(snapshot.apply_manual_mask_to_roi_locator)
+        self.assertTrue(snapshot.apply_manual_mask_to_regressor_preprocessing)
+        self.assertFalse(snapshot.apply_background_removal_to_roi_locator)
+        self.assertFalse(snapshot.apply_background_removal_to_regressor_preprocessing)
+        self.assertEqual(
+            snapshot.diagnostic_profile_name,
+            "baseline_inverted_masked_locator",
+        )
+        self.assertEqual(mode.currentData(), "inverted")
+        self.assertTrue(invert.isEnabled())
+        self.assertTrue(invert.isChecked())
+        self.assertTrue(manual_locator.isChecked())
+        self.assertFalse(background_locator.isChecked())
+        self.assertIn("baseline_inverted_masked_locator", effective.text())
 
     def test_roi_locator_threshold_controls_update_shared_state(self) -> None:
         from PySide6.QtWidgets import QSpinBox
