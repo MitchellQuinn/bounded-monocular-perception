@@ -7,78 +7,93 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: Badge_Mat1
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: BlackHole_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: BodyColour_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: BoxGrille_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Defender_CarpetShortBlack_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Defender_Shared_Chrome_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Defender_Shared_ExhaustSteelSatin_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Defender_Shared_LeatherSatinBlack_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Defender_Shared_LeatherSmoothBlack_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Glass_Y_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: HeadlightsGlass_Mat1
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: PaintSatinBlack_Y_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: PlasticRoughBlack_Y_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: PlasticSmoothBlack_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Roof_Color
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Rubber_Y_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 857f65a162a05d0448f158e9ca104722, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: TyreCover_Y_Mat1
+    second: {fileID: 2100000, guid: 12c380f6b8b71664f9234a31dafec65b, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: wheel_Wheel_Customisable_A_Mat1
-    second: {fileID: 2100000, guid: 32c0a0152088c4d4cb0394f10abe50c4, type: 2}
+    second: {fileID: 2100000, guid: 12c380f6b8b71664f9234a31dafec65b, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
