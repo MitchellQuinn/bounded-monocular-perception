@@ -14,12 +14,14 @@ import pandas as pd
 from rb_pipeline_v4.config import (
     BrightnessNormalizationConfigV4,
     DetectStageConfigV4,
+    ForegroundEnhancementConfigV4,
     PackDualStreamStageConfigV4,
     PackTriStreamStageConfigV4,
     SilhouetteStageConfigV4,
 )
 from rb_pipeline_v4.contracts import Detection
 from rb_pipeline_v4.detect_stage import run_detect_stage_v4
+from rb_pipeline_v4.detector import EdgeRoiDetector
 from rb_pipeline_v4.manifest import load_samples_csv, samples_csv_path
 from rb_pipeline_v4.pack_dual_stream_stage import run_pack_dual_stream_stage_v4
 from rb_pipeline_v4.pack_tri_stream_stage import run_pack_tri_stream_stage_v4
@@ -69,6 +71,34 @@ class _LargeFakeDetector:
 
 
 class V4PipelineIntegrationTests(unittest.TestCase):
+    def test_edge_detector_can_ignore_frame_border_artifacts(self) -> None:
+        image = np.full((120, 160, 3), 255, dtype=np.uint8)
+        cv2.rectangle(image, (55, 45), (105, 75), (0, 0, 0), -1)
+        cv2.rectangle(image, (0, 0), (4, 119), (0, 0, 0), -1)
+
+        detector_kwargs = {
+            "blur_kernel_size": 1,
+            "canny_low_threshold": 10,
+            "canny_high_threshold": 30,
+            "foreground_threshold": 250,
+            "padding_px": 0,
+            "min_foreground_px": 1,
+            "close_kernel_size": 1,
+        }
+        baseline = EdgeRoiDetector(**detector_kwargs, ignore_border_px=0).detect(image)
+        filtered = EdgeRoiDetector(**detector_kwargs, ignore_border_px=8).detect(image)
+
+        self.assertEqual(len(baseline), 1)
+        self.assertEqual(len(filtered), 1)
+        baseline_bbox = baseline[0]
+        filtered_bbox = filtered[0]
+
+        self.assertEqual(baseline_bbox.x1, 0.0)
+        self.assertGreater(baseline_bbox.y2 - baseline_bbox.y1, 100.0)
+        self.assertGreater(filtered_bbox.x1, 40.0)
+        self.assertLess(filtered_bbox.x2, 120.0)
+        self.assertLess(filtered_bbox.y2 - filtered_bbox.y1, 50.0)
+
     def test_v4_detect_silhouette_pack_flow(self) -> None:
         with TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -405,6 +435,93 @@ class V4PipelineIntegrationTests(unittest.TestCase):
 
             self.assertFalse(np.allclose(base_distance, norm_distance))
             np.testing.assert_array_equal(base_orientation, norm_orientation)
+
+    def test_pack_tri_stream_raw_grayscale_foreground_enhancement_changes_both_images(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_raw_enhanced"
+            self._make_fixture(project_root, run_name)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            base_summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=0,
+                    overwrite=True,
+                    image_representation_mode="raw_grayscale_on_white",
+                ),
+            )
+            self.assertEqual(base_summary.successful_rows, 2)
+            output_root = project_root / "training-data-v4-tri-stream" / run_name
+            with np.load(output_root / f"{run_name}.npz", allow_pickle=False) as payload:
+                base_distance = payload["x_distance_image"].copy()
+                base_orientation = payload["x_orientation_image"].copy()
+
+            target_darkness = 0.75
+            enhanced_summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=0,
+                    overwrite=True,
+                    image_representation_mode="raw_grayscale_on_white",
+                    foreground_enhancement=ForegroundEnhancementConfigV4(
+                        enabled=True,
+                        method="masked_median_darkness_gain",
+                        target_median_darkness=target_darkness,
+                        min_gain=1.0,
+                        max_gain=10.0,
+                    ),
+                ),
+            )
+            self.assertEqual(enhanced_summary.successful_rows, 2)
+
+            output_samples = load_samples_csv(samples_csv_path(output_root / "manifests"))
+            self.assertTrue((output_samples["foreground_enhancement_status"] == "success").all())
+            run_manifest = json.loads((output_root / "manifests" / "run.json").read_text(encoding="utf-8"))
+            contract = run_manifest["PreprocessingContract"]
+            stage_contract = contract["Stages"]["pack_tri_stream"]
+            self.assertEqual(
+                contract["ContractVersion"],
+                "rb-preprocess-v4-tri-stream-grayscale-white-v1",
+            )
+            self.assertEqual(stage_contract["ImageRepresentationMode"], "roi_raw_grayscale_vehicle_on_white")
+            self.assertTrue(stage_contract["ForegroundEnhancement"]["Enabled"])
+            self.assertIn(
+                "foreground_enhanced",
+                contract["CurrentRepresentation"]["OrientationImageContent"],
+            )
+
+            with np.load(output_root / f"{run_name}.npz", allow_pickle=False) as payload:
+                enhanced_distance = payload["x_distance_image"]
+                enhanced_orientation = payload["x_orientation_image"]
+
+            self.assertFalse(np.allclose(base_distance, enhanced_distance))
+            self.assertFalse(np.allclose(base_orientation, enhanced_orientation))
+            foreground = enhanced_distance < 0.999
+            self.assertTrue(bool(np.any(foreground)))
+            median_darkness = float(np.median((1.0 - enhanced_distance)[foreground]))
+            self.assertAlmostEqual(median_darkness, target_darkness, places=5)
 
     def test_pack_tri_stream_orientation_uses_inverted_white_background(self) -> None:
         with TemporaryDirectory() as tmpdir:

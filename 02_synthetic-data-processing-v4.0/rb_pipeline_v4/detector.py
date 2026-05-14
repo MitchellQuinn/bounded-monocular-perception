@@ -137,6 +137,7 @@ class EdgeRoiDetector(ObjectDetector):
         padding_px: int,
         min_foreground_px: int,
         close_kernel_size: int,
+        ignore_border_px: int = 0,
         class_id: int = 0,
         class_name: str = "defender",
     ) -> None:
@@ -147,6 +148,7 @@ class EdgeRoiDetector(ObjectDetector):
         self.padding_px = max(0, int(padding_px))
         self.min_foreground_px = max(1, int(min_foreground_px))
         self.close_kernel_size = max(1, int(close_kernel_size))
+        self.ignore_border_px = max(0, int(ignore_border_px))
         self.class_id = int(class_id)
         self.class_name = str(class_name).strip() or "defender"
 
@@ -160,6 +162,7 @@ class EdgeRoiDetector(ObjectDetector):
         if self.close_kernel_size > 1:
             close_kernel = np.ones((self.close_kernel_size, self.close_kernel_size), dtype=np.uint8)
             edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, close_kernel)
+        _zero_edge_border(edges, self.ignore_border_px)
 
         edge_black_on_white = np.full(gray.shape, 255, dtype=np.uint8)
         edge_black_on_white[edges > 0] = 0
@@ -233,3 +236,23 @@ def _clamp_interval_by_size(start: int, size: int, *, limit: int) -> tuple[int, 
         e = total
         s = max(0, total - extent)
     return s, e
+
+
+def _zero_edge_border(edges: np.ndarray, ignore_border_px: int) -> None:
+    margin = max(0, int(ignore_border_px))
+    if margin <= 0:
+        return
+    if edges.ndim != 2:
+        raise ValueError(f"Expected 2D edge image, got {edges.shape}")
+
+    height, width = int(edges.shape[0]), int(edges.shape[1])
+    if height <= 0 or width <= 0:
+        return
+    if (margin * 2) >= height or (margin * 2) >= width:
+        edges[:, :] = 0
+        return
+
+    edges[:margin, :] = 0
+    edges[-margin:, :] = 0
+    edges[:, :margin] = 0
+    edges[:, -margin:] = 0

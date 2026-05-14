@@ -62,10 +62,10 @@ def check_live_model_compatibility(
         expected=contracts.TRI_STREAM_INPUT_MODE,
         actual=manifest.input_mode,
     )
-    _require_equal(
+    _require_one_of(
         issues,
         field="preprocessing_contract_name",
-        expected=contracts.PREPROCESSING_CONTRACT_NAME,
+        expected=contracts.SUPPORTED_TRI_STREAM_PREPROCESSING_CONTRACT_NAMES,
         actual=manifest.preprocessing_contract_name,
     )
     _require_equal(
@@ -233,6 +233,34 @@ def _require_equal(
             expected=expected,
             actual=actual,
             message=f"{field} must be {expected!r}; got {actual!r}.",
+        )
+
+
+def _require_one_of(
+    issues: list[CompatibilityIssue],
+    *,
+    field: str,
+    expected: tuple[Any, ...],
+    actual: Any,
+) -> None:
+    if _is_missing(actual):
+        _add_issue(
+            issues,
+            code=f"missing_{field}",
+            field=field,
+            expected=expected,
+            actual=actual,
+            message=f"Missing required manifest field {field}.",
+        )
+        return
+    if actual not in expected:
+        _add_issue(
+            issues,
+            code=f"{field}_mismatch",
+            field=field,
+            expected=expected,
+            actual=actual,
+            message=f"{field} must be one of {expected!r}; got {actual!r}.",
         )
 
 

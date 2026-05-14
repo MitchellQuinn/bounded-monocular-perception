@@ -817,6 +817,79 @@ class TriStreamLivePreprocessorTests(unittest.TestCase):
         self.assertIn("Status", brightness)
         self.assertGreater(brightness["ForegroundPixelCount"], 0)
 
+    def test_raw_grayscale_on_white_distance_renderer_is_manifest_driven(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        request = _request(image_bytes)
+        raw_prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(
+                ORIENTATION_SOURCE_RAW_GRAYSCALE,
+                image_representation_mode="raw_grayscale_on_white",
+            ),
+            roi_locator=FakeRoiLocator(),
+        ).prepare_model_inputs(request, image_bytes)
+        inverted_prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(
+                ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+                image_representation_mode="inverted_vehicle_on_white",
+            ),
+            roi_locator=FakeRoiLocator(),
+        ).prepare_model_inputs(request, image_bytes)
+
+        raw_distance = raw_prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
+        inverted_distance = inverted_prepared.model_inputs[
+            contracts.TRI_STREAM_DISTANCE_IMAGE_KEY
+        ][0]
+
+        self.assertEqual(
+            raw_prepared.preprocessing_metadata["image_representation_mode"],
+            "raw_grayscale_on_white",
+        )
+        self.assertLess(float(raw_distance[120, 120]), 0.25)
+        self.assertGreater(float(inverted_distance[120, 120]), 0.75)
+
+    def test_foreground_enhancement_is_applied_to_live_raw_grayscale_inputs(self) -> None:
+        image_bytes = _light_fixture_image_bytes()
+        request = _request(image_bytes)
+        base_prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(
+                ORIENTATION_SOURCE_RAW_GRAYSCALE,
+                image_representation_mode="raw_grayscale_on_white",
+            ),
+            roi_locator=FakeRoiLocator(),
+        ).prepare_model_inputs(request, image_bytes)
+        enhanced_prepared = TriStreamLivePreprocessor(
+            model_manifest=_fixture_manifest(
+                ORIENTATION_SOURCE_RAW_GRAYSCALE,
+                image_representation_mode="raw_grayscale_on_white",
+                foreground_enhancement=True,
+            ),
+            roi_locator=FakeRoiLocator(),
+        ).prepare_model_inputs(request, image_bytes)
+
+        base_distance = base_prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
+        enhanced_distance = enhanced_prepared.model_inputs[
+            contracts.TRI_STREAM_DISTANCE_IMAGE_KEY
+        ][0]
+        base_orientation = base_prepared.model_inputs[contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY][0]
+        enhanced_orientation = enhanced_prepared.model_inputs[
+            contracts.TRI_STREAM_ORIENTATION_IMAGE_KEY
+        ][0]
+        foreground = base_distance < 0.999
+
+        self.assertEqual(
+            enhanced_prepared.preprocessing_metadata["foreground_enhancement"]["Status"],
+            "success",
+        )
+        self.assertGreater(
+            enhanced_prepared.preprocessing_metadata["foreground_enhancement"]["Gain"],
+            1.0,
+        )
+        self.assertLess(float(np.mean(enhanced_distance[foreground])), float(np.mean(base_distance[foreground])))
+        self.assertLess(
+            float(np.mean(enhanced_orientation[enhanced_orientation < 0.999])),
+            float(np.mean(base_orientation[base_orientation < 0.999])),
+        )
+
     def test_orientation_source_modes_use_distinct_source_images(self) -> None:
         image_bytes = _fixture_image_bytes()
         request = _request(image_bytes)
@@ -1100,6 +1173,16 @@ def _fixture_image_bytes() -> bytes:
     return encoded.tobytes()
 
 
+def _light_fixture_image_bytes() -> bytes:
+    image = np.full((300, 480), 255, dtype=np.uint8)
+    cv2.rectangle(image, (210, 115), (270, 185), 180, -1)
+    cv2.line(image, (220, 130), (260, 170), 200, 5)
+    ok, encoded = cv2.imencode(".png", image)
+    if not ok:
+        raise RuntimeError("Failed to encode light fixture image")
+    return encoded.tobytes()
+
+
 def _decode_gray(image_bytes: bytes) -> np.ndarray:
     decoded = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
     if decoded is None:
@@ -1153,7 +1236,12 @@ def _current_or_fixture_inverted_manifest() -> object:
     return _fixture_manifest(ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE)
 
 
-def _fixture_manifest(orientation_source_mode: str) -> object:
+def _fixture_manifest(
+    orientation_source_mode: str,
+    *,
+    image_representation_mode: str = "inverted_vehicle_on_white",
+    foreground_enhancement: bool = False,
+) -> object:
     temp_dir = TemporaryDirectory()
     _TEMP_DIRS.append(temp_dir)
     root = Path(temp_dir.name) / "model-run"
@@ -1161,7 +1249,13 @@ def _fixture_manifest(orientation_source_mode: str) -> object:
     _write_json(root / "config.json", _model_config())
     _write_json(
         root / "dataset_summary.json",
-        {"preprocessing_contract": _preprocessing_contract(orientation_source_mode)},
+        {
+            "preprocessing_contract": _preprocessing_contract(
+                orientation_source_mode,
+                image_representation_mode=image_representation_mode,
+                foreground_enhancement=foreground_enhancement,
+            )
+        },
     )
     return load_live_model_manifest(root)
 
@@ -1199,26 +1293,76 @@ def _model_config() -> dict[str, object]:
     }
 
 
-def _orientation_semantics(orientation_source_mode: str) -> dict[str, str | None]:
+def _orientation_semantics(
+    orientation_source_mode: str,
+    *,
+    image_representation_mode: str,
+    foreground_enhancement: bool,
+) -> dict[str, str | None]:
+    suffix = "_foreground_enhanced" if foreground_enhancement else ""
+    prefix = "foreground_enhanced_" if foreground_enhancement else ""
     if orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE:
+        content = (
+            f"{prefix}raw_grayscale_detail_on_white_no_brightness_normalization"
+            if image_representation_mode == "raw_grayscale_on_white"
+            else "raw_grayscale_detail_preserving_no_brightness_normalization"
+        )
         return {
-            "representation": "target_centered_raw_grayscale_scaled_by_silhouette_extent",
-            "content": "raw_grayscale_detail_preserving_no_brightness_normalization",
-            "polarity": None,
+            "representation": f"target_centered_raw_grayscale_scaled_by_silhouette_extent{suffix}",
+            "content": content,
+            "polarity": (
+                "source_grayscale_vehicle_detail_on_white_background"
+                if image_representation_mode == "raw_grayscale_on_white"
+                else None
+            ),
         }
     if orientation_source_mode == ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE:
         return {
             "representation": (
                 "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent"
+                f"{suffix}"
             ),
-            "content": "inverted_vehicle_detail_on_white_no_brightness_normalization",
+            "content": f"{prefix}inverted_vehicle_detail_on_white_no_brightness_normalization",
             "polarity": "dark_vehicle_detail_on_white_background",
         }
     raise ValueError(f"Unsupported test orientation source mode: {orientation_source_mode}")
 
 
-def _preprocessing_contract(orientation_source_mode: str) -> dict[str, object]:
-    orientation_semantics = _orientation_semantics(orientation_source_mode)
+def _preprocessing_contract(
+    orientation_source_mode: str,
+    *,
+    image_representation_mode: str = "inverted_vehicle_on_white",
+    foreground_enhancement: bool = False,
+) -> dict[str, object]:
+    orientation_semantics = _orientation_semantics(
+        orientation_source_mode,
+        image_representation_mode=image_representation_mode,
+        foreground_enhancement=foreground_enhancement,
+    )
+    image_mode_contract = (
+        "roi_raw_grayscale_vehicle_on_white"
+        if image_representation_mode == "raw_grayscale_on_white"
+        else "roi_grayscale_inverted_vehicle_on_white"
+    )
+    image_polarity = (
+        "source_grayscale_vehicle_detail_on_white_background"
+        if image_representation_mode == "raw_grayscale_on_white"
+        else "dark_vehicle_detail_on_white_background"
+    )
+    image_content_base = (
+        "raw_grayscale_vehicle_detail_inside_silhouette"
+        if image_representation_mode == "raw_grayscale_on_white"
+        else "inverted_grayscale_vehicle_detail_inside_silhouette"
+    )
+    foreground_contract = {
+        "Enabled": bool(foreground_enhancement),
+        "Method": "masked_median_darkness_gain" if foreground_enhancement else "none",
+        "TargetMedianDarkness": 0.70,
+        "MinGain": 1.0,
+        "MaxGain": 3.0,
+        "Epsilon": 1e-6,
+        "EmptyMaskPolicy": "skip",
+    }
     current_representation: dict[str, object] = {
         "Kind": contracts.TRI_STREAM_REPRESENTATION_KIND,
         "StorageFormat": "npz",
@@ -1238,8 +1382,15 @@ def _preprocessing_contract(orientation_source_mode: str) -> dict[str, object]:
         "GeometryDim": len(contracts.TRI_STREAM_GEOMETRY_SCHEMA),
         "CanvasWidth": 300,
         "CanvasHeight": 300,
+        "DistanceImagePolarity": image_polarity,
+        "DistanceImageContent": (
+            f"{image_content_base}_foreground_enhanced"
+            if foreground_enhancement
+            else image_content_base
+        ),
         "OrientationContextScale": 1.25,
         "OrientationImageContent": orientation_semantics["content"],
+        "ForegroundEnhancement": foreground_contract,
         "BrightnessNormalization": {
             "Enabled": False,
             "Method": "none",
@@ -1252,8 +1403,13 @@ def _preprocessing_contract(orientation_source_mode: str) -> dict[str, object]:
     }
     if orientation_semantics["polarity"]:
         current_representation["OrientationImagePolarity"] = orientation_semantics["polarity"]
+    contract_name = (
+        contracts.PREPROCESSING_CONTRACT_NAME_GRAYSCALE_WHITE
+        if image_representation_mode == "raw_grayscale_on_white"
+        else contracts.PREPROCESSING_CONTRACT_NAME
+    )
     return {
-        "ContractVersion": contracts.PREPROCESSING_CONTRACT_NAME,
+        "ContractVersion": contract_name,
         "CurrentStage": "pack_tri_stream",
         "CompletedStages": ["detect", "silhouette", "pack_tri_stream"],
         "CurrentRepresentation": current_representation,
@@ -1262,6 +1418,8 @@ def _preprocessing_contract(orientation_source_mode: str) -> dict[str, object]:
                 "CanvasWidth": 300,
                 "CanvasHeight": 300,
                 "ClipPolicy": "fail",
+                "ImageRepresentationMode": image_mode_contract,
+                "ForegroundEnhancement": foreground_contract,
                 "OrientationContextScale": 1.25,
                 "OrientationImageRepresentation": orientation_semantics["representation"],
                 "BrightnessNormalization": current_representation["BrightnessNormalization"],

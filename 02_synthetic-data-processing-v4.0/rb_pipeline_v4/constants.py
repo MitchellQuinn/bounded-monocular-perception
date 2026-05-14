@@ -16,6 +16,9 @@ SAMPLES_FILENAME = "samples.csv"
 PREPROCESSING_CONTRACT_KEY = "PreprocessingContract"
 PREPROCESSING_CONTRACT_VERSION_V4 = "rb-preprocess-v4-dual-stream-orientation-brightness-v1"
 PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1 = "rb-preprocess-v4-tri-stream-orientation-v1"
+PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_GRAYSCALE_WHITE_V1 = (
+    "rb-preprocess-v4-tri-stream-grayscale-white-v1"
+)
 PREPROCESSING_STAGE_ORDER_V4 = ("detect", "silhouette", "pack_dual_stream")
 TRI_STREAM_STAGE_ORDER_V1 = ("detect", "silhouette", "pack_tri_stream")
 
@@ -128,6 +131,16 @@ BRIGHTNESS_NORMALIZATION_COLUMNS = [
     "brightness_normalization_current_median_darkness",
     "brightness_normalization_effective_median_darkness",
     "brightness_normalization_gain",
+]
+
+FOREGROUND_ENHANCEMENT_COLUMNS = [
+    "foreground_enhancement_enabled",
+    "foreground_enhancement_method",
+    "foreground_enhancement_status",
+    "foreground_enhancement_foreground_px",
+    "foreground_enhancement_current_median_darkness",
+    "foreground_enhancement_effective_median_darkness",
+    "foreground_enhancement_gain",
 ]
 
 BBOX_FEATURE_SCHEMA = (

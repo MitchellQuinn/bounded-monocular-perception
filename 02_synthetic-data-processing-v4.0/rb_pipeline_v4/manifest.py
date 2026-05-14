@@ -147,6 +147,7 @@ def upsert_preprocessing_contract_v4_tri_stream(
     stage_name: str,
     stage_parameters: dict[str, Any],
     current_representation: dict[str, Any],
+    contract_version: str = PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1,
     dry_run: bool = False,
 ) -> Path:
     return _upsert_preprocessing_contract(
@@ -154,7 +155,7 @@ def upsert_preprocessing_contract_v4_tri_stream(
         stage_name=stage_name,
         stage_parameters=stage_parameters,
         current_representation=current_representation,
-        contract_version=PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1,
+        contract_version=contract_version,
         stage_order=TRI_STREAM_STAGE_ORDER_V1,
         dry_run=dry_run,
     )

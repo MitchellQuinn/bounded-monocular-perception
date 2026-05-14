@@ -15,11 +15,13 @@ from .brightness_normalization import apply_brightness_normalization_v4
 from .config import (
     BrightnessNormalizationConfigV4,
     DetectStageConfigV4,
+    ForegroundEnhancementConfigV4,
     PackDualStreamStageConfigV4,
     SilhouetteStageConfigV4,
 )
 from .contracts import Detection
 from .detector import EdgeRoiDetector, UltralyticsYoloDetector
+from .foreground_enhancement import apply_foreground_enhancement_v4
 from .image_io import read_image_unchanged, to_bgr_uint8, to_grayscale_uint8
 from .manifest import load_samples_csv, samples_csv_path
 from .paths import (
@@ -39,6 +41,7 @@ from .silhouette_algorithms import (
 
 WIDGETS_UI_BUILD = "2026-04-24-brightness-normalization-before-pack-v4"
 DEFAULT_BRIGHTNESS_NORMALIZATION_METHOD = "masked_median_darkness_gain"
+DEFAULT_FOREGROUND_ENHANCEMENT_METHOD = "masked_median_darkness_gain"
 
 
 def _load_samples(manifests_dir: Path) -> pd.DataFrame | None:
@@ -84,6 +87,7 @@ def _edge_foreground_mask_from_config(
     canny_high_threshold: int,
     close_kernel_size: int,
     foreground_threshold: int,
+    ignore_border_px: int,
 ) -> np.ndarray:
     if gray_image.ndim != 2:
         raise ValueError(f"Expected 2D grayscale image, got {gray_image.shape}")
@@ -96,10 +100,31 @@ def _edge_foreground_mask_from_config(
     if int(close_kernel_size) > 1:
         close_kernel = np.ones((int(close_kernel_size), int(close_kernel_size)), dtype=np.uint8)
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, close_kernel)
+    _zero_edge_border_for_preview(edges, int(ignore_border_px))
 
     edge_black_on_white = np.full(gray_image.shape, 255, dtype=np.uint8)
     edge_black_on_white[edges > 0] = 0
     return edge_black_on_white < int(foreground_threshold)
+
+
+def _zero_edge_border_for_preview(edges: np.ndarray, ignore_border_px: int) -> None:
+    margin = max(0, int(ignore_border_px))
+    if margin <= 0:
+        return
+    if edges.ndim != 2:
+        raise ValueError(f"Expected 2D edge image, got {edges.shape}")
+
+    height, width = int(edges.shape[0]), int(edges.shape[1])
+    if height <= 0 or width <= 0:
+        return
+    if (margin * 2) >= height or (margin * 2) >= width:
+        edges[:, :] = 0
+        return
+
+    edges[:margin, :] = 0
+    edges[-margin:, :] = 0
+    edges[:, :margin] = 0
+    edges[:, -margin:] = 0
 
 
 def _draw_source_overlay(
@@ -305,6 +330,19 @@ def _render_inverted_vehicle_detail_on_white_for_preview(
     roi_source_gray: np.ndarray,
     background_mask: np.ndarray,
 ) -> np.ndarray:
+    return _render_vehicle_detail_on_white_for_preview(
+        roi_source_gray,
+        background_mask,
+        image_representation_mode="inverted_vehicle_on_white",
+    )
+
+
+def _render_vehicle_detail_on_white_for_preview(
+    roi_source_gray: np.ndarray,
+    background_mask: np.ndarray,
+    *,
+    image_representation_mode: str,
+) -> np.ndarray:
     if roi_source_gray.ndim != 2:
         raise ValueError(f"Expected 2D grayscale ROI source image, got {roi_source_gray.shape}")
     if background_mask.ndim != 2:
@@ -315,12 +353,39 @@ def _render_inverted_vehicle_detail_on_white_for_preview(
             f"source={roi_source_gray.shape}, mask={background_mask.shape}"
         )
 
+    mode = str(image_representation_mode).strip().lower()
+    if mode not in {"inverted_vehicle_on_white", "raw_grayscale_on_white"}:
+        raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+
     source_u8 = np.clip(roi_source_gray, 0, 255).astype(np.uint8)
-    inverted = 255 - source_u8
+    vehicle_detail = 255 - source_u8 if mode == "inverted_vehicle_on_white" else source_u8
     out_u8 = np.full(source_u8.shape, 255, dtype=np.uint8)
     vehicle_mask = background_mask < 0.5
-    out_u8[vehicle_mask] = inverted[vehicle_mask]
+    out_u8[vehicle_mask] = vehicle_detail[vehicle_mask]
     return out_u8.astype(np.float32) / 255.0
+
+
+def _render_pack_base_representation_for_preview(
+    extracted_roi_gray: np.ndarray,
+    background_mask: np.ndarray,
+    pack_config: PackDualStreamStageConfigV4,
+):
+    roi_repr = _render_vehicle_detail_on_white_for_preview(
+        extracted_roi_gray,
+        background_mask,
+        image_representation_mode=pack_config.normalized_image_representation_mode(),
+    )
+    foreground_config = pack_config.normalized_foreground_enhancement()
+    foreground_method = foreground_config.normalized_method()
+    foreground_result = None
+    if foreground_config.normalized_enabled() and foreground_method != "none":
+        foreground_result = apply_foreground_enhancement_v4(
+            roi_repr,
+            background_mask < 0.5,
+            foreground_config,
+        )
+        roi_repr = foreground_result.image
+    return roi_repr, foreground_result
 
 
 def _place_image_on_canvas_for_preview(
@@ -480,6 +545,7 @@ def _edge_roi_selection_debug_strip(
     foreground_threshold: int,
     padding_px: int,
     min_foreground_px: int,
+    ignore_border_px: int,
     selected_detection: Detection | None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     if gray_image.ndim != 2:
@@ -494,9 +560,11 @@ def _edge_roi_selection_debug_strip(
     if int(close_kernel_size) > 1:
         close_kernel = np.ones((int(close_kernel_size), int(close_kernel_size)), dtype=np.uint8)
         post_morph = cv2.morphologyEx(post_morph, cv2.MORPH_CLOSE, close_kernel)
+    raw_edges_display = raw_edges.copy()
+    _zero_edge_border_for_preview(post_morph, int(ignore_border_px))
 
     raw_edge_bw = np.full(gray_image.shape, 255, dtype=np.uint8)
-    raw_edge_bw[raw_edges > 0] = 0
+    raw_edge_bw[raw_edges_display > 0] = 0
 
     post_morph_bw = np.full(gray_image.shape, 255, dtype=np.uint8)
     post_morph_bw[post_morph > 0] = 0
@@ -521,6 +589,7 @@ def _edge_roi_selection_debug_strip(
         "selection_status": "not_selected",
         "foreground_pixel_count": int(np.count_nonzero(foreground_mask)),
         "min_foreground_px": int(min_foreground_px),
+        "ignore_border_px": int(ignore_border_px),
         "centroid_xy": None,
         "raw_bbox_inclusive": None,
         "centered_pre_clamp_exclusive": None,
@@ -734,6 +803,12 @@ class PipelineLauncherV4:
             min=1,
             max=1_000_000,
         )
+        self.edge_ignore_border_int = widgets.BoundedIntText(
+            description="Ignore border:",
+            value=0,
+            min=0,
+            max=1024,
+        )
         self.preview_ignore_filter_checkbox = widgets.Checkbox(
             value=True,
             description="Preview fallback if class-filter misses",
@@ -788,6 +863,64 @@ class PipelineLauncherV4:
             value="fail",
         )
         self.shard_size_int = widgets.IntText(description="Shard size:", value=8192)
+        self.image_representation_dropdown = widgets.Dropdown(
+            description="Image repr:",
+            options=[
+                ("Inverted on white", "inverted_vehicle_on_white"),
+                ("Raw grayscale on white", "raw_grayscale_on_white"),
+            ],
+            value="inverted_vehicle_on_white",
+        )
+        self.foreground_enhancement_enabled_checkbox = widgets.Checkbox(
+            value=False,
+            description="Foreground enhance",
+        )
+        self.foreground_enhancement_method_dropdown = widgets.Dropdown(
+            description="Method:",
+            options=[
+                ("Masked median darkness gain", "masked_median_darkness_gain"),
+            ],
+            value=DEFAULT_FOREGROUND_ENHANCEMENT_METHOD,
+        )
+        self.foreground_enhancement_target_float = widgets.BoundedFloatText(
+            description="Target dark:",
+            value=0.70,
+            min=0.05,
+            max=0.95,
+            step=0.01,
+        )
+        self.foreground_enhancement_min_gain_float = widgets.BoundedFloatText(
+            description="Min gain:",
+            value=1.0,
+            min=0.000001,
+            max=100.0,
+            step=0.05,
+        )
+        self.foreground_enhancement_max_gain_float = widgets.BoundedFloatText(
+            description="Max gain:",
+            value=3.0,
+            min=0.000001,
+            max=100.0,
+            step=0.05,
+        )
+        self.foreground_enhancement_empty_policy_dropdown = widgets.Dropdown(
+            description="Empty mask:",
+            options=[("Skip", "skip"), ("Fail", "fail")],
+            value="skip",
+        )
+        self.foreground_enhancement_pane = widgets.VBox(
+            [
+                widgets.HTML("<b>Foreground Enhancement</b>"),
+                widgets.HBox([self.image_representation_dropdown, self.foreground_enhancement_enabled_checkbox]),
+                widgets.HBox([self.foreground_enhancement_method_dropdown, self.foreground_enhancement_empty_policy_dropdown]),
+                widgets.HBox([self.foreground_enhancement_target_float, self.foreground_enhancement_min_gain_float, self.foreground_enhancement_max_gain_float]),
+            ],
+            layout=widgets.Layout(
+                border="1px solid #ddd",
+                padding="8px",
+                margin="8px 0 0 0",
+            ),
+        )
         self.brightness_norm_enabled_checkbox = widgets.Checkbox(
             value=True,
             description="Brightness norm",
@@ -902,6 +1035,14 @@ class PipelineLauncherV4:
         self.preview_sample_offset_input.observe(self._on_preview_sample_offset_change, names="value")
         self.brightness_norm_enabled_checkbox.observe(self._on_brightness_norm_enabled_change, names="value")
         self.brightness_norm_method_dropdown.observe(self._on_brightness_norm_method_change, names="value")
+        self.foreground_enhancement_enabled_checkbox.observe(
+            self._on_foreground_enhancement_enabled_change,
+            names="value",
+        )
+        self.foreground_enhancement_method_dropdown.observe(
+            self._on_foreground_enhancement_method_change,
+            names="value",
+        )
         self._callbacks_registered = True
 
         self._syncing_sample_offset = False
@@ -933,6 +1074,7 @@ class PipelineLauncherV4:
                 self.class_names_text,
                 widgets.HBox([self.edge_blur_kernel_slider, self.edge_canny_low_slider, self.edge_canny_high_slider]),
                 widgets.HBox([self.edge_foreground_threshold_slider, self.edge_padding_int, self.edge_min_foreground_int]),
+                self.edge_ignore_border_int,
                 self.preview_ignore_filter_checkbox,
                 widgets.HTML("<hr><b>Silhouette</b>"),
                 self.silhouette_mode,
@@ -940,6 +1082,8 @@ class PipelineLauncherV4:
                 self.threshold_high_slider,
                 widgets.HBox([self.min_area_input, self.roi_padding_int]),
                 widgets.HBox([self.fill_holes_checkbox, self.close_kernel_slider, self.outline_thickness_slider]),
+                widgets.HTML("<hr>"),
+                self.foreground_enhancement_pane,
                 widgets.HTML("<hr>"),
                 self.brightness_norm_pane,
                 widgets.HTML("<hr><b>Pack Dual Stream</b>"),
@@ -991,6 +1135,14 @@ class PipelineLauncherV4:
             self.preview_sample_offset_input.unobserve(self._on_preview_sample_offset_change, names="value")
             self.brightness_norm_enabled_checkbox.unobserve(self._on_brightness_norm_enabled_change, names="value")
             self.brightness_norm_method_dropdown.unobserve(self._on_brightness_norm_method_change, names="value")
+            self.foreground_enhancement_enabled_checkbox.unobserve(
+                self._on_foreground_enhancement_enabled_change,
+                names="value",
+            )
+            self.foreground_enhancement_method_dropdown.unobserve(
+                self._on_foreground_enhancement_method_change,
+                names="value",
+            )
             self._callbacks_registered = False
 
         if self._widget_root is not None:
@@ -1068,6 +1220,21 @@ class PipelineLauncherV4:
         elif method != "none" and not enabled:
             self.brightness_norm_enabled_checkbox.value = True
 
+    def _on_foreground_enhancement_enabled_change(self, _change: dict) -> None:
+        if (
+            bool(self.foreground_enhancement_enabled_checkbox.value)
+            and str(self.foreground_enhancement_method_dropdown.value) == "none"
+        ):
+            self.foreground_enhancement_method_dropdown.value = DEFAULT_FOREGROUND_ENHANCEMENT_METHOD
+
+    def _on_foreground_enhancement_method_change(self, _change: dict) -> None:
+        method = str(self.foreground_enhancement_method_dropdown.value)
+        enabled = bool(self.foreground_enhancement_enabled_checkbox.value)
+        if method == "none" and enabled:
+            self.foreground_enhancement_enabled_checkbox.value = False
+        elif method != "none" and not enabled:
+            self.foreground_enhancement_enabled_checkbox.value = True
+
     def _sample_offset(self) -> int:
         return int(self.sample_offset_input.value)
 
@@ -1089,6 +1256,7 @@ class PipelineLauncherV4:
             edge_foreground_threshold=int(self.edge_foreground_threshold_slider.value),
             edge_padding_px=int(self.edge_padding_int.value),
             edge_min_foreground_px=int(self.edge_min_foreground_int.value),
+            edge_ignore_border_px=int(self.edge_ignore_border_int.value),
             sample_offset=self._sample_offset(),
             sample_limit=self._sample_limit(),
         )
@@ -1109,6 +1277,23 @@ class PipelineLauncherV4:
             sample_limit=self._sample_limit(),
         )
 
+    def _build_pack_config_foreground_enhancement(self) -> ForegroundEnhancementConfigV4:
+        foreground_enabled = bool(self.foreground_enhancement_enabled_checkbox.value)
+        foreground_method = (
+            str(self.foreground_enhancement_method_dropdown.value)
+            if foreground_enabled
+            else "none"
+        )
+
+        return ForegroundEnhancementConfigV4(
+            enabled=foreground_enabled,
+            method=foreground_method,
+            target_median_darkness=float(self.foreground_enhancement_target_float.value),
+            min_gain=float(self.foreground_enhancement_min_gain_float.value),
+            max_gain=float(self.foreground_enhancement_max_gain_float.value),
+            empty_mask_policy=str(self.foreground_enhancement_empty_policy_dropdown.value),
+        )
+
     def _build_pack_config(self) -> PackDualStreamStageConfigV4:
         brightness_enabled = bool(self.brightness_norm_enabled_checkbox.value)
         brightness_method = (
@@ -1121,6 +1306,8 @@ class PipelineLauncherV4:
             canvas_width_px=int(self.canvas_w_int.value),
             canvas_height_px=int(self.canvas_h_int.value),
             clip_policy=str(self.clip_policy_dropdown.value),
+            image_representation_mode=str(self.image_representation_dropdown.value),
+            foreground_enhancement=self._build_pack_config_foreground_enhancement(),
             include_v1_compat_arrays=False,
             brightness_normalization=BrightnessNormalizationConfigV4(
                 enabled=brightness_enabled,
@@ -1172,6 +1359,7 @@ class PipelineLauncherV4:
                 config.normalized_edge_padding_px(),
                 config.normalized_edge_min_foreground_px(),
                 config.normalized_edge_close_kernel_size(),
+                config.normalized_edge_ignore_border_px(),
                 int(edge_ids[0]) if edge_ids else 0,
                 str(edge_names[0]) if edge_names else "defender",
             )
@@ -1186,6 +1374,7 @@ class PipelineLauncherV4:
                 padding_px=config.normalized_edge_padding_px(),
                 min_foreground_px=config.normalized_edge_min_foreground_px(),
                 close_kernel_size=config.normalized_edge_close_kernel_size(),
+                ignore_border_px=config.normalized_edge_ignore_border_px(),
                 class_id=int(edge_ids[0]) if edge_ids else 0,
                 class_name=str(edge_names[0]) if edge_names else "defender",
             )
@@ -1448,6 +1637,7 @@ class PipelineLauncherV4:
                     canny_high_threshold=detect_config.normalized_edge_canny_high_threshold(),
                     close_kernel_size=detect_config.normalized_edge_close_kernel_size(),
                     foreground_threshold=detect_config.normalized_edge_foreground_threshold(),
+                    ignore_border_px=detect_config.normalized_edge_ignore_border_px(),
                 )
             except Exception as exc:
                 edge_error = str(exc)
@@ -1465,6 +1655,7 @@ class PipelineLauncherV4:
                     foreground_threshold=detect_config.normalized_edge_foreground_threshold(),
                     padding_px=detect_config.normalized_edge_padding_px(),
                     min_foreground_px=detect_config.normalized_edge_min_foreground_px(),
+                    ignore_border_px=detect_config.normalized_edge_ignore_border_px(),
                     selected_detection=selected_detection,
                 )
                 self.preview_roi_selection_debug.value = _to_png_bytes(roi_selection_debug)
@@ -1514,6 +1705,9 @@ class PipelineLauncherV4:
                 "<b>Foreground pixels:</b> "
                 f"{int(roi_selection_summary.get('foreground_pixel_count', 0))} "
                 f"(min required {int(roi_selection_summary.get('min_foreground_px', 0))})"
+            )
+            roi_selection_lines.append(
+                f"<b>Ignored border:</b> {int(roi_selection_summary.get('ignore_border_px', 0))} px"
             )
 
             centroid_xy = roi_selection_summary.get("centroid_xy")
@@ -1576,6 +1770,7 @@ class PipelineLauncherV4:
         silhouette_error = ""
         canvas_clipped = False
         brightness_note = ""
+        foreground_note = ""
         if extracted_roi_gray is not None and extracted_roi_gray.size > 0:
             try:
                 generator = ContourSilhouetteGeneratorV2()
@@ -1635,10 +1830,20 @@ class PipelineLauncherV4:
                         raise ValueError("rendered silhouette is empty")
 
                 background_mask = _background_mask_from_binary_silhouette(roi_silhouette)
-                roi_repr = _render_inverted_vehicle_detail_on_white_for_preview(
+                roi_repr, foreground_result = _render_pack_base_representation_for_preview(
                     extracted_roi_gray,
                     background_mask,
+                    pack_config,
                 )
+                if foreground_result is not None:
+                    if foreground_result.status == "success":
+                        foreground_note = (
+                            "foreground enhancement "
+                            f"{foreground_result.method}: gain={foreground_result.gain:.4f}, "
+                            f"median={foreground_result.current_median_darkness:.4f}"
+                        )
+                    else:
+                        foreground_note = f"foreground enhancement {foreground_result.status}"
                 brightness_config = pack_config.normalized_brightness_normalization()
                 brightness_method = brightness_config.normalized_method()
                 if brightness_config.normalized_enabled() and brightness_method != "none":
@@ -1726,6 +1931,8 @@ class PipelineLauncherV4:
         ]
         if brightness_note:
             notes.append(brightness_note)
+        if foreground_note:
+            notes.append(foreground_note)
         if notes:
             status_lines.append(f"<b>Notes:</b> {'; '.join(notes)}")
         self.preview_status_html.value = "<br>".join(status_lines)

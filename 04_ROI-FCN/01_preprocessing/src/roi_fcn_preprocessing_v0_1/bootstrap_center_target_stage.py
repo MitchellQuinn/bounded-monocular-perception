@@ -266,6 +266,7 @@ def run_bootstrap_center_target_stage(
             "EdgeCannyHighThreshold": config.normalized_edge_high(),
             "EdgeForegroundThreshold": config.normalized_fg_threshold(),
             "EdgePaddingPx": config.normalized_edge_pad(),
+            "EdgeIgnoreBorderPx": config.normalized_edge_ignore_border_px(),
             "EdgeMinForegroundPx": config.normalized_min_edge_pixels(),
             "EdgeCloseKernelSize": config.normalized_edge_close_kernel_size(),
             "NumWorkers": int(effective_workers),

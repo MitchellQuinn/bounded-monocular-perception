@@ -15,12 +15,14 @@ from .constants import (
     BBOX_FEATURE_SCHEMA,
     BRIGHTNESS_NORMALIZATION_COLUMNS,
     DETECT_STAGE_COLUMNS,
+    FOREGROUND_ENHANCEMENT_COLUMNS,
     ORIENTATION_TARGET_COLUMNS,
     PACK_STAGE_COLUMNS,
     POSITION_TARGET_COLUMNS,
     SILHOUETTE_STAGE_COLUMNS,
     UNITY_REQUIRED_COLUMNS,
 )
+from .foreground_enhancement import apply_foreground_enhancement_v4
 from .image_io import read_grayscale_uint8
 from .logging_utils import StageLogger
 from .manifest import (
@@ -95,7 +97,12 @@ def run_pack_dual_stream_stage_v4(
     canvas_w = config.normalized_canvas_width_px()
     canvas_h = config.normalized_canvas_height_px()
     clip_policy = config.normalized_clip_policy()
+    image_representation_mode = config.normalized_image_representation_mode()
     shard_size = config.normalized_shard_size()
+    foreground_config = config.normalized_foreground_enhancement()
+    foreground_contract = foreground_config.to_contract_dict()
+    foreground_method = foreground_config.normalized_method()
+    foreground_active = foreground_config.normalized_enabled() and foreground_method != "none"
     brightness_config = config.normalized_brightness_normalization()
     brightness_contract = brightness_config.to_contract_dict()
     brightness_method = brightness_config.normalized_method()
@@ -114,7 +121,8 @@ def run_pack_dual_stream_stage_v4(
             "CanvasWidth": int(canvas_w),
             "CanvasHeight": int(canvas_h),
             "ClipPolicy": clip_policy,
-            "ImageRepresentationMode": "roi_grayscale_inverted_vehicle_on_white",
+            "ImageRepresentationMode": _image_representation_mode_contract_value(image_representation_mode),
+            "ForegroundEnhancement": foreground_contract,
             "IncludeV1CompatArrays": bool(config.include_v1_compat_arrays),
             "IncludeOptionalMetadataArrays": bool(config.include_optional_metadata_arrays),
             "UseIntermediateNpy": bool(config.use_intermediate_npy),
@@ -143,9 +151,13 @@ def run_pack_dual_stream_stage_v4(
             "BBoxFeatureDim": int(len(BBOX_FEATURE_SCHEMA)),
             "CanvasWidth": int(canvas_w),
             "CanvasHeight": int(canvas_h),
-            "ImagePolarity": "dark_vehicle_detail_on_white_background",
-            "ImageContent": "grayscale_vehicle_detail_inside_silhouette",
+            "ImagePolarity": _image_polarity_contract_value(image_representation_mode),
+            "ImageContent": _image_content_contract_value(
+                image_representation_mode,
+                foreground_active=foreground_active,
+            ),
             "SilhouetteScaling": "disabled",
+            "ForegroundEnhancement": foreground_contract,
             "BrightnessNormalization": brightness_contract,
         },
         dry_run=config.dry_run,
@@ -161,6 +173,21 @@ def run_pack_dual_stream_stage_v4(
     )
     logger.log(f"Running v4 pack_dual_stream stage for run '{run_name}'")
     logger.log_parameters(config.to_log_dict())
+
+    if foreground_active:
+        append_columns(samples_df, FOREGROUND_ENHANCEMENT_COLUMNS)
+        for column in FOREGROUND_ENHANCEMENT_COLUMNS:
+            samples_df[column] = samples_df[column].astype("object")
+        logger.log(
+            "Foreground enhancement enabled: "
+            f"method={foreground_method}, "
+            f"target_median_darkness={foreground_config.normalized_target_median_darkness():.6g}, "
+            f"gain=[{foreground_config.normalized_min_gain():.6g}, "
+            f"{foreground_config.normalized_max_gain():.6g}], "
+            f"empty_mask_policy={foreground_config.normalized_empty_mask_policy()}"
+        )
+    else:
+        logger.log("Foreground enhancement disabled.")
 
     if brightness_active:
         append_columns(samples_df, BRIGHTNESS_NORMALIZATION_COLUMNS)
@@ -417,6 +444,14 @@ def run_pack_dual_stream_stage_v4(
         samples_df.at[row_idx, "npz_row_index"] = pd.NA
         samples_df.at[row_idx, "canvas_width_px"] = int(canvas_w)
         samples_df.at[row_idx, "canvas_height_px"] = int(canvas_h)
+        if foreground_active:
+            samples_df.at[row_idx, "foreground_enhancement_enabled"] = True
+            samples_df.at[row_idx, "foreground_enhancement_method"] = foreground_method
+            samples_df.at[row_idx, "foreground_enhancement_status"] = ""
+            samples_df.at[row_idx, "foreground_enhancement_foreground_px"] = pd.NA
+            samples_df.at[row_idx, "foreground_enhancement_current_median_darkness"] = pd.NA
+            samples_df.at[row_idx, "foreground_enhancement_effective_median_darkness"] = pd.NA
+            samples_df.at[row_idx, "foreground_enhancement_gain"] = pd.NA
         if brightness_active:
             samples_df.at[row_idx, "brightness_normalization_enabled"] = True
             samples_df.at[row_idx, "brightness_normalization_method"] = brightness_method
@@ -478,10 +513,29 @@ def run_pack_dual_stream_stage_v4(
                 canvas_width=canvas_w,
                 canvas_height=canvas_h,
             )
-            roi_repr = _render_inverted_vehicle_detail_on_white(
+            roi_repr = _render_vehicle_detail_on_white(
                 roi_source_gray,
                 silhouette_background_mask,
+                image_representation_mode=image_representation_mode,
             )
+            if foreground_active:
+                foreground_result = apply_foreground_enhancement_v4(
+                    roi_repr,
+                    silhouette_background_mask < 0.5,
+                    foreground_config,
+                )
+                roi_repr = foreground_result.image
+                samples_df.at[row_idx, "foreground_enhancement_status"] = foreground_result.status
+                samples_df.at[row_idx, "foreground_enhancement_foreground_px"] = int(
+                    foreground_result.foreground_pixel_count
+                )
+                samples_df.at[row_idx, "foreground_enhancement_current_median_darkness"] = float(
+                    foreground_result.current_median_darkness
+                )
+                samples_df.at[row_idx, "foreground_enhancement_effective_median_darkness"] = float(
+                    foreground_result.effective_median_darkness
+                )
+                samples_df.at[row_idx, "foreground_enhancement_gain"] = float(foreground_result.gain)
             if brightness_active:
                 brightness_result = apply_brightness_normalization_v4(
                     roi_repr,
@@ -676,6 +730,19 @@ def _render_inverted_vehicle_detail_on_white(
     roi_source_gray: np.ndarray,
     background_mask: np.ndarray,
 ) -> np.ndarray:
+    return _render_vehicle_detail_on_white(
+        roi_source_gray,
+        background_mask,
+        image_representation_mode="inverted_vehicle_on_white",
+    )
+
+
+def _render_vehicle_detail_on_white(
+    roi_source_gray: np.ndarray,
+    background_mask: np.ndarray,
+    *,
+    image_representation_mode: str,
+) -> np.ndarray:
     if roi_source_gray.ndim != 2:
         raise ValueError(f"Expected 2D grayscale ROI source image, got {roi_source_gray.shape}")
     if background_mask.ndim != 2:
@@ -686,12 +753,48 @@ def _render_inverted_vehicle_detail_on_white(
             f"source={roi_source_gray.shape}, mask={background_mask.shape}"
         )
 
+    mode = str(image_representation_mode).strip().lower()
+    if mode not in {"inverted_vehicle_on_white", "raw_grayscale_on_white"}:
+        raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+
     source_u8 = np.clip(roi_source_gray, 0, 255).astype(np.uint8)
-    inverted = 255 - source_u8
+    vehicle_detail = 255 - source_u8 if mode == "inverted_vehicle_on_white" else source_u8
     out_u8 = np.full(source_u8.shape, 255, dtype=np.uint8)
     vehicle_mask = background_mask < 0.5
-    out_u8[vehicle_mask] = inverted[vehicle_mask]
+    out_u8[vehicle_mask] = vehicle_detail[vehicle_mask]
     return out_u8.astype(np.float32) / 255.0
+
+
+def _image_representation_mode_contract_value(image_representation_mode: str) -> str:
+    mode = str(image_representation_mode).strip().lower()
+    if mode == "inverted_vehicle_on_white":
+        return "roi_grayscale_inverted_vehicle_on_white"
+    if mode == "raw_grayscale_on_white":
+        return "roi_raw_grayscale_vehicle_on_white"
+    raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+
+
+def _image_polarity_contract_value(image_representation_mode: str) -> str:
+    mode = str(image_representation_mode).strip().lower()
+    if mode == "inverted_vehicle_on_white":
+        return "dark_vehicle_detail_on_white_background"
+    if mode == "raw_grayscale_on_white":
+        return "source_grayscale_vehicle_detail_on_white_background"
+    raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+
+
+def _image_content_contract_value(
+    image_representation_mode: str,
+    *,
+    foreground_active: bool,
+) -> str:
+    mode = str(image_representation_mode).strip().lower()
+    suffix = "_foreground_enhanced" if foreground_active else ""
+    if mode == "inverted_vehicle_on_white":
+        return f"inverted_grayscale_vehicle_detail_inside_silhouette{suffix}"
+    if mode == "raw_grayscale_on_white":
+        return f"raw_grayscale_vehicle_detail_inside_silhouette{suffix}"
+    raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
 
 
 

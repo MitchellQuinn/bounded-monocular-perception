@@ -136,6 +136,7 @@ def run_detect_stage_v4(
             "EdgePaddingPx": config.normalized_edge_padding_px(),
             "EdgeMinForegroundPx": config.normalized_edge_min_foreground_px(),
             "EdgeCloseKernelSize": config.normalized_edge_close_kernel_size(),
+            "EdgeIgnoreBorderPx": config.normalized_edge_ignore_border_px(),
             "PersistDebug": bool(config.persist_debug),
             "SampleOffset": config.normalized_sample_offset(),
             "SampleLimit": config.normalized_sample_limit(),
@@ -171,6 +172,7 @@ def run_detect_stage_v4(
                 padding_px=config.normalized_edge_padding_px(),
                 min_foreground_px=config.normalized_edge_min_foreground_px(),
                 close_kernel_size=config.normalized_edge_close_kernel_size(),
+                ignore_border_px=config.normalized_edge_ignore_border_px(),
                 class_id=int(edge_ids[0]) if edge_ids else 0,
                 class_name=str(edge_names[0]) if edge_names else "defender",
             )

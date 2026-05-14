@@ -29,6 +29,7 @@ class BootstrapAndPackTests(unittest.TestCase):
             edge_high=240,
             fg_threshold=180,
             edge_pad=7,
+            edge_ignore_border_px=11,
             min_edge_pixels=22,
             edge_close_kernel_size=3,
         )
@@ -39,6 +40,7 @@ class BootstrapAndPackTests(unittest.TestCase):
         self.assertEqual(detect_config.normalized_edge_canny_high_threshold(), 240)
         self.assertEqual(detect_config.normalized_edge_foreground_threshold(), 180)
         self.assertEqual(detect_config.normalized_edge_padding_px(), 7)
+        self.assertEqual(detect_config.normalized_edge_ignore_border_px(), 11)
         self.assertEqual(detect_config.normalized_edge_min_foreground_px(), 22)
         self.assertEqual(detect_config.normalized_edge_close_kernel_size(), 3)
 
@@ -54,13 +56,16 @@ class BootstrapAndPackTests(unittest.TestCase):
             image_path = resolve_input_image_path(split_paths, "train_000.png")
             image_bgr = to_bgr_uint8(read_image_unchanged(image_path))
 
-            adapter_detection = build_edge_roi_detector(config).detect(image_bgr)[0]
+            adapter_detector = build_edge_roi_detector(config)
+            self.assertEqual(adapter_detector.ignore_border_px, 11)
+            adapter_detection = adapter_detector.detect(image_bgr)[0]
             direct_detection = EdgeRoiDetector(
                 blur_kernel_size=5,
                 canny_low_threshold=10,
                 canny_high_threshold=240,
                 foreground_threshold=180,
                 padding_px=7,
+                ignore_border_px=11,
                 min_foreground_px=22,
                 close_kernel_size=3,
                 class_id=0,
@@ -110,6 +115,7 @@ class BootstrapAndPackTests(unittest.TestCase):
             contract = run_json["PreprocessingContract"]
             self.assertEqual(contract["ContractVersion"], "rb-preprocess-roi-fcn-v0_1")
             self.assertEqual(contract["CurrentStage"], "bootstrap_center_target")
+            self.assertEqual(contract["Stages"]["bootstrap_center_target"]["EdgeIgnoreBorderPx"], 8)
             self.assertEqual(contract["StageSummaries"]["bootstrap_center_target"]["SucceededRows"], 1)
             self.assertEqual(contract["StageSummaries"]["bootstrap_center_target"]["SkippedRows"], 1)
 

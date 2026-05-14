@@ -16,7 +16,10 @@ from .constants import (
     BBOX_FEATURE_SCHEMA,
     BRIGHTNESS_NORMALIZATION_COLUMNS,
     DETECT_STAGE_COLUMNS,
+    FOREGROUND_ENHANCEMENT_COLUMNS,
     ORIENTATION_TARGET_COLUMNS,
+    PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_GRAYSCALE_WHITE_V1,
+    PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1,
     SILHOUETTE_STAGE_COLUMNS,
     TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
     TRI_STREAM_GEOMETRY_ARRAY_KEY,
@@ -24,6 +27,7 @@ from .constants import (
     TRI_STREAM_PACK_STAGE_COLUMNS,
     UNITY_REQUIRED_COLUMNS,
 )
+from .foreground_enhancement import apply_foreground_enhancement_v4
 from .image_io import read_grayscale_uint8
 from .logging_utils import StageLogger
 from .manifest import (
@@ -36,9 +40,12 @@ from .manifest import (
 )
 from .pack_dual_stream_stage import (
     _bbox_features_from_row,
+    _image_content_contract_value,
+    _image_polarity_contract_value,
+    _image_representation_mode_contract_value,
     _place_image_on_canvas,
     _reconstruct_roi_canvas_from_source,
-    _render_inverted_vehicle_detail_on_white,
+    _render_vehicle_detail_on_white,
     _roi_geometry_from_row,
     _safe_float,
     _shard_filename,
@@ -109,6 +116,11 @@ def run_pack_tri_stream_stage_v4(
     canvas_h = config.normalized_canvas_height_px()
     clip_policy = config.normalized_clip_policy()
     shard_size = config.normalized_shard_size()
+    image_representation_mode = config.normalized_image_representation_mode()
+    foreground_config = config.normalized_foreground_enhancement()
+    foreground_contract = foreground_config.to_contract_dict()
+    foreground_method = foreground_config.normalized_method()
+    foreground_active = foreground_config.normalized_enabled() and foreground_method != "none"
     validation_errors.extend(
         _validate_tri_stream_canvas_matches_silhouette_canvas(
             samples_df,
@@ -137,9 +149,13 @@ def run_pack_tri_stream_stage_v4(
         "CanvasWidth": int(canvas_w),
         "CanvasHeight": int(canvas_h),
         "ClipPolicy": clip_policy,
-        "ImageRepresentationMode": "roi_grayscale_inverted_vehicle_on_white",
+        "ImageRepresentationMode": _image_representation_mode_contract_value(image_representation_mode),
+        "ForegroundEnhancement": foreground_contract,
         "DistanceImageRepresentation": "fixed_unscaled_roi_brightness_normalized_when_enabled",
-        "OrientationImageRepresentation": "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent",
+        "OrientationImageRepresentation": _orientation_representation_contract_value(
+            image_representation_mode,
+            foreground_active=foreground_active,
+        ),
         "OrientationExtentSource": "silhouette_foreground_mask",
         "OrientationContextScale": float(orientation_context_scale),
         "IncludeV1CompatArrays": bool(config.include_v1_compat_arrays),
@@ -169,12 +185,19 @@ def run_pack_tri_stream_stage_v4(
         "DistanceImageLayout": "N,C,H,W",
         "DistanceImageGeometry": "fixed_unscaled_roi_canvas",
         "DistanceImageBrightnessNormalization": "configured_foreground_only",
-        "DistanceImagePolarity": "dark_vehicle_detail_on_white_background",
+        "DistanceImagePolarity": _image_polarity_contract_value(image_representation_mode),
+        "DistanceImageContent": _image_content_contract_value(
+            image_representation_mode,
+            foreground_active=foreground_active,
+        ),
         "OrientationImageKey": TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
         "OrientationImageLayout": "N,C,H,W",
         "OrientationImageGeometry": "target_centered_scaled_by_silhouette_extent",
-        "OrientationImageContent": "inverted_vehicle_detail_on_white_no_brightness_normalization",
-        "OrientationImagePolarity": "dark_vehicle_detail_on_white_background",
+        "OrientationImageContent": _orientation_content_contract_value(
+            image_representation_mode,
+            foreground_active=foreground_active,
+        ),
+        "OrientationImagePolarity": _image_polarity_contract_value(image_representation_mode),
         "OrientationExtentSource": "silhouette_foreground_mask",
         "OrientationContextScale": float(orientation_context_scale),
         "GeometryKey": TRI_STREAM_GEOMETRY_ARRAY_KEY,
@@ -184,6 +207,7 @@ def run_pack_tri_stream_stage_v4(
         "CanvasHeight": int(canvas_h),
         "DistanceImageScaling": "disabled",
         "OrientationImageScaling": "enabled_by_silhouette_extent",
+        "ForegroundEnhancement": foreground_contract,
         "BrightnessNormalization": brightness_contract,
     }
     upsert_preprocessing_contract_v4_tri_stream(
@@ -191,6 +215,7 @@ def run_pack_tri_stream_stage_v4(
         stage_name="pack_tri_stream",
         stage_parameters=stage_parameters,
         current_representation=current_representation,
+        contract_version=_tri_stream_contract_version(image_representation_mode),
         dry_run=config.dry_run,
     )
 
@@ -204,6 +229,21 @@ def run_pack_tri_stream_stage_v4(
     )
     logger.log(f"Running v4 pack_tri_stream stage for run '{run_name}'")
     logger.log_parameters(config.to_log_dict())
+
+    if foreground_active:
+        append_columns(samples_df, FOREGROUND_ENHANCEMENT_COLUMNS)
+        for column in FOREGROUND_ENHANCEMENT_COLUMNS:
+            samples_df[column] = samples_df[column].astype("object")
+        logger.log(
+            "Foreground enhancement enabled for distance and orientation source: "
+            f"method={foreground_method}, "
+            f"target_median_darkness={foreground_config.normalized_target_median_darkness():.6g}, "
+            f"gain=[{foreground_config.normalized_min_gain():.6g}, "
+            f"{foreground_config.normalized_max_gain():.6g}], "
+            f"empty_mask_policy={foreground_config.normalized_empty_mask_policy()}"
+        )
+    else:
+        logger.log("Foreground enhancement disabled.")
 
     if brightness_active:
         append_columns(samples_df, BRIGHTNESS_NORMALIZATION_COLUMNS)
@@ -466,6 +506,14 @@ def run_pack_tri_stream_stage_v4(
         samples_df.at[row_idx, "npz_row_index"] = pd.NA
         samples_df.at[row_idx, "tri_stream_canvas_width_px"] = int(canvas_w)
         samples_df.at[row_idx, "tri_stream_canvas_height_px"] = int(canvas_h)
+        if foreground_active:
+            samples_df.at[row_idx, "foreground_enhancement_enabled"] = True
+            samples_df.at[row_idx, "foreground_enhancement_method"] = foreground_method
+            samples_df.at[row_idx, "foreground_enhancement_status"] = ""
+            samples_df.at[row_idx, "foreground_enhancement_foreground_px"] = pd.NA
+            samples_df.at[row_idx, "foreground_enhancement_current_median_darkness"] = pd.NA
+            samples_df.at[row_idx, "foreground_enhancement_effective_median_darkness"] = pd.NA
+            samples_df.at[row_idx, "foreground_enhancement_gain"] = pd.NA
         if brightness_active:
             samples_df.at[row_idx, "brightness_normalization_enabled"] = True
             samples_df.at[row_idx, "brightness_normalization_method"] = brightness_method
@@ -508,10 +556,26 @@ def run_pack_tri_stream_stage_v4(
                 canvas_h=canvas_h,
                 clip_policy=clip_policy,
                 orientation_context_scale=orientation_context_scale,
+                image_representation_mode=image_representation_mode,
+                foreground_active=foreground_active,
+                foreground_config=foreground_config,
                 brightness_active=brightness_active,
                 brightness_config=brightness_config,
                 include_v1_compat_arrays=bool(config.include_v1_compat_arrays),
             )
+            if foreground_active and row_payload["foreground_result"] is not None:
+                foreground_result = row_payload["foreground_result"]
+                samples_df.at[row_idx, "foreground_enhancement_status"] = foreground_result.status
+                samples_df.at[row_idx, "foreground_enhancement_foreground_px"] = int(
+                    foreground_result.foreground_pixel_count
+                )
+                samples_df.at[row_idx, "foreground_enhancement_current_median_darkness"] = float(
+                    foreground_result.current_median_darkness
+                )
+                samples_df.at[row_idx, "foreground_enhancement_effective_median_darkness"] = float(
+                    foreground_result.effective_median_darkness
+                )
+                samples_df.at[row_idx, "foreground_enhancement_gain"] = float(foreground_result.gain)
             if brightness_active and row_payload["brightness_result"] is not None:
                 brightness_result = row_payload["brightness_result"]
                 samples_df.at[row_idx, "brightness_normalization_status"] = brightness_result.status
@@ -647,6 +711,44 @@ def run_pack_tri_stream_stage_v4(
     )
 
 
+def _orientation_representation_contract_value(
+    image_representation_mode: str,
+    *,
+    foreground_active: bool,
+) -> str:
+    mode = str(image_representation_mode).strip().lower()
+    if mode == "inverted_vehicle_on_white":
+        base = "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent"
+    elif mode == "raw_grayscale_on_white":
+        base = "target_centered_raw_grayscale_scaled_by_silhouette_extent"
+    else:
+        raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+    return f"{base}_foreground_enhanced" if foreground_active else base
+
+
+def _tri_stream_contract_version(image_representation_mode: str) -> str:
+    mode = str(image_representation_mode).strip().lower()
+    if mode == "raw_grayscale_on_white":
+        return PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_GRAYSCALE_WHITE_V1
+    if mode == "inverted_vehicle_on_white":
+        return PREPROCESSING_CONTRACT_VERSION_TRI_STREAM_V1
+    raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+
+
+def _orientation_content_contract_value(
+    image_representation_mode: str,
+    *,
+    foreground_active: bool,
+) -> str:
+    mode = str(image_representation_mode).strip().lower()
+    enhancement = "foreground_enhanced_" if foreground_active else ""
+    if mode == "inverted_vehicle_on_white":
+        return f"{enhancement}inverted_vehicle_detail_on_white_no_brightness_normalization"
+    if mode == "raw_grayscale_on_white":
+        return f"{enhancement}raw_grayscale_detail_on_white_no_brightness_normalization"
+    raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
+
+
 def build_tri_stream_sample_preview(
     project_root: Path,
     run_name: str,
@@ -679,6 +781,12 @@ def build_tri_stream_sample_preview(
         canvas_h=canvas_h,
         clip_policy=config.normalized_clip_policy(),
         orientation_context_scale=config.normalized_orientation_context_scale(),
+        image_representation_mode=config.normalized_image_representation_mode(),
+        foreground_active=(
+            config.normalized_foreground_enhancement().normalized_enabled()
+            and config.normalized_foreground_enhancement().normalized_method() != "none"
+        ),
+        foreground_config=config.normalized_foreground_enhancement(),
         brightness_active=brightness_active,
         brightness_config=brightness_config,
         include_v1_compat_arrays=False,
@@ -819,6 +927,9 @@ def _build_tri_stream_row_payload(
     canvas_h: int,
     clip_policy: str,
     orientation_context_scale: float,
+    image_representation_mode: str,
+    foreground_active: bool,
+    foreground_config: Any,
     brightness_active: bool,
     brightness_config: Any,
     include_v1_compat_arrays: bool,
@@ -855,10 +966,19 @@ def _build_tri_stream_row_payload(
         canvas_width=canvas_w,
         canvas_height=canvas_h,
     )
-    roi_repr = _render_inverted_vehicle_detail_on_white(
+    roi_repr = _render_vehicle_detail_on_white(
         roi_source_gray,
         silhouette_background_mask,
+        image_representation_mode=image_representation_mode,
     )
+    foreground_result = None
+    if foreground_active:
+        foreground_result = apply_foreground_enhancement_v4(
+            roi_repr,
+            foreground_mask.astype(bool),
+            foreground_config,
+        )
+        roi_repr = foreground_result.image
     orientation_repr = roi_repr
     brightness_result = None
     if brightness_active:
@@ -923,6 +1043,7 @@ def _build_tri_stream_row_payload(
         "orientation_source_extent_xyxy": orientation_source_extent_xyxy,
         "orientation_crop_source_xyxy": orientation_crop_source_xyxy,
         "orientation_crop_size_px": np.float32(orientation_crop_size_px),
+        "foreground_result": foreground_result,
         "brightness_result": brightness_result,
         "x_geometry": x_geometry,
         "y_distance": y_distance,

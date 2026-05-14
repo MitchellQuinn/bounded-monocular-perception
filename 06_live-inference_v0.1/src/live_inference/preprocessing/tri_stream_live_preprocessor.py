@@ -29,6 +29,9 @@ from live_inference.model_registry.model_manifest import (
 
 from .preprocessing_config import (
     BrightnessNormalizationRuntimeConfig,
+    ForegroundEnhancementRuntimeConfig,
+    IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE,
+    IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE,
     TriStreamPreprocessingConfig,
 )
 from .roi_locator import RoiLocation, RoiLocator
@@ -50,11 +53,16 @@ from rb_pipeline_v4.brightness_normalization import (  # noqa: E402
     BrightnessNormalizationResultV4,
     apply_brightness_normalization_v4,
 )
+from rb_pipeline_v4.foreground_enhancement import (  # noqa: E402
+    ForegroundEnhancementResultV4,
+    apply_foreground_enhancement_v4,
+)
 from rb_pipeline_v4.image_io import to_grayscale_uint8  # noqa: E402
 from rb_pipeline_v4.pack_dual_stream_stage import (  # noqa: E402
     _place_image_on_canvas,
     _reconstruct_roi_canvas_from_source,
     _render_inverted_vehicle_detail_on_white,
+    _render_vehicle_detail_on_white,
     _silhouette_to_background_mask,
 )
 from rb_pipeline_v4.pack_tri_stream_stage import (  # noqa: E402
@@ -340,11 +348,34 @@ class TriStreamLivePreprocessor:
         )
         mask_metadata.update(foreground_background_metadata)
         model_background_mask = _background_mask_from_foreground(foreground_mask)
-        roi_repr = _render_inverted_vehicle_detail_on_white(
+        roi_repr = _render_vehicle_detail_on_white(
             roi_gray,
             model_background_mask,
+            image_representation_mode=self._config.image_representation_mode,
         )
-        inverted_orientation_repr = roi_repr
+        foreground_payload = _disabled_foreground_enhancement_payload(
+            self._config.foreground_enhancement_runtime,
+            foreground_mask,
+        )
+        if self._config.foreground_enhancement_runtime.active():
+            foreground_result = self._apply_foreground_enhancement(
+                roi_repr=roi_repr,
+                foreground_mask=foreground_mask,
+            )
+            roi_repr = foreground_result.image
+            foreground_payload = _foreground_enhancement_result_payload(
+                self._config.foreground_enhancement_runtime,
+                foreground_result,
+            )
+        inverted_orientation_repr = (
+            roi_repr
+            if self._config.image_representation_mode
+            == IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE
+            else _render_inverted_vehicle_detail_on_white(
+                roi_gray,
+                model_background_mask,
+            )
+        )
         raw_orientation_source_gray = _raw_orientation_source_after_background_removal(
             roi_gray,
             roi_background.removal_mask,
@@ -360,6 +391,7 @@ class TriStreamLivePreprocessor:
             orientation_crop_size_px,
         ) = self._build_orientation_image(
             roi_source_gray=raw_orientation_source_gray,
+            roi_model_repr=roi_repr,
             inverted_orientation_repr=inverted_orientation_repr,
             foreground_mask=foreground_mask,
         )
@@ -401,6 +433,8 @@ class TriStreamLivePreprocessor:
                     silhouette_result.primary_break_reason
                 ),
                 "silhouette_diagnostics": dict(silhouette_result.diagnostics),
+                "image_representation_mode": self._config.image_representation_mode,
+                "foreground_enhancement": foreground_payload,
                 "brightness_normalization": brightness_payload,
                 "distance_clipped": bool(distance_clipped),
                 "orientation_context_scale": float(
@@ -857,16 +891,53 @@ class TriStreamLivePreprocessor:
         )
         return canvas.astype(np.float32, copy=False), brightness_payload, bool(clipped)
 
+    def _apply_foreground_enhancement(
+        self,
+        *,
+        roi_repr: np.ndarray,
+        foreground_mask: np.ndarray,
+    ) -> ForegroundEnhancementResultV4:
+        runtime = self._config.foreground_enhancement_runtime
+        canvas_w, canvas_h = self._config.distance_canvas_size
+        expected_canvas_shape = (int(canvas_h), int(canvas_w))
+        image_shape = tuple(roi_repr.shape)
+        mask_shape = tuple(foreground_mask.shape)
+        if image_shape != expected_canvas_shape or mask_shape != expected_canvas_shape:
+            raise ValueError(
+                "Distance/yaw model expects foreground enhancement, but the "
+                "reconstructed foreground mask is not aligned with the regressor "
+                f"canvas: image={image_shape}, mask={mask_shape}, "
+                f"expected_canvas={expected_canvas_shape}."
+            )
+        return apply_foreground_enhancement_v4(
+            roi_repr,
+            foreground_mask.astype(bool, copy=False),
+            runtime.config,
+        )
+
     def _build_orientation_image(
         self,
         *,
         roi_source_gray: np.ndarray,
+        roi_model_repr: np.ndarray,
         inverted_orientation_repr: np.ndarray,
         foreground_mask: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         orientation_source_mode = self._config.orientation_source_mode
-        if orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE:
+        if (
+            orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE
+            and self._config.image_representation_mode
+            == IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE
+        ):
+            orientation_source_image = roi_model_repr
+        elif orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE:
             orientation_source_image = roi_source_gray
+        elif (
+            orientation_source_mode == ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+            and self._config.image_representation_mode
+            == IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE
+        ):
+            orientation_source_image = roi_model_repr
         elif orientation_source_mode == ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE:
             orientation_source_image = inverted_orientation_repr
         else:
@@ -1663,6 +1734,39 @@ def _disabled_brightness_payload(
     return _brightness_result_payload(runtime, result)
 
 
+def _foreground_enhancement_result_payload(
+    runtime: ForegroundEnhancementRuntimeConfig,
+    result: ForegroundEnhancementResultV4,
+) -> dict[str, Any]:
+    payload = runtime.to_log_dict()
+    payload.update(
+        {
+            "Status": result.status,
+            "ForegroundPixelCount": int(result.foreground_pixel_count),
+            "CurrentMedianDarkness": float(result.current_median_darkness),
+            "EffectiveMedianDarkness": float(result.effective_median_darkness),
+            "Gain": float(result.gain),
+        }
+    )
+    return payload
+
+
+def _disabled_foreground_enhancement_payload(
+    runtime: ForegroundEnhancementRuntimeConfig,
+    foreground_mask: np.ndarray,
+) -> dict[str, Any]:
+    result = ForegroundEnhancementResultV4(
+        image=np.empty((0, 0), dtype=np.float32),
+        status="disabled",
+        method=runtime.config.normalized_method(),
+        foreground_pixel_count=int(np.count_nonzero(foreground_mask)),
+        current_median_darkness=float("nan"),
+        effective_median_darkness=float("nan"),
+        gain=1.0,
+    )
+    return _foreground_enhancement_result_payload(runtime, result)
+
+
 def _coerce_center_xy(location: RoiLocation) -> tuple[float, float]:
     try:
         center_x, center_y = location.center_xy_px
@@ -1844,7 +1948,9 @@ __all__ = [
     "_brightness_result_payload",
     "_contour_break_reason",
     "_disabled_brightness_payload",
+    "_disabled_foreground_enhancement_payload",
     "_extract_centered_canvas",
+    "_foreground_enhancement_result_payload",
     "_mask_geometry",
     "_render_is_empty",
 ]

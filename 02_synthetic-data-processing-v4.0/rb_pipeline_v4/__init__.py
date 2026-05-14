@@ -3,6 +3,7 @@
 from .config import (
     BrightnessNormalizationConfigV4,
     DetectStageConfigV4,
+    ForegroundEnhancementConfigV4,
     PackDualStreamStageConfigV4,
     PackTriStreamStageConfigV4,
     ShuffleStageConfigV4,
@@ -12,6 +13,7 @@ from .config import (
 from .brightness_normalization import BrightnessNormalizationResultV4, apply_brightness_normalization_v4
 from .detector import EdgeRoiDetector, UltralyticsYoloDetector
 from .detect_stage import run_detect_stage_v4
+from .foreground_enhancement import ForegroundEnhancementResultV4, apply_foreground_enhancement_v4
 from .input_corpus_shuffle import (
     InputCorpusSummary,
     InputCorpusShuffleError,
@@ -50,6 +52,8 @@ __all__ = [
     "BrightnessNormalizationConfigV4",
     "BrightnessNormalizationResultV4",
     "EdgeRoiDetector",
+    "ForegroundEnhancementConfigV4",
+    "ForegroundEnhancementResultV4",
     "InputCorpusSummary",
     "InputCorpusShuffleError",
     "InputCorpusShuffleResult",
@@ -65,6 +69,7 @@ __all__ = [
     "TriStreamRunStatus",
     "default_input_shuffle_destination",
     "apply_brightness_normalization_v4",
+    "apply_foreground_enhancement_v4",
     "build_tri_stream_sample_preview",
     "build_pack_tri_stream_config",
     "discover_tri_stream_runs",

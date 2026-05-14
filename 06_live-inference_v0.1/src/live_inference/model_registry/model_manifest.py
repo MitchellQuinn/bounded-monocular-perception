@@ -21,7 +21,13 @@ _ORIENTATION_REPRESENTATION_SOURCE_MODES = {
     "target_centered_raw_grayscale_scaled_by_silhouette_extent": (
         ORIENTATION_SOURCE_RAW_GRAYSCALE
     ),
+    "target_centered_raw_grayscale_scaled_by_silhouette_extent_foreground_enhanced": (
+        ORIENTATION_SOURCE_RAW_GRAYSCALE
+    ),
     "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent": (
+        ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+    "target_centered_inverted_vehicle_on_white_scaled_by_silhouette_extent_foreground_enhanced": (
         ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
     ),
 }
@@ -29,13 +35,25 @@ _ORIENTATION_CONTENT_SOURCE_MODES = {
     "raw_grayscale_detail_preserving_no_brightness_normalization": (
         ORIENTATION_SOURCE_RAW_GRAYSCALE
     ),
+    "raw_grayscale_detail_on_white_no_brightness_normalization": (
+        ORIENTATION_SOURCE_RAW_GRAYSCALE
+    ),
+    "foreground_enhanced_raw_grayscale_detail_on_white_no_brightness_normalization": (
+        ORIENTATION_SOURCE_RAW_GRAYSCALE
+    ),
     "inverted_vehicle_detail_on_white_no_brightness_normalization": (
+        ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+    "foreground_enhanced_inverted_vehicle_detail_on_white_no_brightness_normalization": (
         ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
     ),
 }
 _ORIENTATION_POLARITY_SOURCE_MODES = {
     "dark_vehicle_detail_on_white_background": (
         ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE
+    ),
+    "source_grayscale_vehicle_detail_on_white_background": (
+        ORIENTATION_SOURCE_RAW_GRAYSCALE
     ),
 }
 

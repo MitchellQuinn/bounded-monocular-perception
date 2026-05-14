@@ -6,7 +6,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .config import BrightnessNormalizationConfigV4, PackTriStreamStageConfigV4, StageSummaryV4
+from .config import (
+    BrightnessNormalizationConfigV4,
+    ForegroundEnhancementConfigV4,
+    PackTriStreamStageConfigV4,
+    StageSummaryV4,
+)
 from .manifest import load_samples_csv, samples_csv_path
 from .pack_tri_stream_stage import (
     build_tri_stream_sample_preview,
@@ -127,6 +132,8 @@ def build_pack_tri_stream_config(
     overwrite: bool = False,
     sample_offset: int = 0,
     sample_limit: int = 0,
+    image_representation_mode: str = "inverted_vehicle_on_white",
+    foreground_enhancement: ForegroundEnhancementConfigV4 | Mapping[str, object] | None = None,
     brightness_normalization: BrightnessNormalizationConfigV4 | Mapping[str, object] | None = None,
 ) -> PackTriStreamStageConfigV4:
     """Construct the pack config from notebook control values."""
@@ -134,6 +141,8 @@ def build_pack_tri_stream_config(
         canvas_width_px=int(canvas_width_px),
         canvas_height_px=int(canvas_height_px),
         clip_policy=str(clip_policy),
+        image_representation_mode=str(image_representation_mode),
+        foreground_enhancement=foreground_enhancement,
         orientation_context_scale=float(orientation_context_scale),
         shard_size=int(shard_size),
         overwrite=bool(overwrite),

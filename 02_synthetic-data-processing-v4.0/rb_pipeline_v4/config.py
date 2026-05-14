@@ -9,9 +9,11 @@ from typing import Mapping
 
 
 _VALID_REPRESENTATION_MODES = {"outline", "filled"}
+_VALID_IMAGE_REPRESENTATION_MODES = {"inverted_vehicle_on_white", "raw_grayscale_on_white"}
 _VALID_CLIP_POLICIES = {"fail", "clip"}
 _VALID_DETECTOR_BACKENDS = {"yolo", "edge"}
 _VALID_BRIGHTNESS_NORMALIZATION_METHODS = {"none", "masked_median_darkness_gain"}
+_VALID_FOREGROUND_ENHANCEMENT_METHODS = {"none", "masked_median_darkness_gain"}
 _VALID_EMPTY_MASK_POLICIES = {"skip", "fail"}
 
 
@@ -130,6 +132,107 @@ class BrightnessNormalizationConfigV4:
 
 
 @dataclass(frozen=True)
+class ForegroundEnhancementConfigV4:
+    """Config for deterministic foreground-only representation strengthening."""
+
+    enabled: bool = False
+    method: str = "none"
+    target_median_darkness: float = 0.70
+    min_gain: float = 1.0
+    max_gain: float = 3.0
+    epsilon: float = 1e-6
+    empty_mask_policy: str = "skip"
+
+    def normalized_enabled(self) -> bool:
+        return bool(self.enabled)
+
+    def normalized_method(self) -> str:
+        value = str(self.method).strip().lower()
+        if value not in _VALID_FOREGROUND_ENHANCEMENT_METHODS:
+            allowed = ", ".join(sorted(_VALID_FOREGROUND_ENHANCEMENT_METHODS))
+            raise ValueError(f"Unsupported foreground enhancement method '{self.method}'. Allowed: {allowed}.")
+        return value
+
+    def normalized_target_median_darkness(self) -> float:
+        value = float(self.target_median_darkness)
+        if not math.isfinite(value) or value < 0.05 or value > 0.95:
+            raise ValueError("target_median_darkness must be finite and in [0.05, 0.95]")
+        return value
+
+    def normalized_min_gain(self) -> float:
+        value = float(self.min_gain)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError("min_gain must be finite and > 0")
+        return value
+
+    def normalized_max_gain(self) -> float:
+        value = float(self.max_gain)
+        min_gain = self.normalized_min_gain()
+        if not math.isfinite(value) or value < min_gain:
+            raise ValueError("max_gain must be finite and >= min_gain")
+        return value
+
+    def normalized_epsilon(self) -> float:
+        value = float(self.epsilon)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError("epsilon must be finite and > 0")
+        return value
+
+    def normalized_empty_mask_policy(self) -> str:
+        value = str(self.empty_mask_policy).strip().lower()
+        if value not in _VALID_EMPTY_MASK_POLICIES:
+            allowed = ", ".join(sorted(_VALID_EMPTY_MASK_POLICIES))
+            raise ValueError(f"Unsupported empty_mask_policy '{self.empty_mask_policy}'. Allowed: {allowed}.")
+        return value
+
+    def active_method(self) -> str:
+        method = self.normalized_method()
+        return method if self.normalized_enabled() else "none"
+
+    def to_contract_dict(self) -> dict[str, object]:
+        return {
+            "Enabled": self.normalized_enabled(),
+            "Method": self.normalized_method(),
+            "TargetMedianDarkness": self.normalized_target_median_darkness(),
+            "MinGain": self.normalized_min_gain(),
+            "MaxGain": self.normalized_max_gain(),
+            "Epsilon": self.normalized_epsilon(),
+            "EmptyMaskPolicy": self.normalized_empty_mask_policy(),
+        }
+
+    def to_log_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload["enabled"] = self.normalized_enabled()
+        payload["method"] = self.normalized_method()
+        payload["target_median_darkness"] = self.normalized_target_median_darkness()
+        payload["min_gain"] = self.normalized_min_gain()
+        payload["max_gain"] = self.normalized_max_gain()
+        payload["epsilon"] = self.normalized_epsilon()
+        payload["empty_mask_policy"] = self.normalized_empty_mask_policy()
+        return payload
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, object]) -> "ForegroundEnhancementConfigV4":
+        def read(*names: str, default: object) -> object:
+            for name in names:
+                if name in payload:
+                    return payload[name]
+            return default
+
+        return cls(
+            enabled=_coerce_bool(read("enabled", "Enabled", default=False)),
+            method=str(read("method", "Method", default="none")),
+            target_median_darkness=float(
+                read("target_median_darkness", "TargetMedianDarkness", default=0.70)
+            ),
+            min_gain=float(read("min_gain", "MinGain", default=1.0)),
+            max_gain=float(read("max_gain", "MaxGain", default=3.0)),
+            epsilon=float(read("epsilon", "Epsilon", default=1e-6)),
+            empty_mask_policy=str(read("empty_mask_policy", "EmptyMaskPolicy", default="skip")),
+        )
+
+
+@dataclass(frozen=True)
 class DetectStageConfigV4:
     """Config for detector-based defender ROI stage (YOLO or edge)."""
 
@@ -152,6 +255,7 @@ class DetectStageConfigV4:
     edge_padding_px: int = 0
     edge_min_foreground_px: int = 16
     edge_close_kernel_size: int = 1
+    edge_ignore_border_px: int = 0
 
     overwrite: bool = False
     dry_run: bool = False
@@ -229,6 +333,9 @@ class DetectStageConfigV4:
     def normalized_edge_close_kernel_size(self) -> int:
         return max(1, int(self.edge_close_kernel_size))
 
+    def normalized_edge_ignore_border_px(self) -> int:
+        return max(0, int(self.edge_ignore_border_px))
+
     def normalized_sample_offset(self) -> int:
         return max(0, int(self.sample_offset))
 
@@ -242,6 +349,7 @@ class DetectStageConfigV4:
         payload["default_model_ref"] = self.normalized_default_model_ref()
         payload["defender_class_ids"] = self.normalized_defender_class_ids()
         payload["defender_class_names"] = self.normalized_defender_class_names()
+        payload["edge_ignore_border_px"] = self.normalized_edge_ignore_border_px()
         return payload
 
 
@@ -341,6 +449,10 @@ class PackDualStreamStageConfigV4:
     canvas_width_px: int = 224
     canvas_height_px: int = 224
     clip_policy: str = "fail"
+    image_representation_mode: str = "inverted_vehicle_on_white"
+    foreground_enhancement: ForegroundEnhancementConfigV4 | Mapping[str, object] | None = field(
+        default_factory=ForegroundEnhancementConfigV4
+    )
     include_v1_compat_arrays: bool = False
     include_optional_metadata_arrays: bool = True
     use_intermediate_npy: bool = True
@@ -371,6 +483,15 @@ class PackDualStreamStageConfigV4:
             raise ValueError(f"Unsupported clip_policy '{self.clip_policy}'. Allowed: {allowed}.")
         return value
 
+    def normalized_image_representation_mode(self) -> str:
+        value = str(self.image_representation_mode).strip().lower()
+        if value not in _VALID_IMAGE_REPRESENTATION_MODES:
+            allowed = ", ".join(sorted(_VALID_IMAGE_REPRESENTATION_MODES))
+            raise ValueError(
+                f"Unsupported image_representation_mode '{self.image_representation_mode}'. Allowed: {allowed}."
+            )
+        return value
+
     def normalized_shard_size(self) -> int:
         size = int(self.shard_size)
         if size < 0:
@@ -389,6 +510,18 @@ class PackDualStreamStageConfigV4:
             "brightness_normalization must be a BrightnessNormalizationConfigV4, mapping, or None"
         )
 
+    def normalized_foreground_enhancement(self) -> ForegroundEnhancementConfigV4:
+        config = self.foreground_enhancement
+        if config is None:
+            return ForegroundEnhancementConfigV4()
+        if isinstance(config, ForegroundEnhancementConfigV4):
+            return config
+        if isinstance(config, Mapping):
+            return ForegroundEnhancementConfigV4.from_mapping(config)
+        raise TypeError(
+            "foreground_enhancement must be a ForegroundEnhancementConfigV4, mapping, or None"
+        )
+
     def normalized_sample_offset(self) -> int:
         return max(0, int(self.sample_offset))
 
@@ -398,8 +531,10 @@ class PackDualStreamStageConfigV4:
     def to_log_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["clip_policy"] = self.normalized_clip_policy()
+        payload["image_representation_mode"] = self.normalized_image_representation_mode()
         payload["canvas_width_px"] = self.normalized_canvas_width_px()
         payload["canvas_height_px"] = self.normalized_canvas_height_px()
+        payload["foreground_enhancement"] = self.normalized_foreground_enhancement().to_log_dict()
         payload["brightness_normalization"] = self.normalized_brightness_normalization().to_log_dict()
         return payload
 
@@ -411,6 +546,10 @@ class PackTriStreamStageConfigV4:
     canvas_width_px: int = 300
     canvas_height_px: int = 300
     clip_policy: str = "fail"
+    image_representation_mode: str = "inverted_vehicle_on_white"
+    foreground_enhancement: ForegroundEnhancementConfigV4 | Mapping[str, object] | None = field(
+        default_factory=ForegroundEnhancementConfigV4
+    )
     include_v1_compat_arrays: bool = False
     include_optional_metadata_arrays: bool = True
     use_intermediate_npy: bool = True
@@ -442,6 +581,15 @@ class PackTriStreamStageConfigV4:
             raise ValueError(f"Unsupported clip_policy '{self.clip_policy}'. Allowed: {allowed}.")
         return value
 
+    def normalized_image_representation_mode(self) -> str:
+        value = str(self.image_representation_mode).strip().lower()
+        if value not in _VALID_IMAGE_REPRESENTATION_MODES:
+            allowed = ", ".join(sorted(_VALID_IMAGE_REPRESENTATION_MODES))
+            raise ValueError(
+                f"Unsupported image_representation_mode '{self.image_representation_mode}'. Allowed: {allowed}."
+            )
+        return value
+
     def normalized_shard_size(self) -> int:
         size = int(self.shard_size)
         if size < 0:
@@ -466,6 +614,18 @@ class PackTriStreamStageConfigV4:
             "brightness_normalization must be a BrightnessNormalizationConfigV4, mapping, or None"
         )
 
+    def normalized_foreground_enhancement(self) -> ForegroundEnhancementConfigV4:
+        config = self.foreground_enhancement
+        if config is None:
+            return ForegroundEnhancementConfigV4()
+        if isinstance(config, ForegroundEnhancementConfigV4):
+            return config
+        if isinstance(config, Mapping):
+            return ForegroundEnhancementConfigV4.from_mapping(config)
+        raise TypeError(
+            "foreground_enhancement must be a ForegroundEnhancementConfigV4, mapping, or None"
+        )
+
     def normalized_sample_offset(self) -> int:
         return max(0, int(self.sample_offset))
 
@@ -475,9 +635,11 @@ class PackTriStreamStageConfigV4:
     def to_log_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["clip_policy"] = self.normalized_clip_policy()
+        payload["image_representation_mode"] = self.normalized_image_representation_mode()
         payload["canvas_width_px"] = self.normalized_canvas_width_px()
         payload["canvas_height_px"] = self.normalized_canvas_height_px()
         payload["orientation_context_scale"] = self.normalized_orientation_context_scale()
+        payload["foreground_enhancement"] = self.normalized_foreground_enhancement().to_log_dict()
         payload["brightness_normalization"] = self.normalized_brightness_normalization().to_log_dict()
         return payload
 
