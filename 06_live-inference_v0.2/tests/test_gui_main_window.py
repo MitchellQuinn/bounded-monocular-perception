@@ -6,6 +6,7 @@ import ast
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -75,11 +76,19 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
 
     def test_right_side_control_panel_contains_camera_and_inference_buttons(self) -> None:
         _, QPushButton, _, _ = _gui_imports()
-        from PySide6.QtWidgets import QWidget
+        from PySide6.QtWidgets import QScrollArea, QWidget
 
         panel = self.window.findChild(QWidget, "right_control_panel")
         self.assertIsNotNone(panel)
         assert panel is not None
+        scroll_area = self.window.findChild(
+            QScrollArea,
+            "right_control_panel_scroll_area",
+        )
+        self.assertIsNotNone(scroll_area)
+        assert scroll_area is not None
+        self.assertIs(scroll_area.widget(), panel)
+        self.assertTrue(scroll_area.widgetResizable())
         for object_name in (
             "start_camera_button",
             "stop_camera_button",
@@ -90,6 +99,23 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             button = self.window.findChild(QPushButton, object_name)
             self.assertIsNotNone(button)
             self.assertTrue(_is_descendant(button, panel))
+
+    def test_main_window_minimum_height_fits_common_desktop(self) -> None:
+        self.assertLessEqual(self.window.minimumSizeHint().height(), 900)
+
+    def test_right_control_panel_has_no_hidden_horizontal_overflow(self) -> None:
+        from PySide6.QtWidgets import QScrollArea
+
+        self.window.resize(1854, 1010)
+        _process_events(self.app)
+
+        scroll_area = self.window.findChild(
+            QScrollArea,
+            "right_control_panel_scroll_area",
+        )
+        self.assertIsNotNone(scroll_area)
+        assert scroll_area is not None
+        self.assertEqual(scroll_area.horizontalScrollBar().maximum(), 0)
 
     def test_mask_controls_exist(self) -> None:
         _, QPushButton, _, _ = _gui_imports()
@@ -200,6 +226,184 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
             self.window.findChild(QLabel, "roi_locator_status_label")
         )
         self.assertIsNotNone(self.window.findChild(QLabel, "roi_clip_amount_value"))
+
+    def test_guided_diagnostics_panel_exists(self) -> None:
+        from PySide6.QtWidgets import QLabel, QPushButton, QGroupBox
+
+        self.assertIsNotNone(
+            self.window.findChild(QGroupBox, "guided_diagnostics_group")
+        )
+        for object_name in (
+            "guided_active_profile_value",
+            "guided_effective_policy_value",
+            "guided_workflow_state_value",
+            "guided_next_action_label",
+            "baseline_profile_status_value",
+            "guided_latest_trace_path_value",
+            "guided_trace_manifest_app_root_value",
+            "guided_trace_regressor_reached_value",
+            "guided_check_camera_value",
+            "guided_check_inference_stopped_value",
+            "guided_check_frame_captured_value",
+            "guided_check_baseline_active_value",
+            "guided_check_trace_enabled_value",
+            "guided_check_locator_accepted_value",
+            "guided_check_regressor_reached_value",
+        ):
+            self.assertIsNotNone(self.window.findChild(QLabel, object_name))
+        self.assertIsNotNone(
+            self.window.findChild(
+                QPushButton,
+                "apply_baseline_diagnostic_profile_button",
+            )
+        )
+
+    def test_guided_active_profile_displays_baseline_when_applied(self) -> None:
+        from PySide6.QtWidgets import QLabel, QPushButton
+
+        button = self.window.findChild(
+            QPushButton,
+            "apply_baseline_diagnostic_profile_button",
+        )
+        active = self.window.findChild(QLabel, "guided_active_profile_value")
+        baseline = self.window.findChild(QLabel, "baseline_profile_status_value")
+        assert button is not None
+        assert active is not None
+        assert baseline is not None
+
+        button.click()
+        _process_events(self.app)
+
+        self.assertEqual(active.text(), "baseline_inverted_masked_locator")
+        self.assertEqual(baseline.text(), "active")
+
+    def test_guided_effective_policy_summary_updates_when_controls_change(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QLabel, QSpinBox
+
+        manual_locator = self.window.findChild(
+            QCheckBox,
+            "apply_manual_mask_to_roi_locator_checkbox",
+        )
+        tolerance = self.window.findChild(QSpinBox, "roi_clip_tolerance_input")
+        guided_policy = self.window.findChild(QLabel, "guided_effective_policy_value")
+        assert manual_locator is not None
+        assert tolerance is not None
+        assert guided_policy is not None
+
+        manual_locator.setChecked(True)
+        tolerance.setValue(12)
+        _process_events(self.app)
+
+        self.assertIn("profile custom", guided_policy.text())
+        self.assertIn("mask locator yes", guided_policy.text())
+        self.assertIn("clip tolerance 12 px", guided_policy.text())
+        self.assertIn("min confidence 0.300", guided_policy.text())
+
+    def test_guided_next_action_says_start_camera_when_camera_stopped(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        next_action = self.window.findChild(QLabel, "guided_next_action_label")
+        assert next_action is not None
+
+        self.assertEqual(next_action.text(), "Start camera.")
+
+    def test_guided_next_action_says_stop_inference_when_inference_running(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        self.window.start_inference_button.click()
+        _process_events(self.app)
+
+        next_action = self.window.findChild(QLabel, "guided_next_action_label")
+        assert next_action is not None
+        self.assertEqual(next_action.text(), "Stop inference before diagnostics.")
+
+    def test_guided_next_action_says_capture_frame_when_no_frame_captured(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        self.window.start_camera_button.click()
+        _process_events(self.app)
+
+        next_action = self.window.findChild(QLabel, "guided_next_action_label")
+        assert next_action is not None
+        self.assertEqual(next_action.text(), "Capture a frame.")
+
+    def test_guided_next_action_after_capture_and_baseline_prompts_locator_preview(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+
+        self.window.start_camera_button.click()
+        self.window.apply_baseline_profile_button.click()
+        self.window.capture_frame_button.click()
+        _process_events(self.app)
+
+        next_action = self.window.findChild(QLabel, "guided_next_action_label")
+        assert next_action is not None
+        self.assertEqual(
+            next_action.text(),
+            "Preview locator input, then run ROI locator only.",
+        )
+
+    def test_guided_checklist_and_state_summary_update_from_fake_state(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        mask = np.ones((2, 5), dtype=bool)
+        self.window.mask_state.commit_mask(mask, width_px=5, height_px=2, fill_value=255)
+        self.window.background_state.capture_background(np.zeros((2, 5), dtype=np.uint8))
+        self.window.background_state.set_enabled(True)
+        self.window.record_trace_checkbox.setChecked(True)
+        self.window.apply_baseline_profile_button.click()
+        self.window.start_camera_button.click()
+        self.inference_controller.signals.result_ready.emit(
+            _ResultPayload(
+                predicted_distance_m=1.0,
+                predicted_yaw_deg=2.0,
+                inference_time_ms=3.0,
+                preprocessing_time_ms=4.0,
+                total_time_ms=7.0,
+                roi_metadata=_RoiMetadataPayload(
+                    source_image_wh_px=(80, 48),
+                    extras={
+                        contracts.PREPROCESSING_METADATA_ROI_ACCEPTED: True,
+                        "distance_orientation_regressor_reached": True,
+                    },
+                ),
+            )
+        )
+        _process_events(self.app)
+
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_check_camera_value").text(),
+            "ok",
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_check_inference_stopped_value").text(),
+            "ok",
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_check_baseline_active_value").text(),
+            "ok",
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_check_trace_enabled_value").text(),
+            "ok",
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_check_locator_accepted_value").text(),
+            "ok",
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_check_regressor_reached_value").text(),
+            "ok",
+        )
+        state = self.window.findChild(QLabel, "guided_workflow_state_value").text()
+        self.assertIn("manual mask yes (10 px)", state)
+        self.assertIn("background captured yes, enabled yes", state)
 
     def test_stage_policy_checkboxes_update_shared_state(self) -> None:
         from PySide6.QtWidgets import QCheckBox
@@ -626,6 +830,31 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         self.assertEqual(runner.calls, [])
         self.assertIn("ROI locator-only run completed", self.window.log_panel.toPlainText())
 
+    def test_guided_next_action_after_locator_acceptance_prompts_single_frame_trace(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        runner = _FakeSingleFrameRunner()
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+        self.window.single_frame_runner = runner
+
+        self.window.start_camera_button.click()
+        self.window.apply_baseline_profile_button.click()
+        self.window.capture_frame_button.click()
+        self.window.run_roi_locator_only_button.click()
+        _process_events(self.app)
+
+        next_action = self.window.findChild(QLabel, "guided_next_action_label")
+        assert next_action is not None
+        self.assertEqual(
+            next_action.text(),
+            "Run single-frame inference with trace enabled.",
+        )
+
     def test_locator_diagnostics_require_captured_frame(self) -> None:
         runner = _FakeSingleFrameRunner()
         self.window.single_frame_runner = runner
@@ -684,6 +913,52 @@ class LiveInferenceMainWindowTests(unittest.TestCase):
         assert label is not None
         self.assertEqual(label.text(), str(trace_path))
         self.assertEqual(runner.record_trace_values, [True])
+
+    def test_guided_trace_linkage_reads_latest_manifest_status(self) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        image_path = self._write_temp_frame_image()
+        frame_bytes = image_path.read_bytes()
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        trace_path = Path(temp_dir.name) / "trace"
+        trace_path.mkdir()
+        (trace_path / "trace_manifest.json").write_text(
+            (
+                "{"
+                f"\"app_project_name\": \"{PROJECT_ROOT.name}\", "
+                "\"app_version\": \"v0.2\", "
+                "\"live_inference_version\": \"v0.2\", "
+                f"\"app_root_path\": \"{PROJECT_ROOT}\", "
+                "\"distance_orientation_regressor_reached\": true"
+                "}"
+            ),
+            encoding="utf-8",
+        )
+        runner = _FakeSingleFrameRunner(trace_path=trace_path)
+        self.window.frame_reader = _FakeFrameReader(
+            image_path=image_path,
+            image_bytes=frame_bytes,
+        )
+        self.window.single_frame_runner = runner
+        self.window.capture_frame_button.click()
+
+        self.window.record_trace_checkbox.setChecked(True)
+        self.window.run_single_inference_button.click()
+        _process_events(self.app)
+
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_latest_trace_path_value").text(),
+            str(trace_path),
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_trace_manifest_app_root_value").text(),
+            "yes",
+        )
+        self.assertEqual(
+            self.window.findChild(QLabel, "guided_trace_regressor_reached_value").text(),
+            "yes",
+        )
 
     def test_frame_preview_does_not_affect_result_label_updates(self) -> None:
         image_path = self._write_temp_frame_image()
@@ -1062,6 +1337,21 @@ class PySide6IsolationTests(unittest.TestCase):
                 offenders[str(module_path)] = imported_roots
 
         self.assertEqual(offenders, {})
+
+
+class VersionBoundaryTests(unittest.TestCase):
+    def test_v01_tree_has_no_uncommitted_changes(self) -> None:
+        completed = subprocess.run(
+            ["git", "status", "--short", "--", "06_live-inference_v0.1"],
+            cwd=PROJECT_ROOT.parent,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if completed.returncode != 0:
+            self.skipTest("git status unavailable for v0.1 boundary check")
+
+        self.assertEqual(completed.stdout.strip(), "")
 
 
 @dataclass(frozen=True)
