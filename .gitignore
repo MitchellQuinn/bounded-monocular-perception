@@ -168,6 +168,7 @@ Thumbs.db
 *pyenv*-before-uninstall*.txt
 AGENTS.md
 tempreference/
+live-inference-v0.2-runtime-process_v0.2.md
 
 # Keep intentional placeholders
 !.gitkeep

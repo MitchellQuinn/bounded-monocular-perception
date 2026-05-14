@@ -1,5 +1,36 @@
 # Fresh v0.2 Trace Validation Protocol
 
+Use the GUI `Guided Diagnostics` panel for the baseline validation pass. It shows
+the active profile, the effective stage policy, the current readiness state, the
+next recommended action, and the latest trace manifest status.
+
+Recommended GUI flow:
+
+1. Start the camera.
+2. Stop continuous inference before diagnostics. Single-frame diagnostics should
+   run from a frozen captured frame, not while the continuous worker is active.
+3. Capture a frame.
+4. Click `Apply Baseline Profile`.
+5. Confirm the checklist shows camera ready, inference stopped, frame captured,
+   and baseline active.
+6. Enable `Record Trace` before the final single-frame inference run.
+7. Preview locator input, then run ROI locator only.
+8. If the locator is accepted, run single-frame inference with trace enabled.
+9. Review the trace path, manifest v0.2 root status, regressor-reached status,
+   artifacts, and prediction.
+
+Checklist meanings:
+
+- Camera: the camera controller reports running.
+- Inference stopped: continuous inference is not running or requested.
+- Frame captured: a frozen single frame is available for diagnostics.
+- Baseline active: `baseline_inverted_masked_locator` is the active diagnostic
+  profile.
+- Trace enabled: `Record Trace` is on.
+- Locator accepted: the last ROI locator result was accepted.
+- Regressor reached: the last diagnostic result or trace manifest reported
+  `distance_orientation_regressor_reached = true`.
+
 A. Clear or isolate:
 
 ```bash

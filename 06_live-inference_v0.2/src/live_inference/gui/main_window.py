@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import json
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
@@ -102,10 +104,17 @@ class LiveInferenceMainWindow(QMainWindow):
         self._last_skip_log_key: tuple[str, str] | None = None
         self._repeated_skip_count = 0
         self._last_result_warning_logged: str | None = None
+        self._last_camera_state_text = ""
         self._last_inference_state_text = ""
         self._inference_start_requested = False
         self._preview_background_revision: int | None = None
         self._captured_single_frame: _CapturedSingleFrame | None = None
+        self._last_roi_accepted: bool | None = None
+        self._last_roi_status_text = "n/a"
+        self._last_regressor_reached: bool | None = None
+        self._latest_trace_path: Path | None = None
+        self._trace_manifest_v02_app_root_text = "n/a"
+        self._trace_manifest_regressor_reached_text = "n/a"
 
         self.setWindowTitle("Live Inference")
         self._build_ui()
@@ -394,6 +403,113 @@ class LiveInferenceMainWindow(QMainWindow):
 
         diagnostics_tab = QWidget()
         diagnostics_layout = QVBoxLayout(diagnostics_tab)
+        guided_group = QGroupBox("Guided Diagnostics")
+        guided_group.setObjectName("guided_diagnostics_group")
+        guided_grid = QGridLayout(guided_group)
+        guided_grid.setColumnStretch(1, 1)
+        guided_grid.setColumnStretch(3, 1)
+
+        self.guided_active_profile_value = QLabel("none")
+        self.guided_active_profile_value.setObjectName(
+            "guided_active_profile_value"
+        )
+        self.baseline_profile_status_value = QLabel("Baseline active: no")
+        self.baseline_profile_status_value.setObjectName(
+            "baseline_profile_status_value"
+        )
+        self.apply_baseline_profile_button = QPushButton("Apply Baseline Profile")
+        self.apply_baseline_profile_button.setObjectName(
+            "apply_baseline_diagnostic_profile_button"
+        )
+        self.guided_effective_policy_value = QLabel()
+        self.guided_effective_policy_value.setObjectName(
+            "guided_effective_policy_value"
+        )
+        self.guided_effective_policy_value.setWordWrap(True)
+        self.guided_workflow_state_value = QLabel()
+        self.guided_workflow_state_value.setObjectName(
+            "guided_workflow_state_value"
+        )
+        self.guided_workflow_state_value.setWordWrap(True)
+        self.guided_next_action_label = QLabel("Start camera.")
+        self.guided_next_action_label.setObjectName("guided_next_action_label")
+        self.guided_next_action_label.setWordWrap(True)
+        self.guided_latest_trace_path_value = QLabel("n/a")
+        self.guided_latest_trace_path_value.setObjectName(
+            "guided_latest_trace_path_value"
+        )
+        self.guided_latest_trace_path_value.setWordWrap(True)
+        self.guided_latest_trace_path_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.guided_trace_manifest_app_root_value = QLabel("n/a")
+        self.guided_trace_manifest_app_root_value.setObjectName(
+            "guided_trace_manifest_app_root_value"
+        )
+        self.guided_trace_regressor_reached_value = QLabel("n/a")
+        self.guided_trace_regressor_reached_value.setObjectName(
+            "guided_trace_regressor_reached_value"
+        )
+        self.guided_check_camera_value = QLabel()
+        self.guided_check_camera_value.setObjectName("guided_check_camera_value")
+        self.guided_check_inference_stopped_value = QLabel()
+        self.guided_check_inference_stopped_value.setObjectName(
+            "guided_check_inference_stopped_value"
+        )
+        self.guided_check_frame_captured_value = QLabel()
+        self.guided_check_frame_captured_value.setObjectName(
+            "guided_check_frame_captured_value"
+        )
+        self.guided_check_baseline_active_value = QLabel()
+        self.guided_check_baseline_active_value.setObjectName(
+            "guided_check_baseline_active_value"
+        )
+        self.guided_check_trace_enabled_value = QLabel()
+        self.guided_check_trace_enabled_value.setObjectName(
+            "guided_check_trace_enabled_value"
+        )
+        self.guided_check_locator_accepted_value = QLabel()
+        self.guided_check_locator_accepted_value.setObjectName(
+            "guided_check_locator_accepted_value"
+        )
+        self.guided_check_regressor_reached_value = QLabel()
+        self.guided_check_regressor_reached_value.setObjectName(
+            "guided_check_regressor_reached_value"
+        )
+
+        guided_grid.addWidget(QLabel("Active profile:"), 0, 0)
+        guided_grid.addWidget(self.guided_active_profile_value, 0, 1)
+        guided_grid.addWidget(self.apply_baseline_profile_button, 1, 0, 1, 2)
+        guided_grid.addWidget(QLabel("Baseline:"), 2, 0)
+        guided_grid.addWidget(self.baseline_profile_status_value, 2, 1)
+        guided_grid.addWidget(QLabel("Effective policy:"), 3, 0)
+        guided_grid.addWidget(self.guided_effective_policy_value, 3, 1)
+        guided_grid.addWidget(QLabel("Current state:"), 4, 0)
+        guided_grid.addWidget(self.guided_workflow_state_value, 4, 1)
+        guided_grid.addWidget(QLabel("Next action:"), 5, 0)
+        guided_grid.addWidget(self.guided_next_action_label, 5, 1)
+        guided_grid.addWidget(QLabel("Latest trace:"), 6, 0)
+        guided_grid.addWidget(self.guided_latest_trace_path_value, 6, 1)
+        guided_grid.addWidget(QLabel("Manifest v0.2 root:"), 7, 0)
+        guided_grid.addWidget(self.guided_trace_manifest_app_root_value, 7, 1)
+        guided_grid.addWidget(QLabel("Trace regressor reached:"), 8, 0)
+        guided_grid.addWidget(self.guided_trace_regressor_reached_value, 8, 1)
+        guided_grid.addWidget(QLabel("Camera:"), 9, 0)
+        guided_grid.addWidget(self.guided_check_camera_value, 9, 1)
+        guided_grid.addWidget(QLabel("Inference stopped:"), 9, 2)
+        guided_grid.addWidget(self.guided_check_inference_stopped_value, 9, 3)
+        guided_grid.addWidget(QLabel("Frame captured:"), 10, 0)
+        guided_grid.addWidget(self.guided_check_frame_captured_value, 10, 1)
+        guided_grid.addWidget(QLabel("Baseline active:"), 10, 2)
+        guided_grid.addWidget(self.guided_check_baseline_active_value, 10, 3)
+        guided_grid.addWidget(QLabel("Trace enabled:"), 11, 0)
+        guided_grid.addWidget(self.guided_check_trace_enabled_value, 11, 1)
+        guided_grid.addWidget(QLabel("Locator accepted:"), 11, 2)
+        guided_grid.addWidget(self.guided_check_locator_accepted_value, 11, 3)
+        guided_grid.addWidget(QLabel("Regressor reached:"), 12, 0)
+        guided_grid.addWidget(self.guided_check_regressor_reached_value, 12, 1)
+        diagnostics_layout.addWidget(guided_group)
+
         diagnostics_group = QGroupBox("ROI Locator Diagnostics")
         diagnostics_group.setObjectName("roi_locator_diagnostics_group")
         diagnostics_grid = QGridLayout(diagnostics_group)
@@ -418,10 +534,6 @@ class LiveInferenceMainWindow(QMainWindow):
         self._set_combo_data_value(
             self.roi_locator_input_mode_dropdown,
             stage_policy.roi_locator_input_mode,
-        )
-        self.apply_baseline_profile_button = QPushButton("Apply baseline profile")
-        self.apply_baseline_profile_button.setObjectName(
-            "apply_baseline_diagnostic_profile_button"
         )
         self.effective_stage_policy_value = QLabel()
         self.effective_stage_policy_value.setObjectName("effective_stage_policy_value")
@@ -487,25 +599,24 @@ class LiveInferenceMainWindow(QMainWindow):
 
         diagnostics_grid.addWidget(QLabel("Locator mode:"), 0, 0)
         diagnostics_grid.addWidget(self.roi_locator_input_mode_dropdown, 0, 1)
-        diagnostics_grid.addWidget(self.apply_baseline_profile_button, 1, 0, 1, 2)
-        diagnostics_grid.addWidget(QLabel("Effective policy:"), 2, 0)
-        diagnostics_grid.addWidget(self.effective_stage_policy_value, 2, 1)
-        diagnostics_grid.addWidget(QLabel("Sheet min gray:"), 3, 0)
-        diagnostics_grid.addWidget(self.sheet_min_gray_input, 3, 1)
-        diagnostics_grid.addWidget(QLabel("Target max gray:"), 4, 0)
-        diagnostics_grid.addWidget(self.target_max_gray_input, 4, 1)
-        diagnostics_grid.addWidget(QLabel("Min area:"), 5, 0)
-        diagnostics_grid.addWidget(self.min_component_area_px_input, 5, 1)
-        diagnostics_grid.addWidget(QLabel("Close kernel:"), 6, 0)
-        diagnostics_grid.addWidget(self.morphology_close_kernel_px_input, 6, 1)
-        diagnostics_grid.addWidget(QLabel("Dilate kernel:"), 7, 0)
-        diagnostics_grid.addWidget(self.dilate_kernel_px_input, 7, 1)
-        diagnostics_grid.addWidget(QLabel("Lower frame:"), 8, 0)
-        diagnostics_grid.addWidget(self.restrict_lower_frame_percent_input, 8, 1)
-        diagnostics_grid.addWidget(self.preview_locator_input_button, 9, 0, 1, 2)
-        diagnostics_grid.addWidget(self.run_roi_locator_only_button, 10, 0, 1, 2)
-        diagnostics_grid.addWidget(self.roi_locator_next_action_label, 11, 0, 1, 2)
-        diagnostics_grid.addWidget(self.locator_input_preview_widget, 12, 0, 1, 2)
+        diagnostics_grid.addWidget(QLabel("Effective policy:"), 1, 0)
+        diagnostics_grid.addWidget(self.effective_stage_policy_value, 1, 1)
+        diagnostics_grid.addWidget(QLabel("Sheet min gray:"), 2, 0)
+        diagnostics_grid.addWidget(self.sheet_min_gray_input, 2, 1)
+        diagnostics_grid.addWidget(QLabel("Target max gray:"), 3, 0)
+        diagnostics_grid.addWidget(self.target_max_gray_input, 3, 1)
+        diagnostics_grid.addWidget(QLabel("Min area:"), 4, 0)
+        diagnostics_grid.addWidget(self.min_component_area_px_input, 4, 1)
+        diagnostics_grid.addWidget(QLabel("Close kernel:"), 5, 0)
+        diagnostics_grid.addWidget(self.morphology_close_kernel_px_input, 5, 1)
+        diagnostics_grid.addWidget(QLabel("Dilate kernel:"), 6, 0)
+        diagnostics_grid.addWidget(self.dilate_kernel_px_input, 6, 1)
+        diagnostics_grid.addWidget(QLabel("Lower frame:"), 7, 0)
+        diagnostics_grid.addWidget(self.restrict_lower_frame_percent_input, 7, 1)
+        diagnostics_grid.addWidget(self.preview_locator_input_button, 8, 0, 1, 2)
+        diagnostics_grid.addWidget(self.run_roi_locator_only_button, 9, 0, 1, 2)
+        diagnostics_grid.addWidget(self.roi_locator_next_action_label, 10, 0, 1, 2)
+        diagnostics_grid.addWidget(self.locator_input_preview_widget, 11, 0, 1, 2)
         diagnostics_layout.addWidget(diagnostics_group)
         diagnostics_layout.addStretch(1)
         self.control_tabs.addTab(diagnostics_tab, "Diagnostics")
@@ -654,7 +765,29 @@ class LiveInferenceMainWindow(QMainWindow):
 
         root_layout.addLayout(output_layout, stretch=4)
         panel_layout.addStretch(1)
-        root_layout.addWidget(self.right_control_panel, stretch=1)
+        self.right_control_scroll_area = QScrollArea()
+        self.right_control_scroll_area.setObjectName("right_control_panel_scroll_area")
+        self.right_control_scroll_area.setWidgetResizable(True)
+        self.right_control_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.right_control_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.right_control_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.right_control_scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.right_control_scroll_area.setWidget(self.right_control_panel)
+        panel_min_width = self.right_control_panel.minimumSizeHint().width()
+        scrollbar_width = (
+            self.right_control_scroll_area.verticalScrollBar().sizeHint().width()
+        )
+        self.right_control_scroll_area.setMinimumWidth(
+            panel_min_width + scrollbar_width
+        )
+        root_layout.addWidget(self.right_control_scroll_area, stretch=1)
 
         self.setCentralWidget(central)
         self._set_mask_button_state(None)
@@ -687,6 +820,9 @@ class LiveInferenceMainWindow(QMainWindow):
         self.stop_all_button.clicked.connect(self.stop_all)
         self.capture_frame_button.clicked.connect(self.capture_single_frame)
         self.run_single_inference_button.clicked.connect(self.run_single_inference)
+        self.record_trace_checkbox.toggled.connect(
+            self._on_record_trace_toggled
+        )
         self.draw_mask_button.clicked.connect(self.start_draw_mask)
         self.apply_mask_button.clicked.connect(self.apply_draw_mask)
         self.erase_mask_button.clicked.connect(self.start_erase_mask)
@@ -790,13 +926,16 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def start_camera(self) -> None:
         self._call_controller(self.camera_controller, "start", "Camera start")
+        self._refresh_guided_diagnostics()
 
     def stop_camera(self) -> None:
         self._call_controller(self.camera_controller, "request_stop", "Camera stop")
+        self._refresh_guided_diagnostics()
 
     def start_inference(self) -> None:
         self._call_controller(self.inference_controller, "start", "Inference start")
         self._inference_start_requested = True
+        self._refresh_guided_diagnostics()
 
     def stop_inference(self) -> None:
         self._call_controller(
@@ -805,6 +944,7 @@ class LiveInferenceMainWindow(QMainWindow):
             "Inference stop",
         )
         self._inference_start_requested = False
+        self._refresh_guided_diagnostics()
 
     def stop_all(self) -> None:
         self._call_controller(self.camera_controller, "request_stop", "Camera stop")
@@ -814,22 +954,26 @@ class LiveInferenceMainWindow(QMainWindow):
             "Inference stop",
         )
         self._inference_start_requested = False
+        self._refresh_guided_diagnostics()
 
     def capture_single_frame(self) -> None:
         reader = self.frame_reader
         if reader is None:
             self._append_log("ERROR", "Capture Frame unavailable: no frame reader configured.")
+            self._refresh_guided_diagnostics()
             return
 
         latest_frame = self._latest_completed_frame(reader)
         if latest_frame is None:
             self._append_log("WARNING", "Capture Frame failed: no completed frame is available.")
+            self._refresh_guided_diagnostics()
             return
 
         try:
             image_bytes = bytes(reader.read_frame_bytes(latest_frame))
         except Exception as exc:
             self._append_log("ERROR", f"Capture Frame failed: {exc}")
+            self._refresh_guided_diagnostics()
             return
 
         frame_hash = compute_frame_hash(image_bytes)
@@ -845,6 +989,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.last_captured_frame_hash_value.setText(frame_hash.value)
         self._display_captured_frame(image_bytes)
         self._append_log("INFO", f"Captured frame {frame_hash.value}")
+        self._refresh_guided_diagnostics()
 
     def run_single_inference(self) -> None:
         captured = self._captured_single_frame
@@ -853,12 +998,14 @@ class LiveInferenceMainWindow(QMainWindow):
                 "WARNING",
                 "Run Single Inference requires a captured frame.",
             )
+            self._refresh_guided_diagnostics()
             return
         if self._inference_is_running_or_requested():
             self._append_log(
                 "WARNING",
                 "Single-frame inference refused because continuous inference is running",
             )
+            self._refresh_guided_diagnostics()
             return
         runner = self.single_frame_runner
         if runner is None:
@@ -866,6 +1013,7 @@ class LiveInferenceMainWindow(QMainWindow):
                 "ERROR",
                 "Run Single Inference unavailable: no single-frame runner configured.",
             )
+            self._refresh_guided_diagnostics()
             return
 
         self._append_log("INFO", "Single-frame inference started")
@@ -878,6 +1026,7 @@ class LiveInferenceMainWindow(QMainWindow):
             )
         except Exception as exc:
             self._append_log("ERROR", f"Single-frame inference failed: {exc}")
+            self._refresh_guided_diagnostics()
             return
 
         result = _payload_value(outcome, "result")
@@ -889,11 +1038,13 @@ class LiveInferenceMainWindow(QMainWindow):
             self._append_log("INFO", "Single-frame inference completed")
 
         if trace_path is not None:
-            self.last_trace_path_value.setText(str(trace_path))
+            self._set_latest_trace_path(trace_path)
             self._append_log("INFO", f"Trace written to {trace_path}")
 
         if error is not None:
             self._on_error_occurred(error)
+
+        self._refresh_guided_diagnostics()
 
     def preview_locator_input(self) -> None:
         captured = self._captured_single_frame
@@ -905,6 +1056,7 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_locator_next_action_label.setText(
                 "Next: capture a frame before previewing the locator input."
             )
+            self._refresh_guided_diagnostics()
             return
         if self._inference_is_running_or_requested():
             self._append_log(
@@ -914,6 +1066,7 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_locator_next_action_label.setText(
                 "Next: stop continuous inference, then preview the captured frame."
             )
+            self._refresh_guided_diagnostics()
             return
         runner = self.single_frame_runner
         method = getattr(runner, "preview_locator_input", None)
@@ -922,6 +1075,7 @@ class LiveInferenceMainWindow(QMainWindow):
                 "ERROR",
                 "Preview Locator Input unavailable: runner does not expose locator diagnostics.",
             )
+            self._refresh_guided_diagnostics()
             return
 
         self._append_log("INFO", "Locator input preview started")
@@ -946,6 +1100,7 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_locator_next_action_label.setText(
                 "Next: capture a frame before running the ROI locator."
             )
+            self._refresh_guided_diagnostics()
             return
         if self._inference_is_running_or_requested():
             self._append_log(
@@ -955,6 +1110,7 @@ class LiveInferenceMainWindow(QMainWindow):
             self.roi_locator_next_action_label.setText(
                 "Next: stop continuous inference, then run ROI locator only."
             )
+            self._refresh_guided_diagnostics()
             return
         runner = self.single_frame_runner
         method = getattr(runner, "run_roi_locator_only", None)
@@ -963,6 +1119,7 @@ class LiveInferenceMainWindow(QMainWindow):
                 "ERROR",
                 "Run ROI Locator Only unavailable: runner does not expose locator diagnostics.",
             )
+            self._refresh_guided_diagnostics()
             return
 
         self._append_log("INFO", "ROI locator-only run started")
@@ -1005,11 +1162,13 @@ class LiveInferenceMainWindow(QMainWindow):
             self._append_log("INFO", completed_message)
 
         if trace_path is not None:
-            self.last_trace_path_value.setText(str(trace_path))
+            self._set_latest_trace_path(trace_path)
             self._append_log("INFO", f"Trace written to {trace_path}")
 
         if error is not None:
             self._on_error_occurred(error)
+
+        self._refresh_guided_diagnostics()
 
     def _update_locator_overlay_from_metadata(
         self,
@@ -1124,6 +1283,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.frame_preview_widget.clear_masks()
         self._set_mask_button_state(None)
         self._append_log("INFO", f"Mask cleared: revision={revision}.")
+        self._refresh_guided_diagnostics()
 
     def _commit_preview_mask(self, edit_label: str) -> None:
         result = self.frame_preview_widget.finish_mask_edit(commit=True)
@@ -1150,6 +1310,7 @@ class LiveInferenceMainWindow(QMainWindow):
             f"pixels={snapshot.pixel_count} "
             f"fill={snapshot.fill_value}.",
         )
+        self._refresh_guided_diagnostics()
 
     def _on_brush_diameter_changed(self, value: int) -> None:
         self.frame_preview_widget.set_brush_diameter_px(int(value))
@@ -1169,6 +1330,7 @@ class LiveInferenceMainWindow(QMainWindow):
             f"Mask fill value changed: {fill_name} ({fill_value}), revision={revision}.",
         )
         self.frame_preview_widget.set_mask_fill_value(fill_value)
+        self._refresh_guided_diagnostics()
 
     def _current_mask_fill_value(self) -> int:
         return 255 if self.mask_fill_white_checkbox.isChecked() else 0
@@ -1203,6 +1365,7 @@ class LiveInferenceMainWindow(QMainWindow):
             message = "Stop inference before capturing background"
             self._append_log("WARNING", message)
             self._sync_background_controls_from_state()
+            self._refresh_guided_diagnostics()
             return
 
         gray = self.frame_preview_widget.raw_source_gray()
@@ -1212,6 +1375,7 @@ class LiveInferenceMainWindow(QMainWindow):
                 "Cannot capture background: no preview frame is loaded.",
             )
             self._sync_background_controls_from_state()
+            self._refresh_guided_diagnostics()
             return
 
         revision = self.background_state.capture_background(gray)
@@ -1223,6 +1387,7 @@ class LiveInferenceMainWindow(QMainWindow):
             "Background captured: "
             f"revision={revision} size={snapshot.width_px}x{snapshot.height_px}.",
         )
+        self._refresh_guided_diagnostics()
 
     def clear_background(self) -> None:
         revision = self.background_state.clear()
@@ -1230,6 +1395,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._apply_background_snapshot_to_preview(snapshot)
         self._sync_background_controls_from_state(snapshot)
         self._append_log("INFO", f"Background cleared: revision={revision}.")
+        self._refresh_guided_diagnostics()
 
     def _on_background_enabled_toggled(self, checked: bool) -> None:
         revision = self.background_state.set_enabled(bool(checked))
@@ -1238,6 +1404,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._sync_background_controls_from_state(snapshot)
         state = "enabled" if checked else "disabled"
         self._append_log("INFO", f"Background removal {state}: revision={revision}.")
+        self._refresh_guided_diagnostics()
 
     def _on_apply_background_removal_to_roi_locator_toggled(
         self,
@@ -1272,6 +1439,10 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.background_state.get_snapshot()
         self._apply_background_snapshot_to_preview(snapshot)
         self._sync_background_controls_from_state(snapshot)
+        self._refresh_guided_diagnostics()
+
+    def _on_record_trace_toggled(self, _checked: bool) -> None:
+        self._refresh_guided_diagnostics()
 
     def _on_invert_roi_locator_input_toggled(self, checked: bool) -> None:
         if not self.invert_roi_locator_input_checkbox.isEnabled():
@@ -1410,7 +1581,10 @@ class LiveInferenceMainWindow(QMainWindow):
             self.restrict_lower_frame_percent_input,
             int(round(float(snapshot.restrict_to_lower_frame_fraction) * 100.0)),
         )
-        self.effective_stage_policy_value.setText(_stage_policy_status_text(snapshot))
+        policy_text = _stage_policy_status_text(snapshot)
+        self.effective_stage_policy_value.setText(policy_text)
+        self.guided_effective_policy_value.setText(policy_text)
+        self._refresh_guided_diagnostics(snapshot)
 
     def _set_checkbox_checked(self, checkbox: QCheckBox, checked: bool) -> None:
         checkbox.blockSignals(True)
@@ -1493,6 +1667,20 @@ class LiveInferenceMainWindow(QMainWindow):
             return "Background: enabled"
         return "Background: captured"
 
+    def _camera_is_running(self) -> bool:
+        is_running = getattr(self.camera_controller, "is_running", None)
+        if callable(is_running):
+            try:
+                if bool(is_running()):
+                    return True
+            except Exception as exc:
+                self._append_log(
+                    "WARNING",
+                    f"Camera running-state check failed: {exc}",
+                )
+        state = self._last_camera_state_text.strip().lower()
+        return state in {"starting", "running"}
+
     def _inference_is_running_or_requested(self) -> bool:
         is_running = getattr(self.inference_controller, "is_running", None)
         if callable(is_running):
@@ -1508,6 +1696,100 @@ class LiveInferenceMainWindow(QMainWindow):
             return True
         state = self._last_inference_state_text.strip().lower()
         return state in {"starting", "running", "stopping"}
+
+    def _set_latest_trace_path(self, trace_path: Path) -> None:
+        self._latest_trace_path = Path(trace_path)
+        trace_text = str(self._latest_trace_path)
+        self.last_trace_path_value.setText(trace_text)
+        (
+            self._trace_manifest_v02_app_root_text,
+            self._trace_manifest_regressor_reached_text,
+            manifest_regressor_reached,
+        ) = _trace_manifest_status(self._latest_trace_path)
+        if manifest_regressor_reached is not None:
+            self._last_regressor_reached = manifest_regressor_reached
+        self._refresh_guided_diagnostics()
+
+    def _refresh_guided_diagnostics(
+        self,
+        snapshot: StageTransformPolicySnapshot | None = None,
+    ) -> None:
+        if not hasattr(self, "guided_next_action_label"):
+            return
+        snapshot = snapshot or self.stage_policy_state.get_snapshot()
+        active_profile = _active_diagnostic_profile_text(snapshot)
+        baseline_active = (
+            active_profile == DIAGNOSTIC_PROFILE_BASELINE_INVERTED_MASKED_LOCATOR
+        )
+        camera_running = self._camera_is_running()
+        inference_running = self._inference_is_running_or_requested()
+        captured = self._captured_single_frame is not None
+        trace_enabled = self.record_trace_checkbox.isChecked()
+        mask_snapshot = self.mask_state.get_snapshot()
+        mask_present = bool(mask_snapshot.enabled) and int(mask_snapshot.pixel_count) > 0
+        background_snapshot = self.background_state.get_snapshot()
+        background_captured = bool(getattr(background_snapshot, "captured", False))
+        background_enabled = bool(getattr(background_snapshot, "enabled", False))
+        latest_trace = (
+            str(self._latest_trace_path)
+            if self._latest_trace_path is not None
+            else "n/a"
+        )
+
+        self.guided_active_profile_value.setText(active_profile)
+        self.baseline_profile_status_value.setText(
+            "active" if baseline_active else "not active"
+        )
+        self.guided_effective_policy_value.setText(_stage_policy_status_text(snapshot))
+        self.guided_workflow_state_value.setText(
+            "Camera "
+            f"{'running' if camera_running else 'stopped'}; "
+            "inference "
+            f"{'running' if inference_running else 'stopped'}; "
+            "captured frame "
+            f"{_yes_no_unknown(captured)}; "
+            "record trace "
+            f"{_on_off(trace_enabled)}; "
+            "manual mask "
+            f"{_yes_no_unknown(mask_present)} "
+            f"({int(mask_snapshot.pixel_count)} px); "
+            "background "
+            f"captured {_yes_no_unknown(background_captured)}, "
+            f"enabled {_yes_no_unknown(background_enabled)}; "
+            f"last ROI {self._last_roi_status_text}; "
+            "last regressor reached "
+            f"{_yes_no_unknown(self._last_regressor_reached)}"
+        )
+        self.guided_next_action_label.setText(
+            _guided_next_action_text(
+                camera_running=camera_running,
+                inference_running=inference_running,
+                captured_frame_available=captured,
+                active_profile=active_profile,
+                last_roi_accepted=self._last_roi_accepted,
+                last_regressor_reached=self._last_regressor_reached,
+            )
+        )
+        self.guided_latest_trace_path_value.setText(latest_trace)
+        self.guided_trace_manifest_app_root_value.setText(
+            self._trace_manifest_v02_app_root_text
+        )
+        self.guided_trace_regressor_reached_value.setText(
+            self._trace_manifest_regressor_reached_text
+        )
+        self.guided_check_camera_value.setText(_check_text(camera_running))
+        self.guided_check_inference_stopped_value.setText(
+            _check_text(not inference_running)
+        )
+        self.guided_check_frame_captured_value.setText(_check_text(captured))
+        self.guided_check_baseline_active_value.setText(_check_text(baseline_active))
+        self.guided_check_trace_enabled_value.setText(_check_text(trace_enabled))
+        self.guided_check_locator_accepted_value.setText(
+            _check_text(self._last_roi_accepted)
+        )
+        self.guided_check_regressor_reached_value.setText(
+            _check_text(self._last_regressor_reached)
+        )
 
     def _set_mask_button_state(self, edit_mode: str | None) -> None:
         self.draw_mask_button.setEnabled(edit_mode != "draw")
@@ -1532,12 +1814,14 @@ class LiveInferenceMainWindow(QMainWindow):
             self._append_log("ERROR", f"{action_label} failed: {exc}")
 
     def _on_camera_status_changed(self, status: object) -> None:
+        self._last_camera_state_text = _enum_text(_payload_value(status, "state"))
         self.camera_status_value.setText(_status_display_text(status))
         counters = _payload_value(status, "counters")
         frames_written = _counter_int(counters, "frames_written")
         if frames_written is not None:
             self._frames_written_count = frames_written
             self.frames_written_value.setText(str(frames_written))
+        self._refresh_guided_diagnostics()
 
     def _on_camera_frame_written(self, frame: object) -> None:
         self._frames_written_count += 1
@@ -1610,8 +1894,10 @@ class LiveInferenceMainWindow(QMainWindow):
             counters,
             "last_total_time_ms",
         )
+        self._refresh_guided_diagnostics()
 
     def _on_inference_result_ready(self, result: object) -> None:
+        self._last_regressor_reached = True
         self._frames_processed_count += 1
         self.frames_processed_value.setText(str(self._frames_processed_count))
         self.distance_value.setText(
@@ -1637,6 +1923,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._update_roi_fcn_readouts(result)
         self._update_debug_artifact_paths(result)
         self._log_result_warnings(result)
+        self._refresh_guided_diagnostics()
 
     def _on_debug_image_ready(self, image: object) -> None:
         image_kind = _text(_payload_value(image, "image_kind"), default="debug")
@@ -1730,11 +2017,21 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         if accepted is True:
             self.roi_acceptance_value.setText("accepted")
+            self._last_roi_accepted = True
+            self._last_roi_status_text = "accepted"
         elif accepted is False:
             suffix = f" - {reason}" if reason else ""
             self.roi_acceptance_value.setText(f"rejected{suffix}")
+            self._last_roi_accepted = False
+            self._last_roi_status_text = f"rejected{suffix}"
         else:
             self.roi_acceptance_value.setText("n/a")
+            self._last_roi_accepted = None
+            self._last_roi_status_text = "n/a"
+
+        regressor = _optional_bool(payload.get("distance_orientation_regressor_reached"))
+        if regressor is not None:
+            self._last_regressor_reached = regressor
 
         self.roi_locator_transforms_value.setText(_locator_transform_status(payload))
         self.roi_locator_status_label.setText(
@@ -1814,12 +2111,15 @@ class LiveInferenceMainWindow(QMainWindow):
         if _is_roi_rejection_error(error):
             details = _mapping_payload(_payload_value(error, "details"))
             self._apply_roi_status_from_mapping(details)
+            if self._last_regressor_reached is None:
+                self._last_regressor_reached = False
             self.distance_value.setText("n/a")
             self.yaw_value.setText("n/a")
             self.frame_preview_widget.set_overlay(None)
             self.roi_crop_preview_widget.set_image(QImage())
             self.roi_crop_preview_widget.set_placeholder_text("ROI rejected")
         self._append_log("ERROR", _issue_display_text(error))
+        self._refresh_guided_diagnostics()
 
     def _on_lifecycle_event(self, event: object) -> None:
         state = _enum_text(_payload_value(event, "state")) or "unknown"
@@ -2096,7 +2396,7 @@ def _roi_locator_status_text(
 
 
 def _stage_policy_status_text(snapshot: StageTransformPolicySnapshot) -> str:
-    profile = snapshot.diagnostic_profile_name or "custom"
+    profile = _active_diagnostic_profile_text(snapshot)
     return (
         f"profile {profile}; "
         f"mode {snapshot.roi_locator_input_mode}; "
@@ -2107,8 +2407,125 @@ def _stage_policy_status_text(snapshot: StageTransformPolicySnapshot) -> str:
         "background locator "
         f"{_yes_no_unknown(bool(snapshot.apply_background_removal_to_roi_locator))}; "
         "background model "
-        f"{_yes_no_unknown(bool(snapshot.apply_background_removal_to_regressor_preprocessing))}"
+        f"{_yes_no_unknown(bool(snapshot.apply_background_removal_to_regressor_preprocessing))}; "
+        "clip tolerance "
+        f"{int(snapshot.roi_clip_tolerance_px)} px; "
+        "min confidence "
+        f"{float(snapshot.roi_min_confidence):.3f}"
     )
+
+
+def _active_diagnostic_profile_text(snapshot: StageTransformPolicySnapshot) -> str:
+    if snapshot.diagnostic_profile_name is not None:
+        return str(snapshot.diagnostic_profile_name)
+    if _stage_policy_matches_default(snapshot):
+        return "none"
+    return "custom"
+
+
+def _stage_policy_matches_default(snapshot: StageTransformPolicySnapshot) -> bool:
+    default = StageTransformPolicySnapshot()
+    fields = (
+        "roi_locator_input_mode",
+        "apply_manual_mask_to_roi_locator",
+        "apply_background_removal_to_roi_locator",
+        "apply_manual_mask_to_regressor_preprocessing",
+        "apply_background_removal_to_regressor_preprocessing",
+        "roi_min_confidence",
+        "reject_clipped_roi",
+        "roi_clip_tolerance_px",
+        "roi_min_content_fraction",
+        "sheet_min_gray",
+        "target_max_gray",
+        "min_component_area_px",
+        "morphology_close_kernel_px",
+        "dilate_kernel_px",
+        "restrict_to_lower_frame_fraction",
+    )
+    return all(getattr(snapshot, field) == getattr(default, field) for field in fields)
+
+
+def _guided_next_action_text(
+    *,
+    camera_running: bool,
+    inference_running: bool,
+    captured_frame_available: bool,
+    active_profile: str,
+    last_roi_accepted: bool | None,
+    last_regressor_reached: bool | None,
+) -> str:
+    if inference_running:
+        return "Stop inference before diagnostics."
+    if not camera_running:
+        return "Start camera."
+    if not captured_frame_available:
+        return "Capture a frame."
+    if last_regressor_reached is True:
+        return "Review trace artifacts and prediction."
+    if last_roi_accepted is False:
+        return "Adjust locator mode/mask or capture a new frame."
+    if last_roi_accepted is True:
+        return "Run single-frame inference with trace enabled."
+    if active_profile != DIAGNOSTIC_PROFILE_BASELINE_INVERTED_MASKED_LOCATOR:
+        return "Apply baseline profile."
+    return "Preview locator input, then run ROI locator only."
+
+
+def _check_text(value: bool | None) -> str:
+    if value is True:
+        return "ok"
+    if value is False:
+        return "missing"
+    return "n/a"
+
+
+def _on_off(value: bool) -> str:
+    return "on" if bool(value) else "off"
+
+
+def _trace_manifest_status(trace_path: Path) -> tuple[str, str, bool | None]:
+    manifest_path = _trace_manifest_path(trace_path)
+    if manifest_path is None or not manifest_path.is_file():
+        return ("missing", "missing", None)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ("error", "error", None)
+    if not isinstance(manifest, Mapping):
+        return ("error", "error", None)
+
+    app_root = _text(manifest.get("app_root_path"), default="")
+    app_project = _text(manifest.get("app_project_name"), default="")
+    app_version = _text(manifest.get("app_version"), default="")
+    live_version = _text(manifest.get("live_inference_version"), default="")
+    root_is_v02 = (
+        Path(app_root).name == "06_live-inference_v0.2"
+        if app_root
+        else False
+    ) or app_project == "06_live-inference_v0.2"
+    version_values = [value for value in (app_version, live_version) if value]
+    version_is_v02 = not version_values or all(
+        value == "v0.2" for value in version_values
+    )
+    manifest_root_text = "yes" if root_is_v02 and version_is_v02 else "no"
+    regressor_reached = _optional_bool(
+        manifest.get("distance_orientation_regressor_reached")
+    )
+    return (
+        manifest_root_text,
+        _yes_no_unknown(regressor_reached),
+        regressor_reached,
+    )
+
+
+def _trace_manifest_path(trace_path: Path) -> Path | None:
+    path = Path(trace_path)
+    if path.name == "trace_manifest.json":
+        return path
+    if path.is_dir() or path.suffix == "":
+        return path / "trace_manifest.json"
+    candidate = path.parent / "trace_manifest.json"
+    return candidate
 
 
 def _format_optional_xy(value: tuple[float, float] | None) -> str:
