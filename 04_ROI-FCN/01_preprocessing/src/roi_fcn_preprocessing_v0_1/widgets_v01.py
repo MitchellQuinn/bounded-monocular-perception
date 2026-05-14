@@ -40,6 +40,11 @@ class RoiFcnPreprocessingLauncherV01:
         self.edge_high = widgets.BoundedIntText(description="edge_high", value=150, min=0, max=255)
         self.fg_threshold = widgets.BoundedIntText(description="fg_threshold", value=250, min=0, max=255)
         self.edge_pad = widgets.BoundedIntText(description="edge_pad", value=0, min=0)
+        self.edge_ignore_border_px = widgets.BoundedIntText(
+            description="ignore_border",
+            value=int(default_bootstrap_config.edge_ignore_border_px),
+            min=0,
+        )
         self.min_edge_pixels = widgets.BoundedIntText(description="min_edge_pixels", value=16, min=1)
 
         self.canvas_width = widgets.IntText(description="canvas_width", value=480)
@@ -85,7 +90,8 @@ class RoiFcnPreprocessingLauncherV01:
                 widgets.HTML("<b>Detection Controls</b>"),
                 self.detector_backend_dropdown,
                 widgets.HBox([self.edge_blur_k, self.edge_low, self.edge_high]),
-                widgets.HBox([self.fg_threshold, self.edge_pad, self.min_edge_pixels]),
+                widgets.HBox([self.fg_threshold, self.edge_pad, self.edge_ignore_border_px]),
+                self.min_edge_pixels,
                 widgets.HTML("<b>Packing Controls</b>"),
                 widgets.HBox([self.canvas_width, self.canvas_height, self.shard_size]),
                 widgets.HTML("<b>Execution Controls</b>"),
@@ -157,6 +163,7 @@ class RoiFcnPreprocessingLauncherV01:
             edge_high=int(self.edge_high.value),
             fg_threshold=int(self.fg_threshold.value),
             edge_pad=int(self.edge_pad.value),
+            edge_ignore_border_px=int(self.edge_ignore_border_px.value),
             min_edge_pixels=int(self.min_edge_pixels.value),
             overwrite=overwrite_enabled,
             num_workers=worker_count,

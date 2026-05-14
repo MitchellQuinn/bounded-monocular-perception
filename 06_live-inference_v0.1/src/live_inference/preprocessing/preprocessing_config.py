@@ -39,7 +39,16 @@ _ensure_preprocessing_paths()
 
 from rb_pipeline_v4.config import (  # noqa: E402
     BrightnessNormalizationConfigV4,
+    ForegroundEnhancementConfigV4,
     SilhouetteStageConfigV4,
+)
+
+
+IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE = "inverted_vehicle_on_white"
+IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE = "raw_grayscale_on_white"
+SUPPORTED_IMAGE_REPRESENTATION_MODES = (
+    IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE,
+    IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE,
 )
 
 
@@ -70,6 +79,28 @@ class BrightnessNormalizationRuntimeConfig:
 
 
 @dataclass(frozen=True)
+class ForegroundEnhancementRuntimeConfig:
+    """Resolved inference-time foreground enhancement contract."""
+
+    config: ForegroundEnhancementConfigV4
+    contract_source: str
+    raw_contract: Mapping[str, Any] = field(default_factory=dict)
+
+    def active(self) -> bool:
+        return self.config.normalized_enabled() and self.config.normalized_method() != "none"
+
+    def to_log_dict(self) -> dict[str, Any]:
+        payload = self.config.to_contract_dict()
+        payload.update(
+            {
+                "Active": self.active(),
+                "ContractSource": self.contract_source,
+            }
+        )
+        return payload
+
+
+@dataclass(frozen=True)
 class TriStreamPreprocessingConfig:
     """Concrete settings needed to reproduce the tri-stream v4 representation."""
 
@@ -83,10 +114,12 @@ class TriStreamPreprocessingConfig:
     geometry_dim: int
     distance_canvas_size: tuple[int, int]
     orientation_canvas_size: tuple[int, int]
+    image_representation_mode: str
     orientation_source_mode: str
     orientation_context_scale: float
     clip_policy: str
     silhouette_config: SilhouetteStageConfigV4
+    foreground_enhancement_runtime: ForegroundEnhancementRuntimeConfig
     brightness_runtime: BrightnessNormalizationRuntimeConfig
     source_model_root: Path | None = None
 
@@ -152,6 +185,9 @@ class TriStreamPreprocessingConfig:
             geometry_dim=geometry_dim,
             distance_canvas_size=distance_canvas_size,
             orientation_canvas_size=orientation_canvas_size,
+            image_representation_mode=_resolve_image_representation_mode(
+                preprocessing_contract
+            ),
             orientation_source_mode=str(resolved_orientation_source_mode),
             orientation_context_scale=float(
                 stage.get(
@@ -161,6 +197,10 @@ class TriStreamPreprocessingConfig:
             ),
             clip_policy=str(stage.get("ClipPolicy", "fail")).strip().lower() or "fail",
             silhouette_config=_silhouette_config_from_contract(preprocessing_contract),
+            foreground_enhancement_runtime=_resolve_foreground_enhancement_runtime(
+                preprocessing_contract,
+                pack_stage_name="pack_tri_stream",
+            ),
             brightness_runtime=_resolve_brightness_normalization_runtime(
                 preprocessing_contract,
                 pack_stage_name="pack_tri_stream",
@@ -201,6 +241,12 @@ class TriStreamPreprocessingConfig:
                 "Unsupported resolved tri-stream orientation source mode: "
                 f"{self.orientation_source_mode!r}. Supported: "
                 f"{SUPPORTED_ORIENTATION_SOURCE_MODES!r}."
+            )
+        if self.image_representation_mode not in SUPPORTED_IMAGE_REPRESENTATION_MODES:
+            raise ValueError(
+                "Unsupported tri-stream image representation mode: "
+                f"{self.image_representation_mode!r}. Supported: "
+                f"{SUPPORTED_IMAGE_REPRESENTATION_MODES!r}."
             )
         silhouette_size = (
             int(self.silhouette_config.normalized_roi_canvas_width_px()),
@@ -245,6 +291,75 @@ def _resolve_preprocessing_contract(raw_metadata: Mapping[str, Any]) -> Mapping[
     return {}
 
 
+def _resolve_image_representation_mode(
+    preprocessing_contract: Mapping[str, Any],
+) -> str:
+    current = _current_representation(preprocessing_contract)
+    stage = _stage_parameters(preprocessing_contract, "pack_tri_stream")
+    sources: dict[str, str] = {}
+
+    stage_mode = _text(stage.get("ImageRepresentationMode", stage.get("image_representation_mode")))
+    if stage_mode:
+        sources["Stages.pack_tri_stream.ImageRepresentationMode"] = (
+            _image_representation_mode_from_contract_value(stage_mode)
+        )
+
+    distance_polarity = _text(
+        current.get("DistanceImagePolarity", current.get("distance_image_polarity"))
+    )
+    if distance_polarity:
+        sources["CurrentRepresentation.DistanceImagePolarity"] = (
+            _image_representation_mode_from_contract_value(distance_polarity)
+        )
+
+    distance_content = _text(
+        current.get("DistanceImageContent", current.get("distance_image_content"))
+    )
+    if distance_content:
+        sources["CurrentRepresentation.DistanceImageContent"] = (
+            _image_representation_mode_from_contract_value(distance_content)
+        )
+
+    modes = set(sources.values())
+    if len(modes) > 1:
+        details = ", ".join(f"{key}={value}" for key, value in sorted(sources.items()))
+        raise ValueError(f"Conflicting tri-stream image representation metadata: {details}.")
+    if modes:
+        return next(iter(modes))
+    return IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE
+
+
+def _image_representation_mode_from_contract_value(value: str) -> str:
+    text = str(value).strip().lower()
+    raw_values = {
+        IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE,
+        "roi_raw_grayscale_vehicle_on_white",
+        "source_grayscale_vehicle_detail_on_white_background",
+        "raw_grayscale_vehicle_detail_inside_silhouette",
+        "raw_grayscale_vehicle_detail_inside_silhouette_foreground_enhanced",
+        "raw_grayscale_detail_on_white_no_brightness_normalization",
+        "foreground_enhanced_raw_grayscale_detail_on_white_no_brightness_normalization",
+    }
+    inverted_values = {
+        IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE,
+        "roi_grayscale_inverted_vehicle_on_white",
+        "dark_vehicle_detail_on_white_background",
+        "inverted_grayscale_vehicle_detail_inside_silhouette",
+        "inverted_grayscale_vehicle_detail_inside_silhouette_foreground_enhanced",
+        "inverted_vehicle_detail_on_white_no_brightness_normalization",
+        "foreground_enhanced_inverted_vehicle_detail_on_white_no_brightness_normalization",
+    }
+    if text in raw_values:
+        return IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE
+    if text in inverted_values:
+        return IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE
+    allowed = ", ".join(sorted(raw_values | inverted_values))
+    raise ValueError(
+        f"Unsupported tri-stream image representation contract value {value!r}. "
+        f"Supported values: {allowed}."
+    )
+
+
 def _stage_parameters(
     preprocessing_contract: Mapping[str, Any],
     stage_name: str,
@@ -262,6 +377,52 @@ def _current_representation(preprocessing_contract: Mapping[str, Any]) -> dict[s
         preprocessing_contract.get("current_representation"),
     )
     return dict(current) if isinstance(current, Mapping) else {}
+
+
+def _foreground_enhancement_contract_from_preprocessing_contract(
+    preprocessing_contract: Mapping[str, Any],
+    *,
+    pack_stage_name: str,
+) -> tuple[dict[str, Any], str]:
+    stage = _stage_parameters(preprocessing_contract, pack_stage_name)
+    stage_contract = stage.get("ForegroundEnhancement")
+    current = _current_representation(preprocessing_contract)
+    current_contract = current.get("ForegroundEnhancement")
+
+    stage_payload = dict(stage_contract) if isinstance(stage_contract, Mapping) else {}
+    current_payload = dict(current_contract) if isinstance(current_contract, Mapping) else {}
+    if stage_payload and current_payload and stage_payload != current_payload:
+        raise ValueError(
+            "Foreground enhancement contract mismatch between "
+            f"Stages.{pack_stage_name}.ForegroundEnhancement and "
+            "CurrentRepresentation.ForegroundEnhancement."
+        )
+    if stage_payload:
+        return stage_payload, f"Stages.{pack_stage_name}.ForegroundEnhancement"
+    if current_payload:
+        return current_payload, "CurrentRepresentation.ForegroundEnhancement"
+    return {}, "absent"
+
+
+def _resolve_foreground_enhancement_runtime(
+    preprocessing_contract: Mapping[str, Any],
+    *,
+    pack_stage_name: str,
+) -> ForegroundEnhancementRuntimeConfig:
+    payload, source = _foreground_enhancement_contract_from_preprocessing_contract(
+        preprocessing_contract,
+        pack_stage_name=pack_stage_name,
+    )
+    config = (
+        ForegroundEnhancementConfigV4.from_mapping(payload)
+        if payload
+        else ForegroundEnhancementConfigV4()
+    )
+    return ForegroundEnhancementRuntimeConfig(
+        config=config,
+        contract_source=source,
+        raw_contract=payload,
+    )
 
 
 def _brightness_contract_from_preprocessing_contract(
@@ -424,7 +585,11 @@ def _text_tuple(value: Any) -> tuple[str, ...]:
 
 __all__ = [
     "BrightnessNormalizationRuntimeConfig",
+    "ForegroundEnhancementRuntimeConfig",
+    "IMAGE_REPRESENTATION_INVERTED_VEHICLE_ON_WHITE",
+    "IMAGE_REPRESENTATION_RAW_GRAYSCALE_ON_WHITE",
     "ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE",
     "ORIENTATION_SOURCE_RAW_GRAYSCALE",
+    "SUPPORTED_IMAGE_REPRESENTATION_MODES",
     "TriStreamPreprocessingConfig",
 ]

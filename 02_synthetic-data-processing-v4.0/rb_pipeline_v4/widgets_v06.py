@@ -14,7 +14,7 @@ from .pack_tri_stream_stage import _render_orientation_image_scaled_by_foregroun
 from .pipeline import TRI_STREAM_STAGE_ORDER, run_tri_stream_stage_sequence_for_run
 from .widgets import (
     _preview_float_image_to_uint8,
-    _render_inverted_vehicle_detail_on_white_for_preview,
+    _render_pack_base_representation_for_preview,
     _to_png_bytes,
 )
 from .widgets_v05 import PipelineLauncherV5
@@ -29,6 +29,13 @@ class PipelineLauncherV6(PipelineLauncherV5):
         super().__init__(project_root)
         self.stage_dropdown.options = [("All", "all"), *[(stage, stage) for stage in TRI_STREAM_STAGE_ORDER]]
         self.stage_dropdown.value = "all"
+        self.image_representation_dropdown.value = "raw_grayscale_on_white"
+        self.foreground_enhancement_enabled_checkbox.value = True
+        self.foreground_enhancement_target_float.value = 0.70
+        self.foreground_enhancement_min_gain_float.value = 1.0
+        self.foreground_enhancement_max_gain_float.value = 3.0
+        self.brightness_norm_enabled_checkbox.value = False
+        self.edge_ignore_border_int.value = 8
         self.orientation_context_scale_float = widgets.BoundedFloatText(
             description="Orient scale:",
             value=1.25,
@@ -49,12 +56,15 @@ class PipelineLauncherV6(PipelineLauncherV5):
                 self.detector_backend_dropdown,
                 widgets.HBox([self.edge_blur_kernel_slider, self.edge_canny_low_slider, self.edge_canny_high_slider]),
                 widgets.HBox([self.edge_foreground_threshold_slider, self.edge_padding_int, self.edge_min_foreground_int]),
+                self.edge_ignore_border_int,
                 widgets.HTML("<hr><b>Silhouette</b>"),
                 self.silhouette_mode,
                 self.threshold_low_slider,
                 self.threshold_high_slider,
                 widgets.HBox([self.min_area_input, self.roi_padding_int]),
                 widgets.HBox([self.fill_holes_checkbox, self.close_kernel_slider, self.outline_thickness_slider]),
+                widgets.HTML("<hr>"),
+                self.foreground_enhancement_pane,
                 widgets.HTML("<hr>"),
                 self.brightness_norm_pane,
                 widgets.HTML("<hr><b>Pack Tri Stream</b>"),
@@ -108,6 +118,8 @@ class PipelineLauncherV6(PipelineLauncherV5):
             canvas_width_px=int(self.canvas_w_int.value),
             canvas_height_px=int(self.canvas_h_int.value),
             clip_policy=str(self.clip_policy_dropdown.value),
+            image_representation_mode=str(self.image_representation_dropdown.value),
+            foreground_enhancement=self._build_pack_config_foreground_enhancement(),
             include_v1_compat_arrays=False,
             brightness_normalization=BrightnessNormalizationConfigV4(
                 enabled=brightness_enabled,
@@ -136,9 +148,10 @@ class PipelineLauncherV6(PipelineLauncherV5):
         pack_config: PackTriStreamStageConfigV4,
     ) -> None:
         foreground_mask = (np.asarray(background_mask, dtype=np.float32) < 0.5).astype(np.float32)
-        orientation_source = _render_inverted_vehicle_detail_on_white_for_preview(
+        orientation_source, _foreground_result = _render_pack_base_representation_for_preview(
             extracted_roi_gray,
             background_mask,
+            pack_config,
         )
         orientation_image, _, _, _ = _render_orientation_image_scaled_by_foreground_extent(
             orientation_source,
@@ -152,7 +165,7 @@ class PipelineLauncherV6(PipelineLauncherV5):
     def _saved_path_preview_text(self, pack_config: PackTriStreamStageConfigV4) -> str:
         return (
             "<b>Saved Path:</b> fixed ROI canvas -> x_distance_image; "
-            "inverted ROI + silhouette foreground extent -> target-centred scaled x_orientation_image; "
+            "configured ROI representation + silhouette foreground extent -> target-centred scaled x_orientation_image; "
             "bbox/ROI context -> x_geometry; "
             f"canvas={pack_config.normalized_canvas_width_px()}x{pack_config.normalized_canvas_height_px()}"
         )

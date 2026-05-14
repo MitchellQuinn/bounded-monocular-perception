@@ -24,6 +24,7 @@ class BootstrapCenterTargetConfig:
     edge_high: int = 150
     fg_threshold: int = 250
     edge_pad: int = 0
+    edge_ignore_border_px: int = 8
     min_edge_pixels: int = 16
     edge_close_kernel_size: int = 1
 
@@ -60,6 +61,9 @@ class BootstrapCenterTargetConfig:
     def normalized_edge_pad(self) -> int:
         return max(0, int(self.edge_pad))
 
+    def normalized_edge_ignore_border_px(self) -> int:
+        return max(0, int(self.edge_ignore_border_px))
+
     def normalized_min_edge_pixels(self) -> int:
         return max(1, int(self.min_edge_pixels))
 
@@ -77,6 +81,7 @@ class BootstrapCenterTargetConfig:
         payload["edge_high"] = self.normalized_edge_high()
         payload["fg_threshold"] = self.normalized_fg_threshold()
         payload["edge_pad"] = self.normalized_edge_pad()
+        payload["edge_ignore_border_px"] = self.normalized_edge_ignore_border_px()
         payload["min_edge_pixels"] = self.normalized_min_edge_pixels()
         payload["edge_close_kernel_size"] = self.normalized_edge_close_kernel_size()
         payload["num_workers"] = self.normalized_num_workers()

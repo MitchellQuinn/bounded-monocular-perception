@@ -222,6 +222,16 @@ class LiveModelCompatibilityTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.orientation_source_mode, ORIENTATION_SOURCE_RAW_GRAYSCALE)
 
+    def test_grayscale_white_preprocessing_contract_is_compatible(self) -> None:
+        manifest = replace(
+            _compatible_manifest(orientation_source_mode=ORIENTATION_SOURCE_RAW_GRAYSCALE),
+            preprocessing_contract_name=contracts.PREPROCESSING_CONTRACT_NAME_GRAYSCALE_WHITE,
+        )
+
+        result = check_live_model_compatibility(manifest)
+
+        self.assertTrue(result.ok, _format_errors(result))
+
     def test_reports_resolved_orientation_source_mode_when_manifest_field_is_empty(self) -> None:
         manifest = replace(_compatible_manifest(), orientation_source_mode=None)
 
