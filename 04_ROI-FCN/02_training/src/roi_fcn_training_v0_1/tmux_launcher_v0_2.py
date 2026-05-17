@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 
 from .config import TrainConfig
 from .contracts import RESUME_STATE_FILENAME, RUN_CONFIG_FILENAME
+from .epoch_summary import format_run_epoch_summary_panel
 from .paths import (
     build_model_run_dir_path,
     build_runs_root_path,
@@ -194,6 +195,138 @@ def default_session_name(model_directory: str, run_id: str) -> str:
     parsed_model_directory = _require_identifier(model_directory, label="model_directory")
     parsed_run_id = _require_identifier(run_id, label="run_id")
     return _require_identifier(f"roi_fcn_{parsed_model_directory}_{parsed_run_id}", label="session_name")
+
+
+def _parse_default_session_name(session_name: str) -> tuple[str, str] | None:
+    match = re.fullmatch(r"roi_fcn_(?P<model_directory>.+)_(?P<run_id>run_[0-9]+)", str(session_name).strip())
+    if match is None:
+        return None
+    return (
+        _require_identifier(match.group("model_directory"), label="model_directory"),
+        _require_identifier(match.group("run_id"), label="run_id"),
+    )
+
+
+def _unquote_tmux_format_value(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        parts = shlex.split(text)
+    except ValueError:
+        return text
+    if len(parts) == 1 and text[:1] in {'"', "'"}:
+        return parts[0]
+    return text
+
+
+def _arg_after(tokens: Sequence[str], flag: str) -> str | None:
+    try:
+        index = list(tokens).index(flag)
+    except ValueError:
+        return None
+    next_index = index + 1
+    if next_index >= len(tokens):
+        return None
+    return str(tokens[next_index]).strip() or None
+
+
+def _redirect_log_path(tokens: Sequence[str]) -> str | None:
+    for index, token in enumerate(tokens):
+        text = str(token).strip()
+        if text in {">", ">>"} and index + 1 < len(tokens):
+            return str(tokens[index + 1]).strip() or None
+        if text.startswith(">>") and len(text) > 2:
+            return text[2:].strip() or None
+    return None
+
+
+def _session_pane_runtime(session_name: str) -> tuple[str, str]:
+    result = _run_tmux(["list-panes", "-t", session_name, "-F", "#{pane_current_path}\t#{pane_start_command}"])
+    if result.returncode != 0:
+        if _is_no_server_error(result.stderr) or _is_missing_session_error(result.stderr):
+            return "", ""
+        raise RuntimeError(f"tmux list-panes failed: {result.stderr.strip()}")
+    line = next((raw for raw in result.stdout.splitlines() if raw.strip()), "")
+    if not line:
+        return "", ""
+    if "\t" in line:
+        pane_current_path, pane_start_command = line.split("\t", maxsplit=1)
+    else:
+        pane_current_path, pane_start_command = "", line
+    return pane_current_path.strip(), _unquote_tmux_format_value(pane_start_command)
+
+
+def resolve_session_run_paths(
+    training_root: str | Path,
+    session_name: str,
+    *,
+    models_root_path: str | Path | None = None,
+) -> dict[str, str] | None:
+    """Resolve the run directory and log path for an active tmux training session."""
+    run_session_name = _require_identifier(session_name, label="session_name")
+    root = find_training_root(Path(training_root))
+    pane_current_path, pane_start_command = _session_pane_runtime(run_session_name)
+
+    model_directory: str | None = None
+    run_id: str | None = None
+    log_path: Path | None = None
+    command_models_root: str | None = None
+    if pane_start_command:
+        try:
+            tokens = shlex.split(pane_start_command)
+        except ValueError:
+            tokens = []
+        model_directory = _arg_after(tokens, "--model-directory")
+        run_id = _arg_after(tokens, "--run-id")
+        command_models_root = _arg_after(tokens, "--models-root")
+        redirected_log_path = _redirect_log_path(tokens)
+        if redirected_log_path:
+            log_path = Path(redirected_log_path).expanduser()
+            if not log_path.is_absolute():
+                base_path = Path(pane_current_path).expanduser() if pane_current_path else root
+                log_path = base_path / log_path
+            log_path = log_path.resolve()
+
+    parsed_from_name = _parse_default_session_name(run_session_name)
+    if model_directory is None and parsed_from_name is not None:
+        model_directory = parsed_from_name[0]
+    if run_id is None and parsed_from_name is not None:
+        run_id = parsed_from_name[1]
+
+    run_dir: Path | None = log_path.parent if log_path is not None else None
+    if run_dir is not None and (model_directory is None or run_id is None):
+        if run_dir.parent.name == "runs":
+            model_directory = model_directory or run_dir.parent.parent.name
+            run_id = run_id or run_dir.name
+
+    if model_directory is None or run_id is None:
+        return None
+
+    model_directory = _require_identifier(model_directory, label="model_directory")
+    run_id = _require_identifier(run_id, label="run_id")
+    if run_dir is None:
+        if models_root_path is not None:
+            models_root = Path(models_root_path).expanduser().resolve()
+        elif command_models_root:
+            command_models_root_path = Path(command_models_root).expanduser()
+            models_root = command_models_root_path if command_models_root_path.is_absolute() else root / command_models_root_path
+            models_root = models_root.resolve()
+        else:
+            models_root = resolve_models_root(root, "models")
+        run_dir = build_model_run_dir_path(models_root, model_directory=model_directory, run_id=run_id).resolve()
+    if log_path is None:
+        log_path = (run_dir / DEFAULT_TMUX_LOG_FILENAME).resolve()
+
+    return {
+        "session_name": run_session_name,
+        "model_directory": model_directory,
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+        "log_path": str(log_path),
+        "pane_current_path": pane_current_path,
+        "pane_start_command": pane_start_command,
+    }
 
 
 def list_model_directories(models_root_path: str | Path) -> list[str]:
@@ -580,3 +713,11 @@ def read_log_tail(log_path: str | Path, max_lines: int = 200) -> str:
     if not lines:
         return f"[log empty] {path}"
     return "".join(lines)
+
+
+def read_epoch_summary(run_dir: str | Path | None) -> str:
+    """Read a compact latest/best epoch summary from structured run artifacts."""
+    try:
+        return format_run_epoch_summary_panel(run_dir)
+    except Exception as exc:
+        return f"[epoch summary unavailable] {exc}"

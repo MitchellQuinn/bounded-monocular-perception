@@ -16,6 +16,7 @@ from .discovery import discover_dataset_references
 from .evaluate import evaluate_saved_run
 from .paths import find_training_root, preview_next_run_id, resolve_models_root, suggest_model_run_id
 from .tmux_launcher_v0_2 import (
+    DEFAULT_TMUX_LOG_FILENAME,
     TMUX_CONTROL_PANEL_BUILD_V03,
     default_session_name,
     end_session,
@@ -26,7 +27,9 @@ from .tmux_launcher_v0_2 import (
     list_sessions,
     plan_tmux_resume_launch,
     plan_tmux_training_launch,
+    read_epoch_summary,
     read_log_tail,
+    resolve_session_run_paths,
     session_exists,
 )
 from .topologies import get_topology_definition, list_topology_ids, list_topology_variants
@@ -137,6 +140,7 @@ class RoiFcnTrainingControlPanelV03:
         self.clear_output_button = widgets.Button(description="Clear Output")
 
         self.action_output = widgets.Output(layout=widgets.Layout(overflow_y="auto"))
+        self.epoch_summary_output = widgets.HTML(value="")
         self.log_tail_output = widgets.Textarea(
             value="",
             description="",
@@ -165,6 +169,7 @@ class RoiFcnTrainingControlPanelV03:
         self.workflow_toggle.observe(self._on_workflow_changed, names="value")
         self.topology_id_dropdown.observe(self._on_topology_id_changed, names="value")
         self.model_directory_dropdown.observe(self._on_model_directory_selected, names="value")
+        self.sessions_dropdown.observe(self._on_session_selected, names="value")
 
         observed_widgets = [
             self.train_dataset_dropdown,
@@ -196,6 +201,7 @@ class RoiFcnTrainingControlPanelV03:
         self._sync_topology_help()
         self._refresh_sessions()
         self._refresh_launch_preview()
+        self._refresh_epoch_summary()
 
     @property
     def widget(self) -> widgets.Widget:
@@ -222,6 +228,7 @@ class RoiFcnTrainingControlPanelV03:
                 widgets.HBox([self.launch_button, self.evaluate_button, self.refresh_sessions_button, self.refresh_log_button, self.end_session_button, self.clear_output_button]),
                 widgets.HBox([self.sessions_dropdown, self.tail_lines_input, self.poll_interval_input, self.auto_refresh_toggle]),
                 self.status_html,
+                self.epoch_summary_output,
                 self.log_tail_output,
                 self.action_output,
             ]
@@ -236,6 +243,17 @@ class RoiFcnTrainingControlPanelV03:
         target.value = (
             f"<div style='padding:8px 10px;border-left:4px solid {color};'>"
             f"<b>{html.escape(label)}</b><br><code>{html.escape(message)}</code></div>"
+        )
+
+    def _set_epoch_summary_text(self, message: str) -> None:
+        self.epoch_summary_output.value = (
+            "<div style='border:1px solid #d0d7de;padding:8px;border-radius:6px;'>"
+            "<strong>Epoch Summary</strong>"
+            "<pre style='white-space:pre-wrap;margin:8px 0 0 0;font-family:Menlo,Consolas,monospace;"
+            "font-size:12px;line-height:1.35;'>"
+            f"{html.escape(message)}"
+            "</pre>"
+            "</div>"
         )
 
     def _clear_status(self) -> None:
@@ -411,8 +429,40 @@ class RoiFcnTrainingControlPanelV03:
         valid_values = {value for _, value in options}
         self.sessions_dropdown.value = current if current in valid_values else options[0][1]
 
+    def _sync_selected_session_runtime_paths(self) -> bool:
+        session_name = str(self.sessions_dropdown.value or "").strip()
+        if not session_name:
+            return False
+        info = resolve_session_run_paths(
+            self.training_root,
+            session_name,
+            models_root_path=self.models_root,
+        )
+        if info is None:
+            return False
+
+        previous_refreshing = self._preview_state["refreshing"]
+        self._preview_state["refreshing"] = True
+        try:
+            for key, widget, state in (
+                ("model_directory", self.model_directory_text, self._model_directory_state),
+                ("run_id", self.run_id_text, self._run_id_state),
+                ("session_name", self.session_name_text, self._session_name_state),
+                ("run_dir", self.run_dir_text, self._run_dir_state),
+                ("log_path", self.log_path_text, self._log_path_state),
+            ):
+                value = str(info.get(key) or "").strip()
+                if value:
+                    state["last_auto"] = ""
+                    widget.value = value
+        finally:
+            self._preview_state["refreshing"] = previous_refreshing
+        return True
+
     def _refresh_log(self) -> None:
+        self._sync_selected_session_runtime_paths()
         log_path = self._resolve_log_path()
+        self._refresh_epoch_summary()
         if not log_path:
             self.log_tail_output.value = "[log path blank]"
             return
@@ -420,6 +470,10 @@ class RoiFcnTrainingControlPanelV03:
             self.log_tail_output.value = read_log_tail(log_path, max_lines=int(self.tail_lines_input.value))
         except Exception:
             self.log_tail_output.value = traceback.format_exc()
+
+    def _refresh_epoch_summary(self) -> None:
+        run_dir = str(self.run_dir_text.value or "").strip()
+        self._set_epoch_summary_text(read_epoch_summary(Path(run_dir) if run_dir else None))
 
     def _refresh_runtime_output(self) -> None:
         self._refresh_sessions()
@@ -585,6 +639,13 @@ class RoiFcnTrainingControlPanelV03:
         if value:
             self.model_directory_text.value = value
 
+    def _on_session_selected(self, change) -> None:
+        value = str(change["new"] or "").strip()
+        if not value:
+            return
+        if self._sync_selected_session_runtime_paths():
+            self._refresh_log()
+
     def _on_workflow_changed(self, _change) -> None:
         self._refresh_models()
         self._refresh_launch_preview()
@@ -689,6 +750,7 @@ class RoiFcnTrainingControlPanelV03:
     def _on_clear_output_clicked(self, _button) -> None:
         self.action_output.clear_output()
         self.log_tail_output.value = ""
+        self.epoch_summary_output.value = ""
         self.preview_html.value = ""
         self.status_html.value = ""
 

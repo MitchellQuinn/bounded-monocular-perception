@@ -23,6 +23,7 @@ from roi_fcn_training_v0_1.tmux_launcher_v0_2 import (
     plan_tmux_resume_launch,
     plan_tmux_training_launch,
     read_log_tail,
+    resolve_session_run_paths,
 )
 
 
@@ -303,6 +304,34 @@ class TmuxLauncherV02Tests(unittest.TestCase):
             mocked_run_tmux.call_args.args[0],
             ["kill-session", "-t", "roi_fcn_260420-1024_roi-fcn-tiny_run_0006"],
         )
+
+    def test_resolve_session_run_paths_reads_running_pane_command(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = ensure_training_root(Path(tmpdir))
+            session_name = "roi_fcn_260420-1024_roi-fcn-tiny_run_0007"
+            log_path = root / "models" / "260420-1024_roi-fcn-tiny" / "runs" / "run_0007" / "train.log"
+            pane_command = (
+                f'"/tmp/fake-python -u -m roi_fcn_training_v0_1.train '
+                f'--models-root models --model-directory 260420-1024_roi-fcn-tiny --run-id run_0007 '
+                f'>> {log_path} 2>&1"'
+            )
+            with patch(
+                "roi_fcn_training_v0_1.tmux_launcher_v0_2._run_tmux",
+                return_value=subprocess.CompletedProcess(
+                    args=["tmux"],
+                    returncode=0,
+                    stdout=f"{root / 'src'}\t{pane_command}\n",
+                    stderr="",
+                ),
+            ):
+                info = resolve_session_run_paths(root, session_name)
+
+        self.assertIsNotNone(info)
+        assert info is not None
+        self.assertEqual(info["model_directory"], "260420-1024_roi-fcn-tiny")
+        self.assertEqual(info["run_id"], "run_0007")
+        self.assertEqual(Path(info["run_dir"]), log_path.parent.resolve())
+        self.assertEqual(Path(info["log_path"]), log_path.resolve())
 
     def test_launch_session_removes_empty_run_dir_when_tmux_start_fails(self) -> None:
         with TemporaryDirectory() as tmpdir:
