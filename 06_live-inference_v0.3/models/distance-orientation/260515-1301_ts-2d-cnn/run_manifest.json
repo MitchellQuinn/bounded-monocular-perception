@@ -1,0 +1,3363 @@
+{
+  "artifact_paths": {
+    "best_pt": "models/260515-1301_ts-2d-cnn/runs/run_0001/best.pt",
+    "config_json": "models/260515-1301_ts-2d-cnn/runs/run_0001/config.json",
+    "dataset_summary_json": "models/260515-1301_ts-2d-cnn/runs/run_0001/dataset_summary.json",
+    "history_csv": "models/260515-1301_ts-2d-cnn/runs/run_0001/history.csv",
+    "latest_pt": "models/260515-1301_ts-2d-cnn/runs/run_0001/latest.pt",
+    "metrics_json": "models/260515-1301_ts-2d-cnn/runs/run_0001/metrics.json",
+    "model_architecture_json": "models/260515-1301_ts-2d-cnn/runs/run_0001/model_architecture.json",
+    "model_architecture_txt": "models/260515-1301_ts-2d-cnn/runs/run_0001/model_architecture.txt",
+    "model_card_md": "models/260515-1301_ts-2d-cnn/runs/run_0001/model_card.md",
+    "prediction_scatter_png": "models/260515-1301_ts-2d-cnn/runs/run_0001/prediction_scatter.png",
+    "residual_plot_png": "models/260515-1301_ts-2d-cnn/runs/run_0001/residual_plot.png",
+    "resume_state_pt": "models/260515-1301_ts-2d-cnn/runs/run_0001/resume_state.pt",
+    "sample_predictions_csv": "models/260515-1301_ts-2d-cnn/runs/run_0001/sample_predictions.csv",
+    "split_membership_csv": "models/260515-1301_ts-2d-cnn/runs/run_0001/split_membership.csv",
+    "split_membership_json": "models/260515-1301_ts-2d-cnn/runs/run_0001/split_membership.json",
+    "split_summary_json": "models/260515-1301_ts-2d-cnn/runs/run_0001/split_summary.json"
+  },
+  "cache_runtime_stats": {
+    "train_shard_cache": {
+      "bytes_used": 50331648000,
+      "cached_shards": 15,
+      "evictions": 1349,
+      "hit_rate": 0.029871977240398292,
+      "hits": 42,
+      "max_bytes": 51539607552,
+      "misses": 1364,
+      "name": "train_shard_cache",
+      "skipped_too_large": 0
+    },
+    "validation_shard_cache": {
+      "bytes_used": 42441113600,
+      "cached_shards": 14,
+      "evictions": 308,
+      "hit_rate": 0.018292682926829267,
+      "hits": 6,
+      "max_bytes": 42949672960,
+      "misses": 322,
+      "name": "validation_shard_cache",
+      "skipped_too_large": 0
+    }
+  },
+  "change_note": "tmux control-panel launch via notebook v0.9",
+  "created_utc": "2026-05-15T18:55:02+00:00",
+  "dataset_summary": {
+    "overlap_details": {},
+    "overlap_warnings": [],
+    "preprocessing_contract": {
+      "CompletedStages": [
+        "detect",
+        "silhouette",
+        "pack_tri_stream"
+      ],
+      "ContractVersion": "rb-preprocess-v4-tri-stream-grayscale-white-v1",
+      "CurrentRepresentation": {
+        "ArrayKeys": [
+          "x_distance_image",
+          "x_orientation_image",
+          "x_geometry",
+          "y_distance_m",
+          "y_yaw_deg",
+          "y_yaw_sin",
+          "y_yaw_cos"
+        ],
+        "BrightnessNormalization": {
+          "EmptyMaskPolicy": "skip",
+          "Enabled": false,
+          "Epsilon": 1e-06,
+          "MaxGain": 2.0,
+          "Method": "none",
+          "MinGain": 0.5,
+          "TargetMedianDarkness": 0.55
+        },
+        "CanvasHeight": 320,
+        "CanvasWidth": 320,
+        "DistanceImageBrightnessNormalization": "configured_foreground_only",
+        "DistanceImageContent": "raw_grayscale_vehicle_detail_inside_silhouette_foreground_enhanced",
+        "DistanceImageGeometry": "fixed_unscaled_roi_canvas",
+        "DistanceImageKey": "x_distance_image",
+        "DistanceImageLayout": "N,C,H,W",
+        "DistanceImagePolarity": "source_grayscale_vehicle_detail_on_white_background",
+        "DistanceImageScaling": "disabled",
+        "ForegroundEnhancement": {
+          "EmptyMaskPolicy": "skip",
+          "Enabled": true,
+          "Epsilon": 1e-06,
+          "MaxGain": 3.0,
+          "Method": "masked_median_darkness_gain",
+          "MinGain": 1.0,
+          "TargetMedianDarkness": 0.7
+        },
+        "GeometryDim": 10,
+        "GeometryKey": "x_geometry",
+        "GeometrySchema": [
+          "cx_px",
+          "cy_px",
+          "w_px",
+          "h_px",
+          "cx_norm",
+          "cy_norm",
+          "w_norm",
+          "h_norm",
+          "aspect_ratio",
+          "area_norm"
+        ],
+        "Kind": "tri_stream_npz",
+        "OrientationContextScale": 1.25,
+        "OrientationExtentSource": "silhouette_foreground_mask",
+        "OrientationImageContent": "foreground_enhanced_raw_grayscale_detail_on_white_no_brightness_normalization",
+        "OrientationImageGeometry": "target_centered_scaled_by_silhouette_extent",
+        "OrientationImageKey": "x_orientation_image",
+        "OrientationImageLayout": "N,C,H,W",
+        "OrientationImagePolarity": "source_grayscale_vehicle_detail_on_white_background",
+        "OrientationImageScaling": "enabled_by_silhouette_extent",
+        "StorageFormat": "npz",
+        "TargetModes": [
+          "scalar_distance",
+          "orientation_yaw_deg_sincos"
+        ]
+      },
+      "CurrentStage": "pack_tri_stream",
+      "Stages": {
+        "detect": {
+          "ConfidenceThreshold": 0.0,
+          "DefaultModelRef": "",
+          "DefenderClassIds": [],
+          "DefenderClassNames": [
+            "defender"
+          ],
+          "DetectorBackend": "edge",
+          "EdgeBlurKernelSize": 5,
+          "EdgeCannyHighThreshold": 150,
+          "EdgeCannyLowThreshold": 50,
+          "EdgeCloseKernelSize": 1,
+          "EdgeForegroundThreshold": 250,
+          "EdgeIgnoreBorderPx": 8,
+          "EdgeMinForegroundPx": 16,
+          "EdgePaddingPx": 0,
+          "ImageSize": 1280,
+          "IoUThreshold": 0.0,
+          "MaxDetections": 1,
+          "ModelPath": "",
+          "ModelRef": "edge_roi_detector_v1",
+          "ModelSHA256": "",
+          "PersistDebug": false
+        },
+        "pack_tri_stream": {
+          "BrightnessNormalization": {
+            "EmptyMaskPolicy": "skip",
+            "Enabled": false,
+            "Epsilon": 1e-06,
+            "MaxGain": 2.0,
+            "Method": "none",
+            "MinGain": 0.5,
+            "TargetMedianDarkness": 0.55
+          },
+          "CanvasHeight": 320,
+          "CanvasWidth": 320,
+          "ClipPolicy": "clip",
+          "Compress": true,
+          "DeleteSourceNpyAfterPack": true,
+          "DistanceImageRepresentation": "fixed_unscaled_roi_brightness_normalized_when_enabled",
+          "ForegroundEnhancement": {
+            "EmptyMaskPolicy": "skip",
+            "Enabled": true,
+            "Epsilon": 1e-06,
+            "MaxGain": 3.0,
+            "Method": "masked_median_darkness_gain",
+            "MinGain": 1.0,
+            "TargetMedianDarkness": 0.7
+          },
+          "ImageRepresentationMode": "roi_raw_grayscale_vehicle_on_white",
+          "IncludeOptionalMetadataArrays": true,
+          "IncludeV1CompatArrays": false,
+          "OrientationContextScale": 1.25,
+          "OrientationExtentSource": "silhouette_foreground_mask",
+          "OrientationImageRepresentation": "target_centered_raw_grayscale_scaled_by_silhouette_extent_foreground_enhanced",
+          "ShardSize": 8192,
+          "UseIntermediateNpy": true
+        },
+        "silhouette": {
+          "BlurKernelSize": 5,
+          "CannyHighThreshold": 150,
+          "CannyLowThreshold": 50,
+          "CloseKernelSize": 3,
+          "DilateKernelSize": 1,
+          "FallbackId": "fallback.convex_hull_v1",
+          "FillHoles": true,
+          "GeneratorId": "silhouette.contour_v2",
+          "MinComponentAreaPx": 50,
+          "OutlineThicknessPx": 1,
+          "PersistDebug": false,
+          "ROICanvasHeightPx": 320,
+          "ROICanvasWidthPx": 320,
+          "ROIPaddingPx": 0,
+          "RepresentationMode": "filled",
+          "UseConvexHullFallback": true
+        }
+      }
+    },
+    "preprocessing_contract_sources": [
+      {
+        "dataset_id": "v29-train",
+        "has_preprocessing_contract": true,
+        "relative_run_json_path": "training-data/v29-train/manifests/run.json",
+        "source_root": "training"
+      },
+      {
+        "dataset_id": "v29-validate",
+        "has_preprocessing_contract": true,
+        "relative_run_json_path": "validation-data-tri-stream/v29-validate/manifests/run.json",
+        "source_root": "validation"
+      }
+    ],
+    "preprocessing_contract_warnings": [],
+    "training": {
+      "dataset_ids": [
+        "v29-train"
+      ],
+      "distance_m": {
+        "max": 7.49742317199707,
+        "mean": 3.8914475440979004,
+        "min": 1.5180120468139648,
+        "std": 1.411338448524475
+      },
+      "num_corpuses": 1,
+      "num_samples": 300000,
+      "num_unique_shards": 37,
+      "source_root": "training"
+    },
+    "training_shard_schema": [
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00000.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00000.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00001.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00001.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00002.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00002.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00003.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00003.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00004.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00004.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00005.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00005.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00006.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00006.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00007.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00007.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00008.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00008.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00009.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00009.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00010.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00010.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00011.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00011.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00012.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00012.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00013.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00013.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00014.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00014.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00015.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00015.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00016.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00016.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00017.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00017.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00018.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00018.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00019.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00019.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00020.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00020.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00021.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00021.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00022.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00022.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00023.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00023.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00024.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00024.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00025.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00025.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00026.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00026.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00027.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00027.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00028.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00028.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00029.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00029.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00030.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00030.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00031.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00031.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00032.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00032.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00033.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00033.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00034.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00034.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-test_shard_00035.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00035.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-train",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 5088,
+        "n_rows_manifest": 5088,
+        "npz_filename": "v29-test_shard_00036.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v29-train/v29-test_shard_00036.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          5088
+        ],
+        "row_index_max_manifest": 5087,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U32",
+        "sample_id_shape": [
+          5088
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          5088,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          5088
+        ]
+      }
+    ],
+    "validation": {
+      "dataset_ids": [
+        "v29-validate"
+      ],
+      "distance_m": {
+        "max": 7.477021217346191,
+        "mean": 3.889434576034546,
+        "min": 1.5196000337600708,
+        "std": 1.4112321138381958
+      },
+      "num_corpuses": 1,
+      "num_samples": 60000,
+      "num_unique_shards": 8,
+      "source_root": "validation"
+    },
+    "validation_shard_schema": [
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00000.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00000.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00001.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00001.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00002.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00002.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00003.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00003.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00004.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00004.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00005.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00005.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 8192,
+        "n_rows_manifest": 8192,
+        "npz_filename": "v29-validate_shard_00006.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00006.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          8192
+        ],
+        "row_index_max_manifest": 8191,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          8192
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          8192,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          8192
+        ]
+      },
+      {
+        "channels": 1,
+        "dataset_id": "v29-validate",
+        "height": 320,
+        "image_array_key": "x_distance_image",
+        "key_count": 19,
+        "keys": [
+          "detect_bbox_xyxy_px",
+          "frame_wh_px",
+          "image_filename",
+          "npz_row_index",
+          "roi_canvas_insert_xyxy_px",
+          "roi_canvas_wh_px",
+          "roi_geometry_schema",
+          "roi_padding_px",
+          "roi_request_xyxy_px",
+          "roi_source_xyxy_px",
+          "sample_id",
+          "x_distance_image",
+          "x_geometry",
+          "x_geometry_schema",
+          "x_orientation_image",
+          "y_distance_m",
+          "y_yaw_cos",
+          "y_yaw_deg",
+          "y_yaw_sin"
+        ],
+        "missing_required_keys": [],
+        "n_rows_from_x": 2656,
+        "n_rows_manifest": 2656,
+        "npz_filename": "v29-validate_shard_00007.npz",
+        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v29-validate/v29-validate_shard_00007.npz",
+        "npz_row_index_dtype": "int64",
+        "npz_row_index_shape": [
+          2656
+        ],
+        "row_index_max_manifest": 2655,
+        "row_index_min_manifest": 0,
+        "sample_id_dtype": "<U31",
+        "sample_id_shape": [
+          2656
+        ],
+        "target_array_key": "y_distance_m",
+        "width": 320,
+        "x_dtype": "float32",
+        "x_shape": [
+          2656,
+          1,
+          320,
+          320
+        ],
+        "y_dtype": "float32",
+        "y_shape": [
+          2656
+        ]
+      }
+    ]
+  },
+  "dirty_worktree": true,
+  "entrypoint_path": "src/train.py",
+  "entrypoint_sha256": "81289aea7bc6e70d71b9f163c8f38852ce6360428b340b718ce2e0b0cbbce4e4",
+  "entrypoint_type": "cli",
+  "environment": {
+    "cuda_version": "12.1",
+    "cwd": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0",
+    "device": "cuda",
+    "matplotlib_version": "3.10.8",
+    "numpy_version": "2.4.4",
+    "pandas_version": "3.0.1",
+    "pid": 8875,
+    "python_version": "3.12.3",
+    "torch_version": "2.5.1+cu121"
+  },
+  "git_branch": "main",
+  "git_commit": "dd5b5fc8dda24a3e757abdae244e2b5d3d3a4364",
+  "hyperparameters": {
+    "accuracy_tolerance_m": 0.1,
+    "additional_epochs": null,
+    "batch_size": 8,
+    "cache_validation_in_ram": true,
+    "distance_loss_weight": 1.0,
+    "early_stopping_patience": 3,
+    "enable_internal_test_split": false,
+    "enable_lr_scheduler": true,
+    "epochs": 32,
+    "extra_accuracy_tolerances_m": [
+      0.25,
+      0.5
+    ],
+    "internal_test_fraction": 0.1,
+    "learning_rate": 0.001,
+    "lr_scheduler_factor": 0.5,
+    "lr_scheduler_min_lr": 1e-05,
+    "lr_scheduler_patience": 1,
+    "model_architecture_variant": "tri_stream_yaw_v0_4",
+    "model_name": "260515-1301_ts-2d-cnn",
+    "orientation_loss_weight": 1.0,
+    "padding_mode": "disabled",
+    "position_loss_weight": 1.0,
+    "progress_log_interval_batches": 250,
+    "resume_from_run_dir": null,
+    "run_id": "run_0001",
+    "start_epoch": 1,
+    "task_contract_signature": "8af91d55f29788bd31153641940107e8d9a156a940bdd9b88d646406f34509fe",
+    "topology_contract_signature": "14fc985ca8b2364ae54f82c30e5e82b570883ac01a63efe39924de6a5c1f9702",
+    "topology_id": "distance_regressor_tri_stream_yaw",
+    "topology_params": {
+      "dropout_p": 0.0
+    },
+    "topology_signature": "e0c5cbfcf68741336179d1d8f390568d1f7de59206b59ea1116d75956adc0e5c",
+    "topology_variant": "tri_stream_yaw_v0_4",
+    "total_target_epochs": 32,
+    "train_active_shard_count": 3,
+    "train_cache_budget_gb": 48.0,
+    "train_shuffle_mode": "shard",
+    "validation_cache_budget_gb": 40.0,
+    "weight_decay": 1e-05
+  },
+  "input_representation": "npz keys x_distance_image,x_orientation_image,x_geometry,y_distance_m,y_yaw_deg,y_yaw_sin,y_yaw_cos; tri_stream_npz",
+  "input_shape": [
+    1,
+    320,
+    320
+  ],
+  "loss_function": "WeightedMultiTaskHuber(delta=1.0,distance=1.0,orientation=1.0)",
+  "model_architecture_summary": "topology_id=distance_regressor_tri_stream_yaw\nmodel_class_name=DistanceRegressorTriStreamYaw\narchitecture_variant=tri_stream_yaw_v0_4\nDistanceRegressorTriStreamYaw(\n  (geom_mlp): Sequential(\n    (0): Linear(in_features=10, out_features=64, bias=True)\n    (1): ReLU(inplace=True)\n    (2): Linear(in_features=64, out_features=64, bias=True)\n    (3): ReLU(inplace=True)\n    (4): Linear(in_features=64, out_features=32, bias=True)\n    (5): ReLU(inplace=True)\n  )\n  (distance_cnn): Sequential(\n    (0): Conv2d(1, 16, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (1): GroupNorm(8, 16, eps=1e-05, affine=True)\n    (2): ReLU(inplace=True)\n    (3): Conv2d(16, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (4): GroupNorm(8, 32, eps=1e-05, affine=True)\n    (5): ReLU(inplace=True)\n    (6): Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (7): GroupNorm(8, 64, eps=1e-05, affine=True)\n    (8): ReLU(inplace=True)\n    (9): Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (10): GroupNorm(8, 128, eps=1e-05, affine=True)\n    (11): ReLU(inplace=True)\n    (12): Conv2d(128, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (13): GroupNorm(8, 128, eps=1e-05, affine=True)\n    (14): ReLU(inplace=True)\n    (15): AdaptiveAvgPool2d(output_size=(1, 1))\n    (16): Flatten(start_dim=1, end_dim=-1)\n  )\n  (orientation_cnn): Sequential(\n    (0): Conv2d(1, 16, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (1): GroupNorm(8, 16, eps=1e-05, affine=True)\n    (2): ReLU(inplace=True)\n    (3): Conv2d(16, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (4): GroupNorm(8, 32, eps=1e-05, affine=True)\n    (5): ReLU(inplace=True)\n    (6): Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (7): GroupNorm(8, 64, eps=1e-05, affine=True)\n    (8): ReLU(inplace=True)\n    (9): Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (10): GroupNorm(8, 128, eps=1e-05, affine=True)\n    (11): ReLU(inplace=True)\n    (12): Conv2d(128, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n    (13): GroupNorm(8, 128, eps=1e-05, affine=True)\n    (14): ReLU(inplace=True)\n    (15): AdaptiveAvgPool2d(output_size=(1, 1))\n    (16): Flatten(start_dim=1, end_dim=-1)\n  )\n  (camera_trunk): Sequential(\n    (0): Linear(in_features=160, out_features=128, bias=True)\n    (1): ReLU(inplace=True)\n    (2): Identity()\n    (3): Linear(in_features=128, out_features=64, bias=True)\n    (4): ReLU(inplace=True)\n    (5): Identity()\n  )\n  (distance_head): Linear(in_features=64, out_features=1, bias=True)\n  (yaw_trunk): Sequential(\n    (0): Linear(in_features=352, out_features=128, bias=True)\n    (1): ReLU(inplace=True)\n    (2): Identity()\n    (3): Linear(in_features=128, out_features=64, bias=True)\n    (4): ReLU(inplace=True)\n    (5): Identity()\n  )\n  (orientation_head): Linear(in_features=64, out_features=2, bias=True)\n)",
+  "model_architecture_variant": "tri_stream_yaw_v0_4",
+  "model_class_name": "DistanceRegressorTriStreamYaw",
+  "model_name": "260515-1301_ts-2d-cnn",
+  "model_topology": {
+    "model_class_name": "DistanceRegressorTriStreamYaw",
+    "task_contract": {
+      "debug_target_columns": [
+        "yaw_deg"
+      ],
+      "heads": {
+        "distance": {
+          "loss_role": "distance",
+          "metrics_role": "distance",
+          "output_key": "distance_m",
+          "target_columns": [
+            "distance_m"
+          ],
+          "target_kind": "regression",
+          "target_npz_key": "y_distance_m"
+        },
+        "orientation": {
+          "debug_target_columns": [
+            "yaw_deg"
+          ],
+          "debug_target_npz_key": "y_yaw_deg",
+          "loss_role": "orientation",
+          "metrics_role": "orientation",
+          "output_key": "yaw_sin_cos",
+          "target_columns": [
+            "yaw_sin",
+            "yaw_cos"
+          ],
+          "target_kind": "circular_regression",
+          "target_npz_keys": [
+            "y_yaw_sin",
+            "y_yaw_cos"
+          ]
+        }
+      },
+      "input_mode": "tri_stream_distance_orientation_geometry",
+      "output_kind": "mapping",
+      "prediction_mode": "distance_yaw_sincos",
+      "reporting": {
+        "family": "distance_orientation_multitask",
+        "orientation_accuracy_thresholds_deg": [
+          5.0,
+          10.0,
+          15.0
+        ],
+        "train_losses": [
+          "total_loss",
+          "distance_loss",
+          "orientation_loss"
+        ],
+        "validation_metrics": [
+          "yaw_mean_error_deg",
+          "yaw_median_error_deg",
+          "yaw_p95_error_deg",
+          "yaw_acc@5deg",
+          "yaw_acc@10deg",
+          "yaw_acc@15deg"
+        ]
+      },
+      "target_columns": [
+        "distance_m",
+        "yaw_sin",
+        "yaw_cos"
+      ],
+      "task_family": "multitask_regression"
+    },
+    "topology_contract": {
+      "contract_version": "rb-topology-output-reporting-v1",
+      "outputs": {
+        "distance": {
+          "columns": [
+            "distance_m"
+          ],
+          "kind": "regression",
+          "output_key": "distance_m"
+        },
+        "yaw": {
+          "columns": [
+            "yaw_sin",
+            "yaw_cos"
+          ],
+          "kind": "circular_regression",
+          "output_key": "yaw_sin_cos"
+        }
+      },
+      "reporting": {
+        "family": "distance_orientation_multitask",
+        "orientation_accuracy_thresholds_deg": [
+          5.0,
+          10.0,
+          15.0
+        ],
+        "train_losses": [
+          "total_loss",
+          "distance_loss",
+          "orientation_loss"
+        ],
+        "validation_metrics": [
+          "yaw_mean_error_deg",
+          "yaw_median_error_deg",
+          "yaw_p95_error_deg",
+          "yaw_acc@5deg",
+          "yaw_acc@10deg",
+          "yaw_acc@15deg"
+        ]
+      },
+      "runtime": {
+        "heads": {
+          "distance": {
+            "loss_role": "distance",
+            "metrics_role": "distance",
+            "output": "distance",
+            "target": "distance"
+          },
+          "orientation": {
+            "loss_role": "orientation",
+            "metrics_role": "orientation",
+            "output": "yaw",
+            "target": "yaw"
+          }
+        },
+        "input_mode": "tri_stream_distance_orientation_geometry",
+        "output_kind": "mapping",
+        "prediction_mode": "distance_yaw_sincos"
+      },
+      "targets": {
+        "distance": {
+          "columns": [
+            "distance_m"
+          ],
+          "kind": "regression",
+          "target_npz_key": "y_distance_m"
+        },
+        "yaw": {
+          "columns": [
+            "yaw_sin",
+            "yaw_cos"
+          ],
+          "debug_columns": [
+            "yaw_deg"
+          ],
+          "debug_target_npz_key": "y_yaw_deg",
+          "kind": "circular_regression",
+          "target_npz_keys": [
+            "y_yaw_sin",
+            "y_yaw_cos"
+          ]
+        }
+      },
+      "task_family": "multitask_regression"
+    },
+    "topology_id": "distance_regressor_tri_stream_yaw",
+    "topology_metadata": {
+      "display_name": "Distance Regressor Tri Stream + Yaw",
+      "note": "Distance plus yaw multitask topology with distance image, orientation image, and geometry streams.",
+      "replacement": "",
+      "status": "experimental"
+    },
+    "topology_params": {
+      "dropout_p": 0.0
+    },
+    "topology_variant": "tri_stream_yaw_v0_4"
+  },
+  "optimizer": "Adam",
+  "preprocessing_contract": {
+    "CompletedStages": [
+      "detect",
+      "silhouette",
+      "pack_tri_stream"
+    ],
+    "ContractVersion": "rb-preprocess-v4-tri-stream-grayscale-white-v1",
+    "CurrentRepresentation": {
+      "ArrayKeys": [
+        "x_distance_image",
+        "x_orientation_image",
+        "x_geometry",
+        "y_distance_m",
+        "y_yaw_deg",
+        "y_yaw_sin",
+        "y_yaw_cos"
+      ],
+      "BrightnessNormalization": {
+        "EmptyMaskPolicy": "skip",
+        "Enabled": false,
+        "Epsilon": 1e-06,
+        "MaxGain": 2.0,
+        "Method": "none",
+        "MinGain": 0.5,
+        "TargetMedianDarkness": 0.55
+      },
+      "CanvasHeight": 320,
+      "CanvasWidth": 320,
+      "DistanceImageBrightnessNormalization": "configured_foreground_only",
+      "DistanceImageContent": "raw_grayscale_vehicle_detail_inside_silhouette_foreground_enhanced",
+      "DistanceImageGeometry": "fixed_unscaled_roi_canvas",
+      "DistanceImageKey": "x_distance_image",
+      "DistanceImageLayout": "N,C,H,W",
+      "DistanceImagePolarity": "source_grayscale_vehicle_detail_on_white_background",
+      "DistanceImageScaling": "disabled",
+      "ForegroundEnhancement": {
+        "EmptyMaskPolicy": "skip",
+        "Enabled": true,
+        "Epsilon": 1e-06,
+        "MaxGain": 3.0,
+        "Method": "masked_median_darkness_gain",
+        "MinGain": 1.0,
+        "TargetMedianDarkness": 0.7
+      },
+      "GeometryDim": 10,
+      "GeometryKey": "x_geometry",
+      "GeometrySchema": [
+        "cx_px",
+        "cy_px",
+        "w_px",
+        "h_px",
+        "cx_norm",
+        "cy_norm",
+        "w_norm",
+        "h_norm",
+        "aspect_ratio",
+        "area_norm"
+      ],
+      "Kind": "tri_stream_npz",
+      "OrientationContextScale": 1.25,
+      "OrientationExtentSource": "silhouette_foreground_mask",
+      "OrientationImageContent": "foreground_enhanced_raw_grayscale_detail_on_white_no_brightness_normalization",
+      "OrientationImageGeometry": "target_centered_scaled_by_silhouette_extent",
+      "OrientationImageKey": "x_orientation_image",
+      "OrientationImageLayout": "N,C,H,W",
+      "OrientationImagePolarity": "source_grayscale_vehicle_detail_on_white_background",
+      "OrientationImageScaling": "enabled_by_silhouette_extent",
+      "StorageFormat": "npz",
+      "TargetModes": [
+        "scalar_distance",
+        "orientation_yaw_deg_sincos"
+      ]
+    },
+    "CurrentStage": "pack_tri_stream",
+    "Stages": {
+      "detect": {
+        "ConfidenceThreshold": 0.0,
+        "DefaultModelRef": "",
+        "DefenderClassIds": [],
+        "DefenderClassNames": [
+          "defender"
+        ],
+        "DetectorBackend": "edge",
+        "EdgeBlurKernelSize": 5,
+        "EdgeCannyHighThreshold": 150,
+        "EdgeCannyLowThreshold": 50,
+        "EdgeCloseKernelSize": 1,
+        "EdgeForegroundThreshold": 250,
+        "EdgeIgnoreBorderPx": 8,
+        "EdgeMinForegroundPx": 16,
+        "EdgePaddingPx": 0,
+        "ImageSize": 1280,
+        "IoUThreshold": 0.0,
+        "MaxDetections": 1,
+        "ModelPath": "",
+        "ModelRef": "edge_roi_detector_v1",
+        "ModelSHA256": "",
+        "PersistDebug": false
+      },
+      "pack_tri_stream": {
+        "BrightnessNormalization": {
+          "EmptyMaskPolicy": "skip",
+          "Enabled": false,
+          "Epsilon": 1e-06,
+          "MaxGain": 2.0,
+          "Method": "none",
+          "MinGain": 0.5,
+          "TargetMedianDarkness": 0.55
+        },
+        "CanvasHeight": 320,
+        "CanvasWidth": 320,
+        "ClipPolicy": "clip",
+        "Compress": true,
+        "DeleteSourceNpyAfterPack": true,
+        "DistanceImageRepresentation": "fixed_unscaled_roi_brightness_normalized_when_enabled",
+        "ForegroundEnhancement": {
+          "EmptyMaskPolicy": "skip",
+          "Enabled": true,
+          "Epsilon": 1e-06,
+          "MaxGain": 3.0,
+          "Method": "masked_median_darkness_gain",
+          "MinGain": 1.0,
+          "TargetMedianDarkness": 0.7
+        },
+        "ImageRepresentationMode": "roi_raw_grayscale_vehicle_on_white",
+        "IncludeOptionalMetadataArrays": true,
+        "IncludeV1CompatArrays": false,
+        "OrientationContextScale": 1.25,
+        "OrientationExtentSource": "silhouette_foreground_mask",
+        "OrientationImageRepresentation": "target_centered_raw_grayscale_scaled_by_silhouette_extent_foreground_enhanced",
+        "ShardSize": 8192,
+        "UseIntermediateNpy": true
+      },
+      "silhouette": {
+        "BlurKernelSize": 5,
+        "CannyHighThreshold": 150,
+        "CannyLowThreshold": 50,
+        "CloseKernelSize": 3,
+        "DilateKernelSize": 1,
+        "FallbackId": "fallback.convex_hull_v1",
+        "FillHoles": true,
+        "GeneratorId": "silhouette.contour_v2",
+        "MinComponentAreaPx": 50,
+        "OutlineThicknessPx": 1,
+        "PersistDebug": false,
+        "ROICanvasHeightPx": 320,
+        "ROICanvasWidthPx": 320,
+        "ROIPaddingPx": 0,
+        "RepresentationMode": "filled",
+        "UseConvexHullFallback": true
+      }
+    }
+  },
+  "preprocessing_contract_sources": [
+    {
+      "dataset_id": "v29-train",
+      "has_preprocessing_contract": true,
+      "relative_run_json_path": "training-data/v29-train/manifests/run.json",
+      "source_root": "training"
+    },
+    {
+      "dataset_id": "v29-validate",
+      "has_preprocessing_contract": true,
+      "relative_run_json_path": "validation-data-tri-stream/v29-validate/manifests/run.json",
+      "source_root": "validation"
+    }
+  ],
+  "preprocessing_contract_warnings": [],
+  "random_seeds": {
+    "global_seed": 42,
+    "numpy_seed": 42,
+    "python_random_seed": 42,
+    "torch_seed": 42
+  },
+  "resume": {
+    "additional_epochs": null,
+    "enabled": false,
+    "source_run_dir": null,
+    "source_run_id": null,
+    "start_epoch": 1,
+    "total_target_epochs": 32
+  },
+  "run_id": "run_0001",
+  "source_run_json_paths": [
+    "training-data/v29-train/manifests/run.json",
+    "validation-data-tri-stream/v29-validate/manifests/run.json"
+  ],
+  "source_samples_csv_paths": [
+    "training-data/v29-train/manifests/samples.csv",
+    "validation-data-tri-stream/v29-validate/manifests/samples.csv"
+  ],
+  "target_name": "distance_m,yaw_sin,yaw_cos",
+  "target_names": [
+    "distance_m",
+    "yaw_sin",
+    "yaw_cos"
+  ],
+  "task_contract": {
+    "debug_target_columns": [
+      "yaw_deg"
+    ],
+    "heads": {
+      "distance": {
+        "loss_role": "distance",
+        "metrics_role": "distance",
+        "output_key": "distance_m",
+        "target_columns": [
+          "distance_m"
+        ],
+        "target_kind": "regression",
+        "target_npz_key": "y_distance_m"
+      },
+      "orientation": {
+        "debug_target_columns": [
+          "yaw_deg"
+        ],
+        "debug_target_npz_key": "y_yaw_deg",
+        "loss_role": "orientation",
+        "metrics_role": "orientation",
+        "output_key": "yaw_sin_cos",
+        "target_columns": [
+          "yaw_sin",
+          "yaw_cos"
+        ],
+        "target_kind": "circular_regression",
+        "target_npz_keys": [
+          "y_yaw_sin",
+          "y_yaw_cos"
+        ]
+      }
+    },
+    "input_mode": "tri_stream_distance_orientation_geometry",
+    "output_kind": "mapping",
+    "prediction_mode": "distance_yaw_sincos",
+    "reporting": {
+      "family": "distance_orientation_multitask",
+      "orientation_accuracy_thresholds_deg": [
+        5.0,
+        10.0,
+        15.0
+      ],
+      "train_losses": [
+        "total_loss",
+        "distance_loss",
+        "orientation_loss"
+      ],
+      "validation_metrics": [
+        "yaw_mean_error_deg",
+        "yaw_median_error_deg",
+        "yaw_p95_error_deg",
+        "yaw_acc@5deg",
+        "yaw_acc@10deg",
+        "yaw_acc@15deg"
+      ]
+    },
+    "target_columns": [
+      "distance_m",
+      "yaw_sin",
+      "yaw_cos"
+    ],
+    "task_family": "multitask_regression"
+  },
+  "task_contract_signature": "8af91d55f29788bd31153641940107e8d9a156a940bdd9b88d646406f34509fe",
+  "topology_contract": {
+    "contract_version": "rb-topology-output-reporting-v1",
+    "outputs": {
+      "distance": {
+        "columns": [
+          "distance_m"
+        ],
+        "kind": "regression",
+        "output_key": "distance_m"
+      },
+      "yaw": {
+        "columns": [
+          "yaw_sin",
+          "yaw_cos"
+        ],
+        "kind": "circular_regression",
+        "output_key": "yaw_sin_cos"
+      }
+    },
+    "reporting": {
+      "family": "distance_orientation_multitask",
+      "orientation_accuracy_thresholds_deg": [
+        5.0,
+        10.0,
+        15.0
+      ],
+      "train_losses": [
+        "total_loss",
+        "distance_loss",
+        "orientation_loss"
+      ],
+      "validation_metrics": [
+        "yaw_mean_error_deg",
+        "yaw_median_error_deg",
+        "yaw_p95_error_deg",
+        "yaw_acc@5deg",
+        "yaw_acc@10deg",
+        "yaw_acc@15deg"
+      ]
+    },
+    "runtime": {
+      "heads": {
+        "distance": {
+          "loss_role": "distance",
+          "metrics_role": "distance",
+          "output": "distance",
+          "target": "distance"
+        },
+        "orientation": {
+          "loss_role": "orientation",
+          "metrics_role": "orientation",
+          "output": "yaw",
+          "target": "yaw"
+        }
+      },
+      "input_mode": "tri_stream_distance_orientation_geometry",
+      "output_kind": "mapping",
+      "prediction_mode": "distance_yaw_sincos"
+    },
+    "targets": {
+      "distance": {
+        "columns": [
+          "distance_m"
+        ],
+        "kind": "regression",
+        "target_npz_key": "y_distance_m"
+      },
+      "yaw": {
+        "columns": [
+          "yaw_sin",
+          "yaw_cos"
+        ],
+        "debug_columns": [
+          "yaw_deg"
+        ],
+        "debug_target_npz_key": "y_yaw_deg",
+        "kind": "circular_regression",
+        "target_npz_keys": [
+          "y_yaw_sin",
+          "y_yaw_cos"
+        ]
+      }
+    },
+    "task_family": "multitask_regression"
+  },
+  "topology_contract_signature": "14fc985ca8b2364ae54f82c30e5e82b570883ac01a63efe39924de6a5c1f9702",
+  "topology_id": "distance_regressor_tri_stream_yaw",
+  "topology_params": {
+    "dropout_p": 0.0
+  },
+  "topology_signature": "e0c5cbfcf68741336179d1d8f390568d1f7de59206b59ea1116d75956adc0e5c",
+  "topology_variant": "tri_stream_yaw_v0_4"
+}

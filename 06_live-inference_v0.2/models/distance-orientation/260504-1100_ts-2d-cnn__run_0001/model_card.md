@@ -1,7 +1,7 @@
 # Model Card - run_0001
 
 ## Purpose
-Bounded falsification test over the topology's declared regression targets 
+Bounded falsification test over the topology's declared regression targets
 without geometry-altering transforms.
 
 ## Data

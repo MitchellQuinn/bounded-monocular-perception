@@ -1,0 +1,99 @@
+{
+  "train_split": {
+    "bootstrap_bbox_available": true,
+    "dataset_reference": "roi-fcn_v29",
+    "fixed_roi_height_px": 320,
+    "fixed_roi_width_px": 320,
+    "geometry": {
+      "canvas_height_px": 300,
+      "canvas_width_px": 480,
+      "channels": 1,
+      "geometry_schema": [
+        "target_center_xy_original_px=(x_px,y_px) in original full-frame image space",
+        "target_center_xy_canvas_px=(x_px,y_px) in locator canvas space",
+        "source_image_wh_px=(width_px,height_px)",
+        "resized_image_wh_px=(width_px,height_px)",
+        "padding_ltrb_px=(left_px,top_px,right_px,bottom_px)",
+        "resize_scale=scalar applied before padding"
+      ],
+      "image_layout": "N,C,H,W",
+      "normalization_range": [
+        0.0,
+        1.0
+      ]
+    },
+    "preprocessing_contract_version": "rb-preprocess-roi-fcn-v0_1",
+    "representation_array_keys": [
+      "locator_input_image",
+      "target_center_xy_original_px",
+      "target_center_xy_canvas_px",
+      "source_image_wh_px",
+      "resized_image_wh_px",
+      "padding_ltrb_px",
+      "resize_scale",
+      "sample_id",
+      "image_filename",
+      "npz_row_index",
+      "bootstrap_bbox_xyxy_px",
+      "bootstrap_confidence",
+      "locator_geometry_schema"
+    ],
+    "representation_kind": "roi_fcn_locator_npz",
+    "representation_storage_format": "npz",
+    "row_count": 300000,
+    "run_json_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train/manifests/run.json",
+    "samples_csv_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train/manifests/samples.csv",
+    "shard_count": 37,
+    "split_name": "train",
+    "split_root": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train"
+  },
+  "training_contract_version": "rb-roi-fcn-training-v0_1",
+  "validation_split": {
+    "bootstrap_bbox_available": true,
+    "dataset_reference": "roi-fcn_v29",
+    "fixed_roi_height_px": 320,
+    "fixed_roi_width_px": 320,
+    "geometry": {
+      "canvas_height_px": 300,
+      "canvas_width_px": 480,
+      "channels": 1,
+      "geometry_schema": [
+        "target_center_xy_original_px=(x_px,y_px) in original full-frame image space",
+        "target_center_xy_canvas_px=(x_px,y_px) in locator canvas space",
+        "source_image_wh_px=(width_px,height_px)",
+        "resized_image_wh_px=(width_px,height_px)",
+        "padding_ltrb_px=(left_px,top_px,right_px,bottom_px)",
+        "resize_scale=scalar applied before padding"
+      ],
+      "image_layout": "N,C,H,W",
+      "normalization_range": [
+        0.0,
+        1.0
+      ]
+    },
+    "preprocessing_contract_version": "rb-preprocess-roi-fcn-v0_1",
+    "representation_array_keys": [
+      "locator_input_image",
+      "target_center_xy_original_px",
+      "target_center_xy_canvas_px",
+      "source_image_wh_px",
+      "resized_image_wh_px",
+      "padding_ltrb_px",
+      "resize_scale",
+      "sample_id",
+      "image_filename",
+      "npz_row_index",
+      "bootstrap_bbox_xyxy_px",
+      "bootstrap_confidence",
+      "locator_geometry_schema"
+    ],
+    "representation_kind": "roi_fcn_locator_npz",
+    "representation_storage_format": "npz",
+    "row_count": 60000,
+    "run_json_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate/manifests/run.json",
+    "samples_csv_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate/manifests/samples.csv",
+    "shard_count": 8,
+    "split_name": "validate",
+    "split_root": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate"
+  }
+}
