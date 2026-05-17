@@ -49,10 +49,10 @@ from live_inference.runtime.device import (  # noqa: E402
 
 REQUESTED_AT = "2026-05-05T00:00:00Z"
 KNOWN_DISTANCE_ORIENTATION_ROOT = (
-    PROJECT_ROOT / "models/distance-orientation/260504-1100_ts-2d-cnn__run_0001"
+    PROJECT_ROOT / "models/distance-orientation/260515-1301_ts-2d-cnn"
 )
 KNOWN_ROI_FCN_ROOT = (
-    PROJECT_ROOT / "models/roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
+    PROJECT_ROOT / "models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002"
 )
 SELECTION_PATH = PROJECT_ROOT / "models/selections/current.toml"
 SOURCE_IMAGE_PATH = (

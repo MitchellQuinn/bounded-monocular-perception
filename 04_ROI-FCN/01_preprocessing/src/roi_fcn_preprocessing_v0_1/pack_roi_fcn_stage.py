@@ -113,6 +113,8 @@ def run_pack_roi_fcn_stage(
 
     canvas_width = config.normalized_canvas_width()
     canvas_height = config.normalized_canvas_height()
+    fixed_roi_crop_width = config.normalized_fixed_roi_crop_width_px()
+    fixed_roi_crop_height = config.normalized_fixed_roi_crop_height_px()
     shard_size = config.normalized_shard_size()
     requested_workers = config.normalized_num_workers()
     effective_workers = _effective_worker_count(config)
@@ -399,6 +401,8 @@ def run_pack_roi_fcn_stage(
         stage_parameters={
             "CanvasWidth": int(canvas_width),
             "CanvasHeight": int(canvas_height),
+            "FixedROICropWidthPx": int(fixed_roi_crop_width),
+            "FixedROICropHeightPx": int(fixed_roi_crop_height),
             "ShardSize": int(shard_size),
             "NormalizationMode": "zero_to_one_float32",
             "PadValue": 0,
@@ -436,8 +440,8 @@ def run_pack_roi_fcn_stage(
             "TargetType": "crop_center_point",
             "TargetGeneration": "training_loader_gaussian_from_canvas_center",
             "TargetSource": "edge_roi_v1_bootstrap",
-            "FixedROICropWidthPx": 300,
-            "FixedROICropHeightPx": 300,
+            "FixedROICropWidthPx": int(fixed_roi_crop_width),
+            "FixedROICropHeightPx": int(fixed_roi_crop_height),
         },
         stage_summary=summary,
         dry_run=config.dry_run,

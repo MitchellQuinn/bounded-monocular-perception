@@ -132,7 +132,15 @@ class BootstrapAndPackTests(unittest.TestCase):
             run_bootstrap_center_target_stage(split_paths, BootstrapCenterTargetConfig(num_workers=2))
             summary = run_pack_roi_fcn_stage(
                 split_paths,
-                PackRoiFcnConfig(canvas_width=300, canvas_height=300, shard_size=0, compress=False, num_workers=2),
+                PackRoiFcnConfig(
+                    canvas_width=300,
+                    canvas_height=300,
+                    fixed_roi_crop_width_px=320,
+                    fixed_roi_crop_height_px=280,
+                    shard_size=0,
+                    compress=False,
+                    num_workers=2,
+                ),
             )
 
             self.assertEqual(summary.successful_rows, 1)
@@ -163,6 +171,14 @@ class BootstrapAndPackTests(unittest.TestCase):
                 self.assertEqual(payload["source_image_wh_px"].tolist(), [[100, 50]])
                 self.assertEqual(payload["resized_image_wh_px"].tolist(), [[300, 150]])
                 self.assertEqual(payload["padding_ltrb_px"].tolist(), [[0, 75, 0, 75]])
+
+            run_json = load_run_json(split_paths.output_manifests_dir)
+            pack_stage = run_json["PreprocessingContract"]["Stages"]["pack_roi_fcn"]
+            representation = run_json["PreprocessingContract"]["CurrentRepresentation"]
+            self.assertEqual(pack_stage["FixedROICropWidthPx"], 320)
+            self.assertEqual(pack_stage["FixedROICropHeightPx"], 280)
+            self.assertEqual(representation["FixedROICropWidthPx"], 320)
+            self.assertEqual(representation["FixedROICropHeightPx"], 280)
 
 
 if __name__ == "__main__":

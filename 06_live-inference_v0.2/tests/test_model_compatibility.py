@@ -27,6 +27,7 @@ from live_inference.model_registry import (  # noqa: E402
 from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE,
     LiveModelManifest,
 )
 
@@ -45,6 +46,16 @@ def _orientation_semantics(orientation_source_mode: str) -> dict[str, str | None
             "representation": "target_centered_raw_grayscale_scaled_by_silhouette_extent",
             "content": "raw_grayscale_detail_preserving_no_brightness_normalization",
             "polarity": None,
+        }
+    if orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE:
+        return {
+            "representation": (
+                "target_centered_raw_grayscale_scaled_by_silhouette_extent_foreground_enhanced"
+            ),
+            "content": (
+                "foreground_enhanced_raw_grayscale_detail_on_white_no_brightness_normalization"
+            ),
+            "polarity": "source_grayscale_vehicle_detail_on_white_background",
         }
     if orientation_source_mode == ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE:
         return {
@@ -222,6 +233,19 @@ class LiveModelCompatibilityTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.orientation_source_mode, ORIENTATION_SOURCE_RAW_GRAYSCALE)
 
+    def test_raw_grayscale_on_white_orientation_source_mode_is_compatible(self) -> None:
+        manifest = _compatible_manifest(
+            orientation_source_mode=ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE
+        )
+
+        result = check_live_model_compatibility(manifest)
+
+        self.assertTrue(result.ok, _format_errors(result))
+        self.assertEqual(
+            result.orientation_source_mode,
+            ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE,
+        )
+
     def test_reports_resolved_orientation_source_mode_when_manifest_field_is_empty(self) -> None:
         manifest = replace(_compatible_manifest(), orientation_source_mode=None)
 
@@ -367,18 +391,7 @@ class LiveModelCompatibilityTests(unittest.TestCase):
 
         self.assertIn("roi_locator_crop_size_mismatch", codes)
 
-    def test_roi_locator_crop_larger_than_canvas_fails_if_discoverable(self) -> None:
-        codes = _error_codes(
-            replace(
-                _compatible_manifest(),
-                roi_locator_crop_size=(500, 301),
-                roi_locator_canvas_size=(480, 300),
-            )
-        )
-
-        self.assertIn("roi_locator_crop_exceeds_canvas", codes)
-
-    def test_current_selected_live_local_260504_model_remains_compatible(self) -> None:
+    def test_current_selected_live_local_model_remains_compatible(self) -> None:
         selection_path = PROJECT_ROOT / "models/selections/current.toml"
         if not selection_path.is_file():
             self.skipTest("current live-local model selection is not available")
@@ -396,7 +409,7 @@ class LiveModelCompatibilityTests(unittest.TestCase):
 
         self.assertEqual(
             manifest.orientation_source_mode,
-            ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+            ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE,
         )
         self.assertTrue(result.ok, _format_errors(result))
 

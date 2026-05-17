@@ -170,8 +170,37 @@ def _normalize_split_contract_for_resume(raw: Any) -> dict[str, Any]:
     return payload
 
 
-def _current_split_contract_for_resume(split_dataset) -> dict[str, Any]:
-    return _normalize_split_contract_for_resume(split_dataset.contract.to_dict())
+def _normalized_roi_crop_size(config: TrainConfig) -> tuple[int, int]:
+    width = int(config.roi_width_px)
+    height = int(config.roi_height_px)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"ROI crop size must be positive; got {width}x{height}")
+    return width, height
+
+
+def _contract_payload_with_roi_crop_size(
+    contract_payload: dict[str, Any],
+    *,
+    roi_width_px: int,
+    roi_height_px: int,
+) -> dict[str, Any]:
+    payload = dict(contract_payload)
+    payload["fixed_roi_width_px"] = int(roi_width_px)
+    payload["fixed_roi_height_px"] = int(roi_height_px)
+    return payload
+
+
+def _split_contract_for_model_artifact(split_dataset, config: TrainConfig) -> dict[str, Any]:
+    roi_width_px, roi_height_px = _normalized_roi_crop_size(config)
+    return _contract_payload_with_roi_crop_size(
+        split_dataset.contract.to_dict(),
+        roi_width_px=roi_width_px,
+        roi_height_px=roi_height_px,
+    )
+
+
+def _current_split_contract_for_resume(split_dataset, config: TrainConfig) -> dict[str, Any]:
+    return _normalize_split_contract_for_resume(_split_contract_for_model_artifact(split_dataset, config))
 
 
 def _run_index_from_name(name: str) -> int:
@@ -361,15 +390,24 @@ def _load_resume_context(
             f"source={source_output_hw} current={(int(output_hw[0]), int(output_hw[1]))}"
         )
 
-    source_train_contract = _normalize_split_contract_for_resume(resume_state.get("train_split_contract"))
-    current_train_contract = _current_split_contract_for_resume(train_split)
+    roi_crop_width_px, roi_crop_height_px = _normalized_roi_crop_size(config)
+    source_train_contract = _contract_payload_with_roi_crop_size(
+        _normalize_split_contract_for_resume(resume_state.get("train_split_contract")),
+        roi_width_px=roi_crop_width_px,
+        roi_height_px=roi_crop_height_px,
+    )
+    current_train_contract = _current_split_contract_for_resume(train_split, config)
     if source_train_contract != current_train_contract:
         raise ValueError(
             "Resume source training split contract mismatch: "
             f"source={source_train_contract} current={current_train_contract}"
         )
-    source_validation_contract = _normalize_split_contract_for_resume(resume_state.get("validation_split_contract"))
-    current_validation_contract = _current_split_contract_for_resume(validation_split)
+    source_validation_contract = _contract_payload_with_roi_crop_size(
+        _normalize_split_contract_for_resume(resume_state.get("validation_split_contract")),
+        roi_width_px=roi_crop_width_px,
+        roi_height_px=roi_crop_height_px,
+    )
+    current_validation_contract = _current_split_contract_for_resume(validation_split, config)
     if source_validation_contract != current_validation_contract:
         raise ValueError(
             "Resume source validation split contract mismatch: "
@@ -596,6 +634,9 @@ def train_roi_fcn(
         datasets_root_override=train_config.datasets_root,
     )
     validate_run_compatibility(train_split, validation_split)
+    roi_crop_width_px, roi_crop_height_px = _normalized_roi_crop_size(train_config)
+    train_split_contract_payload = _split_contract_for_model_artifact(train_split, train_config)
+    validation_split_contract_payload = _split_contract_for_model_artifact(validation_split, train_config)
 
     set_random_seeds(int(train_config.seed))
     device = resolve_device(train_config.device, require_cuda=True)
@@ -683,8 +724,8 @@ def train_roi_fcn(
         run_dir / DATASET_CONTRACT_FILENAME,
         {
             "training_contract_version": TRAINING_CONTRACT_VERSION,
-            "train_split": train_split.contract.to_dict(),
-            "validation_split": validation_split.contract.to_dict(),
+            "train_split": train_split_contract_payload,
+            "validation_split": validation_split_contract_payload,
         },
     )
 
@@ -759,8 +800,8 @@ def train_roi_fcn(
             heatmap_positive_threshold=float(train_config.heatmap_positive_threshold),
             epoch_index=epoch,
             progress_log_interval_steps=int(train_config.progress_log_interval_steps),
-            roi_width_px=int(train_config.roi_width_px),
-            roi_height_px=int(train_config.roi_height_px),
+            roi_width_px=int(roi_crop_width_px),
+            roi_height_px=int(roi_crop_height_px),
             log_sink=log_sink,
         )
         validation_eval = evaluate_split(
@@ -772,8 +813,8 @@ def train_roi_fcn(
             gaussian_sigma_px=float(train_config.gaussian_sigma_px),
             heatmap_loss_name=HEATMAP_LOSS_NAME,
             heatmap_positive_threshold=float(train_config.heatmap_positive_threshold),
-            roi_width_px=int(train_config.roi_width_px),
-            roi_height_px=int(train_config.roi_height_px),
+            roi_width_px=int(roi_crop_width_px),
+            roi_height_px=int(roi_crop_height_px),
             max_visual_examples=0,
         )
         history_rows.append(
@@ -832,8 +873,8 @@ def train_roi_fcn(
                 topology_spec_signature=topology_spec_signature_value,
                 topology_contract_signature=topology_contract_signature_value,
                 output_hw=output_hw,
-                train_split_contract=_current_split_contract_for_resume(train_split),
-                validation_split_contract=_current_split_contract_for_resume(validation_split),
+                train_split_contract=_current_split_contract_for_resume(train_split, train_config),
+                validation_split_contract=_current_split_contract_for_resume(validation_split, train_config),
                 best_epoch=best_epoch,
                 best_validation_loss=best_validation_loss,
                 best_validation_mean_center_error_px=best_validation_mean_center_error_px,
@@ -871,8 +912,8 @@ def train_roi_fcn(
         gaussian_sigma_px=float(train_config.gaussian_sigma_px),
         heatmap_loss_name=HEATMAP_LOSS_NAME,
         heatmap_positive_threshold=float(train_config.heatmap_positive_threshold),
-        roi_width_px=int(train_config.roi_width_px),
-        roi_height_px=int(train_config.roi_height_px),
+        roi_width_px=int(roi_crop_width_px),
+        roi_height_px=int(roi_crop_height_px),
         max_visual_examples=0,
     )
     validation_eval = evaluate_split(
@@ -884,8 +925,8 @@ def train_roi_fcn(
         gaussian_sigma_px=float(train_config.gaussian_sigma_px),
         heatmap_loss_name=HEATMAP_LOSS_NAME,
         heatmap_positive_threshold=float(train_config.heatmap_positive_threshold),
-        roi_width_px=int(train_config.roi_width_px),
-        roi_height_px=int(train_config.roi_height_px),
+        roi_width_px=int(roi_crop_width_px),
+        roi_height_px=int(roi_crop_height_px),
         max_visual_examples=int(train_config.evaluation_max_visual_examples),
     )
     write_split_artifacts(run_dir, train_eval)

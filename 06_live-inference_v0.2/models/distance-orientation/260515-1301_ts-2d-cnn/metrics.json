@@ -1,0 +1,33 @@
+{
+  "best_epoch": 16,
+  "best_val_loss_from_training": 0.0006380088364239782,
+  "stopped_after_epoch": 19,
+  "validation": {
+    "accuracy_by_tolerance": {
+      "0.10m": 0.9990666666666667,
+      "0.25m": 0.9997833333333334,
+      "0.50m": 0.9999166666666667
+    },
+    "accuracy_within_tolerance": 0.9990666666666667,
+    "loss": 0.0006380088364239782,
+    "loss_components": {
+      "distance_loss": 0.0002736477475584252,
+      "orientation_loss": 0.00036436109030546504
+    },
+    "mae": 0.014845225028693676,
+    "orientation": {
+      "yaw_acc@10deg": 0.9991166666666667,
+      "yaw_acc@15deg": 0.9991666666666666,
+      "yaw_acc@5deg": 0.9979333333333333,
+      "yaw_mean_error_deg": 1.0324620008468628,
+      "yaw_median_error_deg": 0.7800445556640625,
+      "yaw_p95_error_deg": 2.4366531372070312,
+      "yaw_pred_norm_mean": 0.9981964230537415,
+      "yaw_pred_norm_p05": 0.9830125570297241,
+      "yaw_pred_norm_p50": 0.9988370537757874,
+      "yaw_pred_norm_p95": 1.0158159732818604
+    },
+    "rmse": 0.0241201501339674,
+    "sample_count": 60000
+  }
+}

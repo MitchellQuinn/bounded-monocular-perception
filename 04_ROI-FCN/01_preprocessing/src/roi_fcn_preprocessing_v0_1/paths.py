@@ -57,18 +57,26 @@ def find_preprocessing_root(start: Path | None = None) -> Path:
         candidate = candidate.parent
 
     for current in (candidate, *candidate.parents):
-        if (current / INPUT_ROOT_NAME).is_dir() and (current / OUTPUT_ROOT_NAME).is_dir():
+        if _is_preprocessing_root(current):
             return current
 
         nested = current / "04_ROI-FCN" / "01_preprocessing"
-        if (nested / INPUT_ROOT_NAME).is_dir() and (nested / OUTPUT_ROOT_NAME).is_dir():
+        if _is_preprocessing_root(nested):
             return nested
 
     fallback = module_preprocessing_root()
-    if (fallback / INPUT_ROOT_NAME).is_dir() and (fallback / OUTPUT_ROOT_NAME).is_dir():
+    if _is_preprocessing_root(fallback):
         return fallback
 
     raise FileNotFoundError("Could not locate 04_ROI-FCN/01_preprocessing root.")
+
+
+def _is_preprocessing_root(candidate: Path) -> bool:
+    if not (candidate / INPUT_ROOT_NAME).is_dir():
+        return False
+    if (candidate / OUTPUT_ROOT_NAME).is_dir():
+        return True
+    return (candidate / "src" / "roi_fcn_preprocessing_v0_1" / "__init__.py").is_file()
 
 
 def input_root(preprocessing_root: Path | None = None) -> Path:

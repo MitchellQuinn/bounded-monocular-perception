@@ -49,6 +49,14 @@ class RoiFcnPreprocessingLauncherV01:
 
         self.canvas_width = widgets.IntText(description="canvas_width", value=480)
         self.canvas_height = widgets.IntText(description="canvas_height", value=300)
+        self.fixed_roi_crop_width = widgets.IntText(
+            description="roi_crop_w",
+            value=int(default_pack_config.fixed_roi_crop_width_px),
+        )
+        self.fixed_roi_crop_height = widgets.IntText(
+            description="roi_crop_h",
+            value=int(default_pack_config.fixed_roi_crop_height_px),
+        )
         self.shard_size = widgets.IntText(description="shard_size", value=8192)
         self.cpu_workers = widgets.BoundedIntText(
             description="cpu_workers",
@@ -94,6 +102,7 @@ class RoiFcnPreprocessingLauncherV01:
                 self.min_edge_pixels,
                 widgets.HTML("<b>Packing Controls</b>"),
                 widgets.HBox([self.canvas_width, self.canvas_height, self.shard_size]),
+                widgets.HBox([self.fixed_roi_crop_width, self.fixed_roi_crop_height]),
                 widgets.HTML("<b>Execution Controls</b>"),
                 widgets.HBox([self.cpu_workers, self.compress_shards_checkbox]),
                 self.overwrite_output_checkbox,
@@ -171,6 +180,8 @@ class RoiFcnPreprocessingLauncherV01:
         pack_config = PackRoiFcnConfig(
             canvas_width=int(self.canvas_width.value),
             canvas_height=int(self.canvas_height.value),
+            fixed_roi_crop_width_px=int(self.fixed_roi_crop_width.value),
+            fixed_roi_crop_height_px=int(self.fixed_roi_crop_height.value),
             shard_size=int(self.shard_size.value),
             compress=bool(self.compress_shards_checkbox.value),
             overwrite=overwrite_enabled,

@@ -1,8 +1,8 @@
 [distance_orientation]
-root = "../distance-orientation/260504-1100_ts-2d-cnn__run_0001"
+root = "../distance-orientation/260515-1301_ts-2d-cnn"
 
 [roi_fcn]
-root = "../roi-fcn/260420-1219_roi-fcn-tiny__run_0003"
+root = "../roi-fcn/260516-1714_roi-fcn-tiny__run_0002"
 
 [device]
 distance_orientation = "auto"

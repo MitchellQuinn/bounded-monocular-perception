@@ -27,8 +27,8 @@ class TrainingSmokeTests(unittest.TestCase):
                 validate_centers=[(12.0, 8.0), (24.0, 14.0), (30.0, 18.0)],
                 canvas_width=48,
                 canvas_height=32,
-                roi_width=10,
-                roi_height=10,
+                roi_width=8,
+                roi_height=9,
             )
             with pushd(root):
                 log_messages: list[str] = []
@@ -44,8 +44,8 @@ class TrainingSmokeTests(unittest.TestCase):
                             "learning_rate": 1e-2,
                             "weight_decay": 0.0,
                             "gaussian_sigma_px": 1.5,
-                            "roi_width_px": 10,
-                            "roi_height_px": 10,
+                            "roi_width_px": 14,
+                            "roi_height_px": 12,
                             "evaluation_max_visual_examples": 2,
                         },
                         log_sink=log_messages.append,
@@ -65,6 +65,14 @@ class TrainingSmokeTests(unittest.TestCase):
             self.assertTrue((run_dir / "best.pt").is_file())
             self.assertTrue((run_dir / "validation_predictions.csv").is_file())
             self.assertTrue((run_dir / "validation_metrics.json").is_file())
+            dataset_contract = json.loads((run_dir / "dataset_contract.json").read_text(encoding="utf-8"))
+            self.assertEqual(dataset_contract["train_split"]["fixed_roi_width_px"], 14)
+            self.assertEqual(dataset_contract["train_split"]["fixed_roi_height_px"], 12)
+            self.assertEqual(dataset_contract["validation_split"]["fixed_roi_width_px"], 14)
+            self.assertEqual(dataset_contract["validation_split"]["fixed_roi_height_px"], 12)
+            resume_state = load_resume_state(run_dir / RESUME_STATE_FILENAME)
+            self.assertEqual(resume_state["train_split_contract"]["fixed_roi_width_px"], 14)
+            self.assertEqual(resume_state["train_split_contract"]["fixed_roi_height_px"], 12)
             self.assertIn("best_validation_mean_center_error_px", summary)
             self.assertLessEqual(summary["validation_metrics"]["mean_center_error_px"], 35.0)
 
