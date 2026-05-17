@@ -62,10 +62,10 @@ def check_live_model_compatibility(
         expected=contracts.TRI_STREAM_INPUT_MODE,
         actual=manifest.input_mode,
     )
-    _require_equal(
+    _require_one_of(
         issues,
         field="preprocessing_contract_name",
-        expected=contracts.PREPROCESSING_CONTRACT_NAME,
+        expected=contracts.SUPPORTED_TRI_STREAM_PREPROCESSING_CONTRACT_NAMES,
         actual=manifest.preprocessing_contract_name,
     )
     _require_equal(
@@ -233,6 +233,34 @@ def _require_equal(
             expected=expected,
             actual=actual,
             message=f"{field} must be {expected!r}; got {actual!r}.",
+        )
+
+
+def _require_one_of(
+    issues: list[CompatibilityIssue],
+    *,
+    field: str,
+    expected: tuple[Any, ...],
+    actual: Any,
+) -> None:
+    if _is_missing(actual):
+        _add_issue(
+            issues,
+            code=f"missing_{field}",
+            field=field,
+            expected=expected,
+            actual=actual,
+            message=f"Missing required manifest field {field}.",
+        )
+        return
+    if actual not in expected:
+        _add_issue(
+            issues,
+            code=f"{field}_mismatch",
+            field=field,
+            expected=expected,
+            actual=actual,
+            message=f"{field} must be one of {expected!r}; got {actual!r}.",
         )
 
 
@@ -441,22 +469,5 @@ def _check_roi_compatibility(
                     "ROI locator crop size must match the distance preprocessing "
                     f"canvas size {manifest.distance_canvas_size!r}; "
                     f"got {manifest.roi_locator_crop_size!r}."
-                ),
-            )
-
-    if manifest.roi_locator_crop_size and manifest.roi_locator_canvas_size:
-        crop_w, crop_h = manifest.roi_locator_crop_size
-        canvas_w, canvas_h = manifest.roi_locator_canvas_size
-        if crop_w > canvas_w or crop_h > canvas_h:
-            _add_issue(
-                issues,
-                code="roi_locator_crop_exceeds_canvas",
-                field="roi_locator_crop_size",
-                expected=f"<= {manifest.roi_locator_canvas_size!r}",
-                actual=manifest.roi_locator_crop_size,
-                message=(
-                    "ROI locator crop size must fit within the ROI locator canvas; "
-                    f"crop={manifest.roi_locator_crop_size!r}, "
-                    f"canvas={manifest.roi_locator_canvas_size!r}."
                 ),
             )

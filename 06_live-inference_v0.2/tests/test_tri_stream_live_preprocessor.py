@@ -1115,7 +1115,7 @@ class FailingOrientationPreprocessor(TriStreamLivePreprocessor):
         self,
         *,
         roi_source_gray: np.ndarray,
-        inverted_orientation_repr: np.ndarray,
+        representation_source: np.ndarray,
         foreground_mask: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         raise ValueError("cannot build orientation crop from empty foreground mask")

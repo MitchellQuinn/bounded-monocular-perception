@@ -8,6 +8,7 @@ import unittest
 
 from _test_support import build_dataset, build_input_split, ensure_preprocessing_root
 from roi_fcn_preprocessing_v0_1.discovery import discover_dataset_references
+from roi_fcn_preprocessing_v0_1.paths import find_preprocessing_root
 from roi_fcn_preprocessing_v0_1.validation import (
     RoiFcnPreprocessingValidationError,
     ensure_valid_input_dataset_reference,
@@ -16,6 +17,18 @@ from roi_fcn_preprocessing_v0_1.validation import (
 
 
 class DiscoveryValidationTests(unittest.TestCase):
+    def test_preprocessing_root_can_be_found_before_output_exists(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "input").mkdir(parents=True)
+            package_root = root / "src" / "roi_fcn_preprocessing_v0_1"
+            package_root.mkdir(parents=True)
+            (package_root / "__init__.py").write_text("", encoding="utf-8")
+            notebooks_root = root / "notebooks"
+            notebooks_root.mkdir()
+
+            self.assertEqual(find_preprocessing_root(notebooks_root), root)
+
     def test_discovery_only_lists_valid_train_and_validate_datasets(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = ensure_preprocessing_root(Path(tmpdir))

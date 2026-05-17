@@ -23,6 +23,7 @@ from live_inference.model_registry import (  # noqa: E402
 from live_inference.model_registry.model_manifest import (  # noqa: E402
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
+    ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE,
     OrientationSourceModeError,
 )
 
@@ -61,6 +62,16 @@ def _orientation_semantics(orientation_source_mode: str) -> dict[str, str | None
             "representation": "target_centered_raw_grayscale_scaled_by_silhouette_extent",
             "content": "raw_grayscale_detail_preserving_no_brightness_normalization",
             "polarity": None,
+        }
+    if orientation_source_mode == ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE:
+        return {
+            "representation": (
+                "target_centered_raw_grayscale_scaled_by_silhouette_extent_foreground_enhanced"
+            ),
+            "content": (
+                "foreground_enhanced_raw_grayscale_detail_on_white_no_brightness_normalization"
+            ),
+            "polarity": "source_grayscale_vehicle_detail_on_white_background",
         }
     if orientation_source_mode == ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE:
         return {
@@ -248,6 +259,14 @@ class LiveModelManifestLoaderTests(unittest.TestCase):
             ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
         )
 
+    def test_resolves_raw_grayscale_on_white_orientation_source_mode_fixture(self) -> None:
+        contract = _preprocessing_contract(ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE)
+
+        self.assertEqual(
+            resolve_orientation_source_mode(contract),
+            ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE,
+        )
+
     def test_missing_orientation_semantics_fail_clearly(self) -> None:
         contract = _preprocessing_contract()
         contract["CurrentRepresentation"].pop("OrientationImageContent")
@@ -305,19 +324,19 @@ class LiveModelManifestLoaderTests(unittest.TestCase):
 
         self.assertEqual(manifest.orientation_source_mode, ORIENTATION_SOURCE_RAW_GRAYSCALE)
 
-    def test_current_live_local_260504_resolves_inverted_if_available(self) -> None:
+    def test_current_live_local_260515_resolves_raw_grayscale_on_white_if_available(self) -> None:
         artifact_root = (
             PROJECT_ROOT
-            / "models/distance-orientation/260504-1100_ts-2d-cnn__run_0001"
+            / "models/distance-orientation/260515-1301_ts-2d-cnn"
         )
         if not artifact_root.is_dir():
-            self.skipTest("live-local 260504 tri-stream artifact is not available")
+            self.skipTest("live-local 260515 tri-stream artifact is not available")
 
         manifest = load_live_model_manifest(artifact_root)
 
         self.assertEqual(
             manifest.orientation_source_mode,
-            ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
+            ORIENTATION_SOURCE_RAW_GRAYSCALE_ON_WHITE,
         )
 
     def test_loads_roi_locator_metadata_when_root_is_provided(self) -> None:

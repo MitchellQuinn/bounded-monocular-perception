@@ -94,6 +94,8 @@ class PackRoiFcnConfig:
 
     canvas_width: int = 480
     canvas_height: int = 300
+    fixed_roi_crop_width_px: int = 300
+    fixed_roi_crop_height_px: int = 300
     shard_size: int = 8192
     compress: bool = False
 
@@ -108,6 +110,12 @@ class PackRoiFcnConfig:
     def normalized_canvas_height(self) -> int:
         return max(1, int(self.canvas_height))
 
+    def normalized_fixed_roi_crop_width_px(self) -> int:
+        return max(1, int(self.fixed_roi_crop_width_px))
+
+    def normalized_fixed_roi_crop_height_px(self) -> int:
+        return max(1, int(self.fixed_roi_crop_height_px))
+
     def normalized_shard_size(self) -> int:
         size = int(self.shard_size)
         if size < 0:
@@ -121,6 +129,8 @@ class PackRoiFcnConfig:
         payload = asdict(self)
         payload["canvas_width"] = self.normalized_canvas_width()
         payload["canvas_height"] = self.normalized_canvas_height()
+        payload["fixed_roi_crop_width_px"] = self.normalized_fixed_roi_crop_width_px()
+        payload["fixed_roi_crop_height_px"] = self.normalized_fixed_roi_crop_height_px()
         payload["shard_size"] = self.normalized_shard_size()
         payload["num_workers"] = self.normalized_num_workers()
         return payload

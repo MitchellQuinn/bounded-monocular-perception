@@ -11,7 +11,7 @@ def repo_root() -> Path:
 
 
 def synthetic_preprocessing_root() -> Path:
-    return repo_root() / "02_synthetic-data-processing-v3.0"
+    return repo_root() / "02_synthetic-data-processing-v4.0"
 
 
 def ensure_external_paths() -> None:

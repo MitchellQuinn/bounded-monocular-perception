@@ -14,7 +14,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 REPO_ROOT = PROJECT_ROOT.parents[1]
-SYNTHETIC_ROOT = REPO_ROOT / "02_synthetic-data-processing-v3.0"
+SYNTHETIC_ROOT = REPO_ROOT / "02_synthetic-data-processing-v4.0"
 for path in (SRC_ROOT, SYNTHETIC_ROOT):
     resolved = str(path)
     if resolved not in sys.path:
