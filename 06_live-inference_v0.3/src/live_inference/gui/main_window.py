@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 import interfaces.contracts as contracts
 from live_inference.frame_handoff import compute_frame_hash
-from live_inference.masking import BackgroundState
+from live_inference.masking import BackgroundState, FrameMaskState
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
 
@@ -51,6 +51,7 @@ class LiveInferenceMainWindow(QMainWindow):
         single_frame_runner: object | None = None,
         trace_output_dir: Path | str | None = None,
         background_state: BackgroundState | None = None,
+        mask_state: FrameMaskState | None = None,
         locator_parameter_state: object | None = None,
         locator_kind: contracts.LocatorKind | str = contracts.LocatorKind.BACKGROUND_EDGE_V1,
         stop_wait_ms: int = 1000,
@@ -63,6 +64,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.single_frame_runner = single_frame_runner
         self.trace_output_dir = Path(trace_output_dir) if trace_output_dir is not None else None
         self.background_state = background_state or BackgroundState()
+        self.mask_state = mask_state or FrameMaskState()
         self.locator_parameter_state = locator_parameter_state
         self.locator_kind = (
             locator_kind
@@ -83,6 +85,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._connect_ui()
         self._connect_worker_signals()
         self._sync_parameter_widgets()
+        self._sync_mask_widgets()
         self._append_log("INFO", f"Locator: {self.locator_kind.value}")
 
     def _load_ui(self) -> None:
@@ -112,6 +115,13 @@ class LiveInferenceMainWindow(QMainWindow):
         self.start_continuous_button = self._require(QPushButton, "startContinuousButton")
         self.stop_continuous_button = self._require(QPushButton, "stopContinuousButton")
         self.record_trace_checkbox = self._require(QCheckBox, "recordTraceCheckBox")
+        self.draw_mask_button = self._require(QPushButton, "drawMaskButton")
+        self.erase_mask_button = self._require(QPushButton, "eraseMaskButton")
+        self.apply_mask_button = self._require(QPushButton, "applyMaskButton")
+        self.cancel_mask_button = self._require(QPushButton, "cancelMaskButton")
+        self.clear_mask_button = self._require(QPushButton, "clearMaskButton")
+        self.mask_brush_size_spinbox = self._require(QSpinBox, "maskBrushSizeSpinBox")
+        self.mask_fill_white_checkbox = self._require(QCheckBox, "maskFillWhiteCheckBox")
         self.show_roi_checkbox = self._require(QCheckBox, "showRoiCheckBox")
         self.show_bbox_checkbox = self._require(QCheckBox, "showBboxCheckBox")
         self.show_foreground_mask_checkbox = self._require(QCheckBox, "showForegroundMaskCheckBox")
@@ -126,6 +136,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.yaw_value = self._require(QLabel, "yawValue")
         self.locator_status_value = self._require(QLabel, "locatorStatusValue")
         self.roi_status_value = self._require(QLabel, "roiStatusValue")
+        self.mask_status_value = self._require(QLabel, "maskStatusValue")
         self.frame_hash_value = self._require(QLabel, "frameHashValue")
         self.trace_path_value = self._require(QLabel, "tracePathValue")
         self.warnings_text = self._require(QPlainTextEdit, "warningsText")
@@ -142,6 +153,13 @@ class LiveInferenceMainWindow(QMainWindow):
         self.run_single_inference_button.clicked.connect(self.run_single_inference)
         self.start_continuous_button.clicked.connect(self.start_continuous_inference)
         self.stop_continuous_button.clicked.connect(self.stop_continuous_inference)
+        self.draw_mask_button.clicked.connect(self.start_draw_mask)
+        self.erase_mask_button.clicked.connect(self.start_erase_mask)
+        self.apply_mask_button.clicked.connect(self.apply_mask)
+        self.cancel_mask_button.clicked.connect(self.cancel_mask)
+        self.clear_mask_button.clicked.connect(self.clear_mask)
+        self.mask_brush_size_spinbox.valueChanged.connect(self._on_mask_brush_size_changed)
+        self.mask_fill_white_checkbox.toggled.connect(self._on_mask_fill_toggled)
         for checkbox in (
             self.show_roi_checkbox,
             self.show_bbox_checkbox,
@@ -244,6 +262,55 @@ class LiveInferenceMainWindow(QMainWindow):
         revision = self.background_state.clear()
         self._append_log("INFO", f"Background cleared; revision={revision}")
 
+    def start_draw_mask(self) -> None:
+        self._prepare_preview_for_mask_edit()
+        self.main_preview_widget.set_brush_diameter_px(self.mask_brush_size_spinbox.value())
+        self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self.main_preview_widget.begin_mask_edit("draw")
+        self._update_mask_status("drawing")
+        self._append_log("INFO", "Draw Mask started")
+
+    def start_erase_mask(self) -> None:
+        self._prepare_preview_for_mask_edit()
+        self.main_preview_widget.set_brush_diameter_px(self.mask_brush_size_spinbox.value())
+        self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self.main_preview_widget.begin_mask_edit("erase")
+        self._update_mask_status("erasing")
+        self._append_log("INFO", "Erase Mask started")
+
+    def apply_mask(self) -> None:
+        result = self.main_preview_widget.finish_mask_edit(commit=True)
+        if result is None:
+            self._update_mask_status()
+            self._append_log("WARNING", "Apply Mask requires a loaded preview frame.")
+            return
+        revision = self.mask_state.commit_mask(
+            result.mask,
+            width_px=result.width_px,
+            height_px=result.height_px,
+            fill_value=self._current_mask_fill_value(),
+        )
+        snapshot = self.mask_state.get_snapshot()
+        self.main_preview_widget.set_committed_mask_snapshot(snapshot)
+        self._update_mask_status()
+        self._append_log(
+            "INFO",
+            "Mask committed: "
+            f"revision={revision}; size={result.width_px}x{result.height_px}; "
+            f"pixels={snapshot.pixel_count}; fill={snapshot.fill_value}",
+        )
+
+    def cancel_mask(self) -> None:
+        self.main_preview_widget.cancel_mask_edit()
+        self._sync_preview_mask_snapshot()
+        self._append_log("INFO", "Mask edit cancelled")
+
+    def clear_mask(self) -> None:
+        revision = self.mask_state.clear()
+        self.main_preview_widget.clear_masks()
+        self._update_mask_status()
+        self._append_log("INFO", f"Mask cleared: revision={revision}")
+
     def run_locator(self) -> None:
         captured = self._require_captured_frame("Run Locator")
         if captured is None:
@@ -337,7 +404,8 @@ class LiveInferenceMainWindow(QMainWindow):
         self._last_preview_update_seconds = now
         path = _path_or_none(_payload_value(frame, "image_path"))
         if path is not None:
-            self.main_preview_widget.load_image(path)
+            if self.main_preview_widget.load_image(path):
+                self._sync_preview_mask_snapshot()
 
     def _on_status_changed(self, status: object) -> None:
         worker = _enum_text(_payload_value(status, "worker_name")) or "worker"
@@ -381,11 +449,14 @@ class LiveInferenceMainWindow(QMainWindow):
         artifact_key = self._selected_artifact_key()
         if artifact_key is not None:
             path = self._debug_paths.get(artifact_key)
+            if path is not None:
+                self.main_preview_widget.set_committed_mask_snapshot(None)
             if path is not None and self.main_preview_widget.load_image(path):
                 self.main_preview_widget.set_overlay(None)
                 return
         if self._base_preview_image is not None:
             self.main_preview_widget.set_image(self._base_preview_image)
+            self._sync_preview_mask_snapshot()
         self.main_preview_widget.set_overlay(self._filtered_overlay())
 
     def _selected_artifact_key(self) -> str | None:
@@ -476,6 +547,63 @@ class LiveInferenceMainWindow(QMainWindow):
         self.canny_low_spinbox.setValue(int(config.canny_low_threshold))
         self.canny_high_spinbox.setValue(int(config.canny_high_threshold))
 
+    def _sync_mask_widgets(self) -> None:
+        snapshot = self.mask_state.get_snapshot()
+        self.mask_fill_white_checkbox.blockSignals(True)
+        self.mask_fill_white_checkbox.setChecked(int(snapshot.fill_value) == 255)
+        self.mask_fill_white_checkbox.blockSignals(False)
+        self.main_preview_widget.set_mask_fill_value(int(snapshot.fill_value))
+        self.main_preview_widget.set_brush_diameter_px(self.mask_brush_size_spinbox.value())
+        self._sync_preview_mask_snapshot()
+
+    def _sync_preview_mask_snapshot(self) -> None:
+        self.main_preview_widget.set_mask_fill_value(self._current_mask_fill_value())
+        self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self._update_mask_status()
+
+    def _prepare_preview_for_mask_edit(self) -> None:
+        for checkbox in (
+            self.show_foreground_mask_checkbox,
+            self.show_edges_checkbox,
+            self.show_candidate_contours_checkbox,
+            self.show_chosen_contour_checkbox,
+        ):
+            checkbox.setChecked(False)
+        self._refresh_visual_surface()
+
+    def _on_mask_brush_size_changed(self, value: int) -> None:
+        self.main_preview_widget.set_brush_diameter_px(int(value))
+
+    def _on_mask_fill_toggled(self, checked: bool) -> None:
+        fill_value = 255 if bool(checked) else 0
+        revision = self.mask_state.set_fill_value(fill_value)
+        self.main_preview_widget.set_mask_fill_value(fill_value)
+        self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self._update_mask_status()
+        fill_name = "white" if fill_value == 255 else "black"
+        self._append_log("INFO", f"Mask fill set to {fill_name}; revision={revision}")
+
+    def _current_mask_fill_value(self) -> int:
+        return 255 if self.mask_fill_white_checkbox.isChecked() else 0
+
+    def _update_mask_status(self, mode: str | None = None) -> None:
+        snapshot = self.mask_state.get_snapshot()
+        if not snapshot.enabled or not snapshot.has_geometry or snapshot.pixel_count <= 0:
+            text = f"mask: none; revision {snapshot.revision}"
+        else:
+            fill_name = "white" if int(snapshot.fill_value) == 255 else "black"
+            text = (
+                f"mask: revision {snapshot.revision}; "
+                f"{snapshot.pixel_count} px; fill {fill_name}; "
+                f"{snapshot.width_px}x{snapshot.height_px}"
+            )
+            source_size = self.main_preview_widget.source_image_size()
+            if source_size is not None and not snapshot.dimensions_match(*source_size):
+                text += "; preview size mismatch"
+        if mode:
+            text += f"; {mode}"
+        self.mask_status_value.setText(text)
+
     def _latest_frame(self) -> object | None:
         if self.frame_reader is None:
             return None
@@ -503,6 +631,7 @@ class LiveInferenceMainWindow(QMainWindow):
             return
         self._base_preview_image = image.copy()
         self.main_preview_widget.set_image(self._base_preview_image)
+        self._sync_preview_mask_snapshot()
 
     def _set_trace_path(self, trace_path: Path) -> None:
         self.trace_path_value.setText(f"trace: {trace_path}")

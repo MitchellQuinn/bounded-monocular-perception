@@ -46,6 +46,7 @@ class LiveInferenceGuiContext:
     distance_orientation_device: str
     roi_fcn_device: str | None
     background_state: object
+    frame_mask_state: object
     locator_parameter_state: object
     locator_kind: contracts.LocatorKind
 
@@ -128,7 +129,7 @@ def build_live_inference_gui_context(
         InferenceTraceRecorder,
         SingleFrameInferenceRunner,
     )
-    from live_inference.masking import BackgroundState  # noqa: PLC0415
+    from live_inference.masking import BackgroundState, FrameMaskState  # noqa: PLC0415
 
     resolved_camera_source = _camera_source(camera_source)
     project_root = _live_project_root()
@@ -212,6 +213,7 @@ def build_live_inference_gui_context(
     )
     roi_wh = manifest.distance_canvas_size or (300, 300)
     background_state = BackgroundState(threshold=background_threshold)
+    frame_mask_state = FrameMaskState()
     locator_parameter_state = deps.locator_runtime_parameter_state_cls(
         deps.background_edge_locator_config_cls(
             roi_width_px=int(roi_wh[0]),
@@ -247,6 +249,7 @@ def build_live_inference_gui_context(
         model_manifest=manifest,
         locator=locator,
         background_state=background_state,
+        mask_state=frame_mask_state,
         locator_parameter_state=locator_parameter_state,
     )
     engine = deps.torch_tri_stream_inference_engine_cls(
@@ -303,6 +306,7 @@ def build_live_inference_gui_context(
         distance_orientation_device=distance_orientation_device,
         roi_fcn_device=roi_fcn_device,
         background_state=background_state,
+        frame_mask_state=frame_mask_state,
         locator_parameter_state=locator_parameter_state,
         locator_kind=kind,
     )
@@ -358,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
             single_frame_runner=context.single_frame_runner,
             trace_output_dir=context.trace_output_dir,
             background_state=context.background_state,
+            mask_state=context.frame_mask_state,
             locator_parameter_state=context.locator_parameter_state,
             locator_kind=context.locator_kind,
         )

@@ -132,8 +132,17 @@ class BackgroundEdgeLocator:
         warnings: list[str] = []
         rejection_reasons: list[str] = []
         background = self._background_snapshot(config, source_w, source_h, warnings)
+        manual_ignore_mask = _manual_ignore_mask_from_request(
+            request,
+            source_w=source_w,
+            source_h=source_h,
+            warnings=warnings,
+        )
 
         diff, foreground_mask = _foreground_mask(gray, background, config, warnings)
+        if manual_ignore_mask is not None:
+            foreground_mask = np.array(foreground_mask, dtype=bool, copy=True)
+            foreground_mask[manual_ignore_mask] = False
         if not bool(np.any(foreground_mask)):
             rejection_reasons.append(contracts.LocatorFailureReason.NO_FOREGROUND.value)
 
@@ -221,6 +230,15 @@ class BackgroundEdgeLocator:
                     "candidate_count": len(candidates),
                     "accepted_candidate_count": len(accepted_candidates),
                     "roi_content_fraction": float(content_fraction),
+                    "manual_ignore_mask_applied": manual_ignore_mask is not None,
+                    "manual_ignore_mask_pixel_count": (
+                        int(np.count_nonzero(manual_ignore_mask))
+                        if manual_ignore_mask is not None
+                        else 0
+                    ),
+                    "manual_ignore_mask_revision": request.extras.get(
+                        "manual_ignore_mask_revision"
+                    ),
                     "warnings": tuple(warnings),
                     "rejection_reasons": tuple(rejection_reasons),
                 },
@@ -232,6 +250,15 @@ class BackgroundEdgeLocator:
                 "candidate_count": len(candidates),
                 "accepted_candidate_count": len(accepted_candidates),
                 "roi_content_fraction": float(content_fraction),
+                "manual_ignore_mask_applied": manual_ignore_mask is not None,
+                "manual_ignore_mask_pixel_count": (
+                    int(np.count_nonzero(manual_ignore_mask))
+                    if manual_ignore_mask is not None
+                    else 0
+                ),
+                "manual_ignore_mask_revision": request.extras.get(
+                    "manual_ignore_mask_revision"
+                ),
             },
         )
         result = contracts.LocatorResult(
@@ -257,6 +284,15 @@ class BackgroundEdgeLocator:
                 "runtime_parameter_revision": int(revision),
                 "background_revision": _snapshot_revision(background),
                 "roi_content_fraction": float(content_fraction),
+                "manual_ignore_mask_applied": manual_ignore_mask is not None,
+                "manual_ignore_mask_pixel_count": (
+                    int(np.count_nonzero(manual_ignore_mask))
+                    if manual_ignore_mask is not None
+                    else 0
+                ),
+                "manual_ignore_mask_revision": request.extras.get(
+                    "manual_ignore_mask_revision"
+                ),
             },
         )
         return _write_locator_result_json(request, result)
@@ -466,6 +502,29 @@ def _config_from_request(
     allowed = set(BackgroundEdgeLocatorConfig.__dataclass_fields__)
     updates = {key: params[key] for key in params if key in allowed}
     return replace(config, **updates)
+
+
+def _manual_ignore_mask_from_request(
+    request: contracts.LocatorRequest,
+    *,
+    source_w: int,
+    source_h: int,
+    warnings: list[str],
+) -> np.ndarray | None:
+    raw_mask = request.extras.get("manual_ignore_mask")
+    if raw_mask is None:
+        return None
+    mask = np.asarray(raw_mask, dtype=bool)
+    expected_shape = (int(source_h), int(source_w))
+    if mask.shape != expected_shape:
+        warnings.append(
+            "manual frame mask skipped for locator: mask shape "
+            f"{mask.shape} does not match source image shape {expected_shape}."
+        )
+        return None
+    if not bool(np.any(mask)):
+        return None
+    return np.array(mask, dtype=bool, copy=True)
 
 
 def _foreground_mask(

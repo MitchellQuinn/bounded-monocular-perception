@@ -14,7 +14,6 @@ from live_inference.masking import (
     BackgroundSnapshot,
     FrameMaskSnapshot,
     apply_fill_to_mask,
-    combine_ignore_masks,
     compute_background_removal_mask,
 )
 
@@ -84,6 +83,7 @@ class FramePreviewWidget(QWidget):
         self._heatmap_overlay_enabled = True
         self._committed_mask: np.ndarray | None = None
         self._committed_mask_size: tuple[int, int] | None = None
+        self._committed_mask_snapshot_key: tuple[int, int, int, int, int] | None = None
         self._background_snapshot: BackgroundSnapshot | None = None
         self._mask_fill_value = 255
         self._draft_mask: np.ndarray | None = None
@@ -280,6 +280,10 @@ class FramePreviewWidget(QWidget):
         return bool(self._heatmap_overlay_enabled)
 
     def set_committed_mask_snapshot(self, snapshot: FrameMaskSnapshot | None) -> None:
+        next_key = _frame_mask_snapshot_key(snapshot)
+        if next_key == self._committed_mask_snapshot_key:
+            return
+        self._committed_mask_snapshot_key = next_key
         if snapshot is not None:
             self._mask_fill_value = int(snapshot.fill_value)
         if snapshot is None or not snapshot.enabled or not snapshot.has_geometry:
@@ -291,7 +295,6 @@ class FramePreviewWidget(QWidget):
         self._committed_overlay_pixmap = None
         if self._edit_mode is not None:
             self._ensure_draft_mask_for_current_source()
-        self._refresh_effective_pixmap()
         self.update()
 
     def set_background_snapshot(self, snapshot: BackgroundSnapshot | None) -> None:
@@ -310,13 +313,18 @@ class FramePreviewWidget(QWidget):
         value = int(fill_value)
         if value not in {0, 255}:
             raise ValueError(f"Mask fill value must be 0 or 255; got {fill_value!r}.")
+        if self._mask_fill_value == value:
+            return
         self._mask_fill_value = value
-        self._refresh_effective_pixmap()
+        self._committed_mask_snapshot_key = None
+        if self._background_removal_matches_current_source():
+            self._refresh_effective_pixmap()
         self.update()
 
     def clear_masks(self) -> None:
         self._committed_mask = None
         self._committed_mask_size = None
+        self._committed_mask_snapshot_key = None
         self._draft_mask = None
         self._edit_mode = None
         self._cursor_source_xy = None
@@ -324,7 +332,6 @@ class FramePreviewWidget(QWidget):
         self._committed_overlay_pixmap = None
         self._draft_overlay_pixmap = None
         self.setMouseTracking(False)
-        self._refresh_effective_pixmap()
         self.update()
 
     def begin_mask_edit(self, mode: str) -> None:
@@ -353,8 +360,8 @@ class FramePreviewWidget(QWidget):
                 )
                 self._committed_mask = np.array(self._draft_mask, dtype=bool, copy=True)
                 self._committed_mask_size = (width, height)
+                self._committed_mask_snapshot_key = None
                 self._committed_overlay_pixmap = None
-                self._refresh_effective_pixmap()
         self._edit_mode = None
         self._draft_mask = None
         self._draft_overlay_pixmap = None
@@ -624,19 +631,11 @@ class FramePreviewWidget(QWidget):
         width, height = source_size
         return self._committed_mask.shape == (height, width)
 
-    def _effective_manual_mask(self) -> np.ndarray | None:
-        if not self._committed_mask_matches_current_source():
-            return None
-        if self._committed_mask is None:
-            return None
-        return self._committed_mask
-
     def _refresh_effective_pixmap(self) -> None:
         if self._raw_pixmap is None or self._raw_pixmap.isNull():
             self._pixmap = None
             return
-        manual_mask = self._effective_manual_mask()
-        if manual_mask is None and not self._background_removal_matches_current_source():
+        if not self._background_removal_matches_current_source():
             self._pixmap = QPixmap(self._raw_pixmap)
             return
 
@@ -655,18 +654,13 @@ class FramePreviewWidget(QWidget):
             )
             background_mask = background_result.mask
 
-        if manual_mask is None and background_mask is None:
+        if background_mask is None:
             self._pixmap = QPixmap(self._raw_pixmap)
             return
 
-        combined_mask = combine_ignore_masks(
-            shape=(source_h, source_w),
-            manual_mask=manual_mask,
-            background_mask=background_mask,
-        )
         effective_rgb = apply_fill_to_mask(
             raw_rgb,
-            combined_mask,
+            background_mask,
             fill_value=self._mask_fill_value,
         )
         self._pixmap = _rgb_array_to_pixmap(effective_rgb)
@@ -1057,6 +1051,20 @@ def _background_snapshot_key(
         int(snapshot.threshold),
         int(snapshot.width_px),
         int(snapshot.height_px),
+    )
+
+
+def _frame_mask_snapshot_key(
+    snapshot: FrameMaskSnapshot | None,
+) -> tuple[int, int, int, int, int] | None:
+    if snapshot is None or not snapshot.enabled or not snapshot.has_geometry:
+        return None
+    return (
+        int(snapshot.revision),
+        int(snapshot.width_px),
+        int(snapshot.height_px),
+        int(snapshot.fill_value),
+        int(snapshot.pixel_count),
     )
 
 

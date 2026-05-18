@@ -14,7 +14,13 @@ import numpy as np
 
 import interfaces.contracts as contracts
 from interfaces.contracts import InferenceRequest, PreparedInferenceInputs
-from live_inference.masking import BackgroundSnapshot, BackgroundState
+from live_inference.masking import (
+    BackgroundSnapshot,
+    BackgroundState,
+    FrameMaskSnapshot,
+    FrameMaskState,
+    apply_fill_to_mask,
+)
 from live_inference.model_registry.model_manifest import (
     ORIENTATION_SOURCE_INVERTED_VEHICLE_ON_WHITE,
     ORIENTATION_SOURCE_RAW_GRAYSCALE,
@@ -26,7 +32,10 @@ from .debug_artifacts import (
     ARTIFACT_ACCEPTED_RAW_FRAME,
     ARTIFACT_DISTANCE_IMAGE,
     ARTIFACT_GRAYSCALE_FRAME,
+    ARTIFACT_MANUAL_MASK,
     ARTIFACT_ORIENTATION_IMAGE,
+    ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS,
+    ARTIFACT_PREPROCESSOR_SOURCE_BEFORE_REGRESSOR_MASKS,
     ARTIFACT_ROI_CROP,
     ARTIFACT_ROI_OVERLAY_METADATA,
     DebugArtifactWriter,
@@ -93,6 +102,17 @@ class LocatorDiagnosticResult:
     debug_paths: Mapping[str, Path] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _FrameMaskPreparation:
+    original_source_gray: np.ndarray
+    regressor_source_gray: np.ndarray
+    locator_ignore_mask: np.ndarray | None
+    manual_mask: np.ndarray | None
+    metadata: Mapping[str, Any]
+    warnings: tuple[str, ...]
+    fill_value: int
+
+
 class TriStreamLivePreprocessor:
     """Prepare live raw image bytes as v0.3 generic-locator tri-stream inputs."""
 
@@ -105,6 +125,7 @@ class TriStreamLivePreprocessor:
         config: TriStreamPreprocessingConfig | None = None,
         runtime_parameter_revision_getter: Callable[[], int | None] | None = None,
         background_state: BackgroundState | None = None,
+        mask_state: FrameMaskState | None = None,
         locator_parameter_state: LocatorRuntimeParameterState | None = None,
         **_legacy_kwargs: Any,
     ) -> None:
@@ -121,6 +142,7 @@ class TriStreamLivePreprocessor:
         )
         self._runtime_parameter_revision_getter = runtime_parameter_revision_getter
         self._background_state = background_state
+        self._mask_state = mask_state
         self._locator_parameter_state = locator_parameter_state
 
     @property
@@ -156,11 +178,19 @@ class TriStreamLivePreprocessor:
         source_gray = _decode_image_bytes_to_grayscale(image_bytes)
         input_image_hash = _accepted_input_image_hash(request, image_bytes)
         runtime_revision = self._runtime_parameter_revision()
+        mask_preparation = self._prepare_frame_mask(
+            source_gray,
+            apply_to_locator=True,
+            apply_to_regressor=False,
+        )
+        warnings = _hash_warnings(request, image_bytes)
+        warnings.extend(mask_preparation.warnings)
         locator_result = self._locate(
             request,
             image_bytes,
             source_wh=(int(source_gray.shape[1]), int(source_gray.shape[0])),
             runtime_revision=runtime_revision,
+            mask_preparation=mask_preparation,
         )
         metadata = self._base_metadata(
             request=request,
@@ -168,9 +198,10 @@ class TriStreamLivePreprocessor:
             runtime_revision=runtime_revision,
             source_gray=source_gray,
             locator_result=locator_result,
-            warnings=_hash_warnings(request, image_bytes),
+            warnings=warnings,
             regressor_reached=False,
         )
+        metadata.update(mask_preparation.metadata)
         roi_crop = None
         if locator_result.center_xy_px is not None:
             roi_crop, _source_bounds, _roi_bounds, _request_bounds = _extract_centered_canvas(
@@ -185,6 +216,8 @@ class TriStreamLivePreprocessor:
             input_image_hash=input_image_hash,
             runtime_revision=runtime_revision,
             source_gray=source_gray,
+            preprocessor_source_gray=mask_preparation.regressor_source_gray,
+            manual_mask=mask_preparation.manual_mask,
             roi_crop=roi_crop,
             distance_image=None,
             orientation_image=None,
@@ -215,11 +248,18 @@ class TriStreamLivePreprocessor:
         input_image_hash = _accepted_input_image_hash(request, image_bytes)
         runtime_revision = self._runtime_parameter_revision()
         warnings = _hash_warnings(request, image_bytes)
+        mask_preparation = self._prepare_frame_mask(
+            source_gray,
+            apply_to_locator=True,
+            apply_to_regressor=True,
+        )
+        warnings.extend(mask_preparation.warnings)
         locator_result = self._locate(
             request,
             image_bytes,
             source_wh=(source_w, source_h),
             runtime_revision=runtime_revision,
+            mask_preparation=mask_preparation,
         )
         warnings.extend(str(warning) for warning in locator_result.warnings)
 
@@ -233,11 +273,14 @@ class TriStreamLivePreprocessor:
                 warnings=warnings,
                 regressor_reached=False,
             )
+            metadata.update(mask_preparation.metadata)
             debug_paths = self._write_debug_artifacts(
                 request=request,
                 input_image_hash=input_image_hash,
                 runtime_revision=runtime_revision,
                 source_gray=source_gray,
+                preprocessor_source_gray=mask_preparation.regressor_source_gray,
+                manual_mask=mask_preparation.manual_mask,
                 roi_crop=None,
                 distance_image=None,
                 orientation_image=None,
@@ -261,7 +304,7 @@ class TriStreamLivePreprocessor:
 
         center_x, center_y = locator_result.center_xy_px
         roi_gray, source_bounds, roi_bounds, request_bounds = _extract_centered_canvas(
-            source_gray,
+            mask_preparation.regressor_source_gray,
             center_x_px=center_x,
             center_y_px=center_y,
             canvas_width_px=self._roi_canvas_size()[0],
@@ -283,16 +326,19 @@ class TriStreamLivePreprocessor:
         distance_image_2d: np.ndarray | None = None
         orientation_image_2d: np.ndarray | None = None
         silhouette_result: _SilhouetteResult | None = None
-        mask_metadata = self._background_metadata(
-            snapshot=background_snapshot,
-            source_wh=(source_w, source_h),
-            warning=background_warning,
+        mask_metadata = dict(mask_preparation.metadata)
+        mask_metadata.update(
+            self._background_metadata(
+                snapshot=background_snapshot,
+                source_wh=(source_w, source_h),
+                warning=background_warning,
+            )
         )
         mask_metadata.update(roi_background.metadata)
         try:
             silhouette_result = self._render_silhouette(
                 roi_gray=roi_background.preview_gray,
-                source_gray=source_gray,
+                source_gray=mask_preparation.regressor_source_gray,
                 source_bounds=source_bounds,
                 roi_bounds=roi_bounds,
             )
@@ -379,6 +425,8 @@ class TriStreamLivePreprocessor:
                 input_image_hash=input_image_hash,
                 runtime_revision=runtime_revision,
                 source_gray=source_gray,
+                preprocessor_source_gray=mask_preparation.regressor_source_gray,
+                manual_mask=mask_preparation.manual_mask,
                 roi_crop=roi_background.preview_gray,
                 distance_image=distance_image_2d,
                 orientation_image=orientation_image_2d,
@@ -451,6 +499,8 @@ class TriStreamLivePreprocessor:
             input_image_hash=input_image_hash,
             runtime_revision=runtime_revision,
             source_gray=source_gray,
+            preprocessor_source_gray=mask_preparation.regressor_source_gray,
+            manual_mask=mask_preparation.manual_mask,
             roi_crop=roi_background.preview_gray,
             distance_image=distance_image_2d,
             orientation_image=orientation_image_2d,
@@ -486,9 +536,30 @@ class TriStreamLivePreprocessor:
         *,
         source_wh: tuple[int, int],
         runtime_revision: int | None,
+        mask_preparation: _FrameMaskPreparation | None = None,
     ) -> contracts.LocatorResult:
         snapshot = self._background_state.get_snapshot() if self._background_state is not None else None
         locator_kind = getattr(self._locator, "locator_kind", contracts.LocatorKind.BACKGROUND_EDGE_V1)
+        extras: dict[str, Any] = {
+            **dict(request.extras),
+            "locator_parameters": {
+                "roi_width_px": self._roi_canvas_size()[0],
+                "roi_height_px": self._roi_canvas_size()[1],
+            },
+        }
+        if mask_preparation is not None and mask_preparation.locator_ignore_mask is not None:
+            extras.update(
+                {
+                    "manual_ignore_mask": mask_preparation.locator_ignore_mask,
+                    "manual_ignore_mask_revision": mask_preparation.metadata.get(
+                        "frame_mask_revision"
+                    ),
+                    "manual_ignore_mask_pixel_count": mask_preparation.metadata.get(
+                        "frame_mask_pixel_count"
+                    ),
+                    "manual_ignore_mask_fill_value": mask_preparation.fill_value,
+                }
+            )
         locator_request = contracts.LocatorRequest(
             request_id=request.request_id,
             frame=request.frame,
@@ -501,13 +572,7 @@ class TriStreamLivePreprocessor:
             runtime_parameter_revision=runtime_revision,
             save_debug_images=bool(request.save_debug_images),
             debug_output_dir=request.debug_output_dir,
-            extras={
-                **dict(request.extras),
-                "locator_parameters": {
-                    "roi_width_px": self._roi_canvas_size()[0],
-                    "roi_height_px": self._roi_canvas_size()[1],
-                },
-            },
+            extras=extras,
         )
         result = self._locator.locate(locator_request, image_bytes)
         if not isinstance(result, contracts.LocatorResult):
@@ -670,6 +735,88 @@ class TriStreamLivePreprocessor:
             f"size {(source_w, source_h)}."
         )
 
+    def _prepare_frame_mask(
+        self,
+        source_gray: np.ndarray,
+        *,
+        apply_to_locator: bool,
+        apply_to_regressor: bool,
+    ) -> _FrameMaskPreparation:
+        source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
+        snapshot = self._mask_state.get_snapshot() if self._mask_state is not None else None
+        fill_value = int(snapshot.fill_value) if snapshot is not None else 255
+        metadata = _frame_mask_metadata(
+            snapshot=snapshot,
+            source_width_px=source_w,
+            source_height_px=source_h,
+            applied=False,
+            fill_value=fill_value,
+        )
+        warnings: list[str] = []
+        manual_mask: np.ndarray | None = None
+        manual_mask_valid = False
+
+        if (
+            snapshot is not None
+            and snapshot.enabled
+            and snapshot.has_geometry
+            and snapshot.pixel_count > 0
+        ):
+            if not snapshot.dimensions_match(source_w, source_h):
+                warning = (
+                    "frame mask skipped: mask size "
+                    f"{(snapshot.width_px, snapshot.height_px)} does not match "
+                    f"source image size {(source_w, source_h)}."
+                )
+                metadata["frame_mask_warning"] = warning
+                warnings.append(warning)
+            else:
+                manual_mask = np.array(snapshot.mask, dtype=bool, copy=True)
+                manual_mask_valid = True
+
+        manual_to_locator = bool(manual_mask_valid and apply_to_locator)
+        manual_to_regressor = bool(manual_mask_valid and apply_to_regressor)
+        regressor_source_gray = (
+            apply_fill_to_mask(source_gray, manual_mask, fill_value=fill_value)
+            if manual_to_regressor
+            else np.array(source_gray, dtype=np.uint8, copy=True)
+        )
+        manual_count = int(np.count_nonzero(manual_mask)) if manual_mask is not None else 0
+        metadata.update(
+            {
+                "frame_mask_applied": bool(manual_to_locator or manual_to_regressor),
+                "frame_mask_application_space": _mask_application_space(
+                    locator=manual_to_locator,
+                    regressor=manual_to_regressor,
+                ),
+                "manual_mask_available": bool(manual_mask_valid),
+                "apply_manual_mask_to_roi_locator": bool(apply_to_locator),
+                "apply_manual_mask_to_regressor_preprocessing": True,
+                "manual_mask_applied_to_roi_locator": bool(manual_to_locator),
+                "manual_mask_applied_to_regressor_preprocessing": bool(
+                    manual_to_regressor
+                ),
+                "frame_mask_excluded_from_roi_locator": bool(manual_to_locator),
+                "combined_ignore_excluded_from_roi_locator": bool(manual_to_locator),
+                "combined_ignore_pixel_count": manual_count
+                if (manual_to_locator or manual_to_regressor)
+                else 0,
+            }
+        )
+        return _FrameMaskPreparation(
+            original_source_gray=np.array(source_gray, dtype=np.uint8, copy=True),
+            regressor_source_gray=regressor_source_gray,
+            locator_ignore_mask=(
+                np.array(manual_mask, dtype=bool, copy=True)
+                if manual_to_locator and manual_mask is not None
+                else None
+            ),
+            manual_mask=manual_mask,
+            metadata=metadata,
+            warnings=tuple(warnings),
+            fill_value=fill_value,
+        )
+
     def _render_silhouette(
         self,
         *,
@@ -818,6 +965,8 @@ class TriStreamLivePreprocessor:
         input_image_hash: contracts.FrameHash,
         runtime_revision: int | None,
         source_gray: np.ndarray,
+        preprocessor_source_gray: np.ndarray,
+        manual_mask: np.ndarray | None,
         roi_crop: np.ndarray | None,
         distance_image: np.ndarray | None,
         orientation_image: np.ndarray | None,
@@ -840,6 +989,9 @@ class TriStreamLivePreprocessor:
             image_artifacts={
                 ARTIFACT_ACCEPTED_RAW_FRAME: source_gray,
                 ARTIFACT_GRAYSCALE_FRAME: source_gray,
+                ARTIFACT_PREPROCESSOR_SOURCE_BEFORE_REGRESSOR_MASKS: source_gray,
+                ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS: preprocessor_source_gray,
+                ARTIFACT_MANUAL_MASK: manual_mask,
                 ARTIFACT_ROI_CROP: roi_crop,
                 ARTIFACT_DISTANCE_IMAGE: distance_image,
                 ARTIFACT_ORIENTATION_IMAGE: orientation_image,
@@ -907,6 +1059,48 @@ def _path_map(paths: Mapping[str, Path]) -> dict[str, str]:
     return {str(key): str(value) for key, value in paths.items()}
 
 
+def _mask_application_space(*, locator: bool, regressor: bool) -> str | None:
+    spaces: list[str] = []
+    if locator:
+        spaces.append("locator")
+    if regressor:
+        spaces.append("regressor_preprocessing")
+    return ",".join(spaces) if spaces else None
+
+
+def _frame_mask_metadata(
+    *,
+    snapshot: FrameMaskSnapshot | None,
+    source_width_px: int,
+    source_height_px: int,
+    applied: bool,
+    fill_value: int | None = None,
+) -> dict[str, Any]:
+    if snapshot is None:
+        return {
+            "frame_mask_applied": False,
+            "frame_mask_revision": None,
+            "frame_mask_width_px": None,
+            "frame_mask_height_px": None,
+            "frame_mask_pixel_count": 0,
+            "frame_mask_fill_value": fill_value,
+            "frame_mask_source_width_px": int(source_width_px),
+            "frame_mask_source_height_px": int(source_height_px),
+            "frame_mask_excluded_from_roi_locator": False,
+        }
+    return {
+        "frame_mask_applied": bool(applied),
+        "frame_mask_revision": int(snapshot.revision),
+        "frame_mask_width_px": int(snapshot.width_px),
+        "frame_mask_height_px": int(snapshot.height_px),
+        "frame_mask_pixel_count": int(snapshot.pixel_count),
+        "frame_mask_fill_value": int(snapshot.fill_value),
+        "frame_mask_source_width_px": int(source_width_px),
+        "frame_mask_source_height_px": int(source_height_px),
+        "frame_mask_excluded_from_roi_locator": False,
+    }
+
+
 def _failure_details(
     *,
     request: InferenceRequest,
@@ -926,6 +1120,10 @@ def _failure_details(
         contracts.PREPROCESSING_METADATA_ROI_SOURCE_XYXY_PX,
         contracts.PREPROCESSING_METADATA_ROI_CLIPPED,
         contracts.PREPROCESSING_METADATA_ROI_CLIP_MAX_PX,
+        "frame_mask_warning",
+        "frame_mask_revision",
+        "frame_mask_pixel_count",
+        "manual_mask_applied_to_regressor_preprocessing",
         contracts.PREPROCESSING_METADATA_DEBUG_PATHS,
     )
     details = {key: metadata.get(key) for key in keys if key in metadata}

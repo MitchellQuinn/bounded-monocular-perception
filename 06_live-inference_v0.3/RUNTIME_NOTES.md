@@ -38,6 +38,17 @@ PYTHONPATH=06_live-inference_v0.3/src ./.venv/bin/python \
 Single-frame mode displays artifacts from the exact captured frame. If an overlay does
 not match the displayed image dimensions, the GUI refuses the overlay and logs a warning.
 
+## Draw Mask
+
+Use `Draw Mask` on a loaded preview frame to paint pixels that should be ignored by
+model preprocessing. `Erase` removes painted regions, `Apply` commits the edit, and
+`Clear Mask` removes the committed mask. The brush size is in source pixels.
+
+In v0.3 the committed mask is applied when a frame is processed: the locator treats
+painted pixels as ignored source pixels, and regressor/model preprocessing fills them
+using the selected inference fill value. The GUI renders the mask as an overlay and
+leaves the preview pixels unchanged.
+
 ## Background Handling
 
 `Capture Background` stores a grayscale background and enables background removal.

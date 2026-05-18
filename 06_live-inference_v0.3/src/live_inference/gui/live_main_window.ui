@@ -115,6 +115,91 @@
          </widget>
         </item>
         <item>
+         <widget class="QGroupBox" name="drawMaskGroup">
+          <property name="title">
+           <string>Draw Mask</string>
+          </property>
+          <layout class="QVBoxLayout" name="drawMaskLayout">
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <item>
+            <layout class="QGridLayout" name="drawMaskButtonLayout">
+             <item row="0" column="0">
+              <widget class="QPushButton" name="drawMaskButton">
+               <property name="text">
+                <string>Draw</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QPushButton" name="eraseMaskButton">
+               <property name="text">
+                <string>Erase</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QPushButton" name="applyMaskButton">
+               <property name="text">
+                <string>Apply</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QPushButton" name="cancelMaskButton">
+               <property name="text">
+                <string>Cancel</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0" colspan="2">
+              <widget class="QPushButton" name="clearMaskButton">
+               <property name="text">
+                <string>Clear Mask</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QFormLayout" name="drawMaskOptionsLayout">
+             <item row="0" column="0">
+              <widget class="QLabel" name="maskBrushSizeLabel">
+               <property name="text">
+                <string>Brush</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QSpinBox" name="maskBrushSizeSpinBox">
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>1000</number>
+               </property>
+               <property name="value">
+                <number>100</number>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="maskFillWhiteCheckBox">
+             <property name="text">
+              <string>Inference fill white</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
          <widget class="QGroupBox" name="locatorParamsGroup">
           <property name="title">
            <string>Locator Params</string>
@@ -340,6 +425,16 @@
           </property>
           <property name="text">
            <string>ROI: n/a</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="maskStatusValue">
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+          <property name="text">
+           <string>mask: none</string>
           </property>
          </widget>
         </item>

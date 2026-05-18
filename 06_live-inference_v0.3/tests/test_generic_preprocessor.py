@@ -24,6 +24,7 @@ from interfaces import (  # noqa: E402
 )
 from live_inference.frame_handoff import compute_frame_hash  # noqa: E402
 from live_inference.inspection import InferenceTraceRecorder, SingleFrameInferenceRunner  # noqa: E402
+from live_inference.masking import FrameMaskState  # noqa: E402
 from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     BackgroundEdgeLocator,
@@ -89,6 +90,60 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
             prepared.preprocessing_metadata[contracts.PREPROCESSING_METADATA_LOCATOR_KIND],
             contracts.LocatorKind.FIXED_CENTER_ROI.value,
         )
+
+    def test_frame_mask_is_applied_to_model_preprocessing(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        mask_state = FrameMaskState()
+        mask = np.zeros((600, 960), dtype=bool)
+        mask[5:20, 5:20] = True
+        mask_state.commit_mask(mask, width_px=960, height_px=600, fill_value=255)
+        debug_dir = Path(tempfile.mkdtemp())
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=FixedCenterRoiLocator(roi_wh_px=(320, 320)),
+            mask_state=mask_state,
+        ).prepare_model_inputs(
+            _request(image_bytes, save_debug=True, debug_output_dir=debug_dir),
+            image_bytes,
+        )
+
+        metadata = prepared.preprocessing_metadata
+        self.assertTrue(metadata["frame_mask_applied"])
+        self.assertEqual(metadata["frame_mask_revision"], 1)
+        self.assertEqual(metadata["frame_mask_pixel_count"], 225)
+        self.assertTrue(metadata["manual_mask_applied_to_roi_locator"])
+        self.assertTrue(metadata["manual_mask_applied_to_regressor_preprocessing"])
+        debug_paths = metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS]
+        self.assertIn("manual_mask", debug_paths)
+        self.assertIn("preprocessor_source_after_regressor_masks", debug_paths)
+
+    def test_frame_mask_excludes_locator_distractor(self) -> None:
+        image = np.full((420, 640), 255, dtype=np.uint8)
+        cv2.rectangle(image, (120, 180), (180, 230), 70, thickness=-1)
+        cv2.rectangle(image, (430, 120), (610, 320), 60, thickness=-1)
+        ok, encoded = cv2.imencode(".png", image)
+        if not ok:
+            raise AssertionError("Could not encode masked locator fixture")
+        image_bytes = encoded.tobytes()
+        mask_state = FrameMaskState()
+        mask = np.zeros(image.shape, dtype=bool)
+        mask[:, 380:] = True
+        mask_state.commit_mask(mask, width_px=640, height_px=420, fill_value=255)
+
+        diagnostic = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=BackgroundEdgeLocator(),
+            mask_state=mask_state,
+        ).run_locator_only(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(diagnostic.locator_result)
+        assert diagnostic.locator_result is not None
+        self.assertTrue(
+            diagnostic.preprocessing_metadata["manual_mask_applied_to_roi_locator"]
+        )
+        self.assertLess(diagnostic.locator_result.center_xy_px[0], 260)
+        locator_metadata = diagnostic.locator_result.debug_artifacts.metadata
+        self.assertTrue(locator_metadata["manual_ignore_mask_applied"])
 
     def test_single_frame_trace_contains_v03_artifacts(self) -> None:
         image_bytes = _fixture_image_bytes()
