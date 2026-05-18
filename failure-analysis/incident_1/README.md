@@ -3,7 +3,7 @@
 **Incident:** `incident_1`
 **System:** bounded monocular perception, live inference v0.3
 **Date analysed:** 2026-05-18
-**Status:** Root cause identified; remediation proposed
+**Status:** Remediated; post-remediation live validation captured
 
 ## 1. Executive Summary
 
@@ -15,6 +15,8 @@ During live inference, two near-identical captures of a stationary Defender mode
 The measured distance from the vehicle to the camera lens was approximately `1.33 m`. The camera had not yet been calibrated with OpenCV, so this measurement should be treated as a physical reference point rather than a full calibrated camera-geometry validation. Even with that caveat, the physical scene did not support a `5 m` prediction: the Defender was large in the frame and had not materially moved between captures. The investigation showed that the regression model was not actually given the large vehicle in the failing case. The ROI locator found a correct vehicle-sized crop in both traces, but the downstream silhouette recovery stage reduced the failing trace to a `14 x 20 px` fragment. That fragment then became the distance input and geometry vector, making the model's `5.3009 m` output consistent with the corrupted input rather than with the captured scene.
 
 The root cause is a preprocessing failure in intensity-based silhouette recovery. When the true vehicle component touched the bottom edge of the ROI crop, the recovery heuristic preferred a tiny non-border component and returned early instead of selecting the much larger border-touching vehicle component.
+
+The live pipeline has since been changed to default to a threshold-derived foreground path, `threshold_foreground_v1`, with the previous contour/silhouette path retained as an explicit GUI-selectable fallback. New live traces captured from `20260518T114713Z` onward show the repaired path producing vehicle-sized foreground masks and physically plausible distance predictions, with no recurrence of the `~5 m` spike. Extended live operation with the Defender held still is now reported to be stable in the useful sense: predictions are typically varying within approximately `0.1 m` rather than jumping metres.
 
 ## 2. Incident Scope
 
@@ -203,7 +205,7 @@ The impact is bounded by conditions that create a silhouette recovery ambiguity:
 
 This is especially relevant for live camera use because small camera noise, exposure shift, or a few pixels of ROI movement can flip the selected component. In this incident, an approximately `6 px` vertical difference between ROI crops was enough to change the recovery outcome from the tiny fragment to the full vehicle.
 
-## 10. Recommended Remediation
+## 10. Remediation Strategy
 
 ### 10.1 Fix component selection in intensity recovery
 
@@ -256,11 +258,11 @@ Useful assertions:
 
 ## 11. Outcome and Improvements
 
-The incident has now been converted into a concrete preprocessing improvement and regression test case.
+The incident has now been converted into concrete preprocessing improvements, runtime controls, and regression tests.
 
-The intensity-recovery selector was changed so that border-touching components are no longer searched only after all non-border candidates. Instead, all Otsu-threshold candidates are scored together. Border contact remains a weak penalty, but it is no longer strong enough to make a tiny interior fragment beat a much larger plausible vehicle component. The selector also applies a small preference for the expected live-capture polarity: a dark foreground object on a light or white background.
+The first remediation was a targeted repair to the contour/silhouette recovery path. The intensity-recovery selector was changed so that border-touching components are no longer searched only after all non-border candidates. Instead, all Otsu-threshold candidates are scored together. Border contact remains a weak penalty, but it is no longer strong enough to make a tiny interior fragment beat a much larger plausible vehicle component. The selector also applies a small preference for the expected live-capture polarity: a dark foreground object on a light or white background.
 
-The incident ROI now recovers the full vehicle-sized foreground component:
+On the original incident ROI, that repaired legacy path recovers the full vehicle-sized foreground component:
 
 ```text
 selected component area: ~45,299 px
@@ -270,6 +272,8 @@ border contact: true, bottom edge
 ```
 
 This is the desired behaviour for a close vehicle that legitimately touches the ROI crop boundary.
+
+The second remediation was to make the live path less dependent on contour recovery in the first place. Live preprocessing now defaults to `threshold_foreground_v1`: it estimates the effective "background white" from the ROI, applies Otsu thresholding capped by a background-relative threshold, performs small morphological cleanup, and passes the resulting foreground mask into the existing tri-stream representation. The legacy contour/silhouette path remains available through a GUI checkbox, but the GUI only updates a shared foreground-extraction policy state. Functional preprocessing code depends on that policy contract, not on GUI widgets.
 
 A locator-relative consistency guard was also added before model inference. It only applies when the accepted locator bbox is large enough to make a tiny silhouette implausible, so it does not reject genuinely distant vehicles that are small in both the locator and silhouette outputs. The guard is designed to fail closed: if a large accepted ROI collapses to a tiny silhouette, the system reports a preprocessing failure instead of feeding corrupted geometry and image streams to the regressor.
 
@@ -287,7 +291,17 @@ v4 pipeline integration tests: pass
 v0.3 live inference test discovery: pass
 ```
 
-The practical outcome is that the failure mode is no longer just documented. It is represented as a fixture-backed regression test and guarded in the live preprocessing path.
+Post-remediation live traces captured on 2026-05-18 from `11:47:13Z` onward show the new threshold path operating as intended. The traces were captured as three frame-hash pairs: a preprocessing/locator run followed by an inference run over the same accepted frame hash.
+
+| Frame hash prefix | Companion traces | Predicted distance | Foreground extraction | Foreground pixels | Foreground bbox | Locator confidence |
+| --- | --- | ---: | --- | ---: | ---: | ---: |
+| `86683b78` | [`114713`](../../06_live-inference_v0.3/live_traces/20260518T114713Z__04b10392-ef12-4b05-9fe3-14fbd89fc9dc__86683b78) / [`114715`](../../06_live-inference_v0.3/live_traces/20260518T114715Z__3d138c72-1b6c-4753-953a-3fd80d346864__86683b78) | `2.0420 m` | `threshold_foreground_v1` | `16,742 px` | `126 x 175 px` | `0.8967` |
+| `cc24cd51` | [`114732`](../../06_live-inference_v0.3/live_traces/20260518T114732Z__b3043800-0a91-4384-8225-18ea69802662__cc24cd51) / [`114734`](../../06_live-inference_v0.3/live_traces/20260518T114734Z__eb4b6eb5-fe5a-493d-86e7-19d58f1d821b__cc24cd51) | `1.7722 m` | `threshold_foreground_v1` | `29,830 px` | `199 x 231 px` | `0.9059` |
+| `1d2d137e` | [`114814`](../../06_live-inference_v0.3/live_traces/20260518T114814Z__0bd847ab-a9df-4bc3-9c3e-c1a2545ca5b2__1d2d137e) / [`114817`](../../06_live-inference_v0.3/live_traces/20260518T114817Z__7be3e7a4-44f4-4383-8671-cb40048eb370__1d2d137e) | `1.5386 m` | `threshold_foreground_v1` | `49,486 px` | `292 x 225 px` | `0.9307` |
+
+These validation traces are not a controlled repeatability study of one unmoved frame; they are three distinct accepted frame hashes, with different poses or placements. They are still strong evidence for the incident fix because the foreground extraction no longer collapses to tiny geometry in any of the captured cases. The live operator observation after this change is also materially different from the incident behaviour: when the Defender is held still, predictions now typically remain within approximately `0.1 m`, which is boring in the correct way for this stage of the system.
+
+The practical outcome is that the failure mode is no longer just documented. It is represented as fixture-backed regression tests, guarded in the live preprocessing path, and validated against fresh live traces using the new default foreground extraction path.
 
 ## 12. Engineering Lessons
 
@@ -327,3 +341,12 @@ Passing comparison trace:
 - [`x_geometry.json`](20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/x_geometry.json)
 - [`preprocessing_metadata.json`](20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/preprocessing_metadata.json)
 - [`model_outputs.json`](20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/model_outputs.json)
+
+Post-remediation live validation traces:
+
+- [`20260518T114713Z` preprocessing trace](../../06_live-inference_v0.3/live_traces/20260518T114713Z__04b10392-ef12-4b05-9fe3-14fbd89fc9dc__86683b78)
+- [`20260518T114715Z` inference trace](../../06_live-inference_v0.3/live_traces/20260518T114715Z__3d138c72-1b6c-4753-953a-3fd80d346864__86683b78)
+- [`20260518T114732Z` preprocessing trace](../../06_live-inference_v0.3/live_traces/20260518T114732Z__b3043800-0a91-4384-8225-18ea69802662__cc24cd51)
+- [`20260518T114734Z` inference trace](../../06_live-inference_v0.3/live_traces/20260518T114734Z__eb4b6eb5-fe5a-493d-86e7-19d58f1d821b__cc24cd51)
+- [`20260518T114814Z` preprocessing trace](../../06_live-inference_v0.3/live_traces/20260518T114814Z__0bd847ab-a9df-4bc3-9c3e-c1a2545ca5b2__1d2d137e)
+- [`20260518T114817Z` inference trace](../../06_live-inference_v0.3/live_traces/20260518T114817Z__7be3e7a4-44f4-4383-8671-cb40048eb370__1d2d137e)
