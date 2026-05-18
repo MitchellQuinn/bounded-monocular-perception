@@ -342,6 +342,10 @@ class TriStreamLivePreprocessor:
                 source_bounds=source_bounds,
                 roi_bounds=roi_bounds,
             )
+            _validate_silhouette_locator_consistency(
+                silhouette_result=silhouette_result,
+                locator_result=locator_result,
+            )
             silhouette_background_mask = _silhouette_to_background_mask(
                 silhouette_result.roi_silhouette
             )
@@ -1053,6 +1057,38 @@ def _locator_parameter(
 
 def _reason_text(reasons: tuple[str, ...]) -> str:
     return ";".join(str(reason) for reason in reasons if str(reason).strip())
+
+
+def _validate_silhouette_locator_consistency(
+    *,
+    silhouette_result: _SilhouetteResult,
+    locator_result: contracts.LocatorResult,
+) -> None:
+    locator_bbox = locator_result.bbox_xyxy_px
+    if locator_bbox is None:
+        return
+    lx1, ly1, lx2, ly2 = [float(value) for value in locator_bbox]
+    sx1, sy1, sx2, sy2 = [float(value) for value in silhouette_result.feature_bbox_xyxy_px]
+    locator_w = max(1e-6, lx2 - lx1)
+    locator_h = max(1e-6, ly2 - ly1)
+    silhouette_w = max(0.0, sx2 - sx1)
+    silhouette_h = max(0.0, sy2 - sy1)
+    locator_area = locator_w * locator_h
+    if locator_area < 5_000.0:
+        return
+
+    width_ratio = silhouette_w / locator_w
+    height_ratio = silhouette_h / locator_h
+    area_ratio = (silhouette_w * silhouette_h) / locator_area
+    if area_ratio >= 0.02 or width_ratio >= 0.15 or height_ratio >= 0.15:
+        return
+
+    raise ValueError(
+        "silhouette bbox is implausibly small relative to accepted locator bbox: "
+        f"silhouette=({silhouette_w:.1f}x{silhouette_h:.1f}), "
+        f"locator=({locator_w:.1f}x{locator_h:.1f}), "
+        f"area_ratio={area_ratio:.4f}"
+    )
 
 
 def _path_map(paths: Mapping[str, Path]) -> dict[str, str]:

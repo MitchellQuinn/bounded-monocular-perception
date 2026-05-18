@@ -29,6 +29,7 @@ from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     BackgroundEdgeLocator,
     FixedCenterRoiLocator,
+    ManualFixedRoiLocator,
     TriStreamLivePreprocessor,
 )
 
@@ -179,6 +180,33 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
             "trace_manifest.json",
         ):
             self.assertTrue((trace_path / filename).is_file(), filename)
+
+    def test_incident_roi_does_not_collapse_to_tiny_silhouette(self) -> None:
+        fixture = (
+            PROJECT_ROOT.parent
+            / "failure-analysis"
+            / "incident_1"
+            / "20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54"
+            / "accepted_raw_frame.png"
+        )
+        image_bytes = fixture.read_bytes()
+        preprocessor = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=ManualFixedRoiLocator(
+                bbox_xyxy_px=(793.0, 847.0, 1043.0, 1149.0),
+                roi_wh_px=(320, 320),
+            ),
+        )
+
+        prepared = preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertGreater(metadata["foreground_pixel_count"], 40_000)
+        geometry = prepared.model_inputs[contracts.TRI_STREAM_GEOMETRY_KEY]
+        self.assertGreater(float(geometry[2]), 230.0)
+        self.assertGreater(float(geometry[3]), 290.0)
+        distance_image = prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
+        self.assertGreater(int(np.count_nonzero(distance_image < 250)), 40_000)
 
 
 def _manifest() -> object:

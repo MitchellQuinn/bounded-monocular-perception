@@ -433,70 +433,74 @@ def _recover_contour_via_intensity_threshold(
     min_area_ratio = min(0.02, max(0.0, (float(max(1, int(min_component_area_px))) / float(total_pixels)) * 2.0))
 
     best_candidate: tuple[float, np.ndarray, dict[str, object]] | None = None
-    for prefer_non_border in (True, False):
-        local_best: tuple[float, np.ndarray, dict[str, object]] | None = None
-        for threshold_mode, mode_name in (
-            (cv2.THRESH_BINARY, "binary"),
-            (cv2.THRESH_BINARY_INV, "binary_inv"),
-        ):
-            threshold_value, thresholded = cv2.threshold(
-                processed_gray,
-                0,
-                255,
-                int(threshold_mode) | int(cv2.THRESH_OTSU),
-            )
-            component_count, labels, stats = _component_stats(thresholded)
-            for label in range(1, component_count):
-                area = int(stats[label, cv2.CC_STAT_AREA])
-                if area < int(min_component_area_px):
-                    continue
+    for threshold_mode, mode_name in (
+        (cv2.THRESH_BINARY, "binary"),
+        (cv2.THRESH_BINARY_INV, "binary_inv"),
+    ):
+        threshold_value, thresholded = cv2.threshold(
+            processed_gray,
+            0,
+            255,
+            int(threshold_mode) | int(cv2.THRESH_OTSU),
+        )
+        component_count, labels, stats = _component_stats(thresholded)
+        for label in range(1, component_count):
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            if area < int(min_component_area_px):
+                continue
 
-                x = int(stats[label, cv2.CC_STAT_LEFT])
-                y = int(stats[label, cv2.CC_STAT_TOP])
-                w = int(stats[label, cv2.CC_STAT_WIDTH])
-                h = int(stats[label, cv2.CC_STAT_HEIGHT])
-                touches_border = x == 0 or y == 0 or (x + w) >= width or (y + h) >= height
-                if prefer_non_border and touches_border:
-                    continue
-                if (not prefer_non_border) and (not touches_border):
-                    continue
+            x = int(stats[label, cv2.CC_STAT_LEFT])
+            y = int(stats[label, cv2.CC_STAT_TOP])
+            w = int(stats[label, cv2.CC_STAT_WIDTH])
+            h = int(stats[label, cv2.CC_STAT_HEIGHT])
+            touches_border = x == 0 or y == 0 or (x + w) >= width or (y + h) >= height
 
-                area_ratio = float(area) / float(total_pixels)
-                if area_ratio < min_area_ratio:
-                    continue
+            area_ratio = float(area) / float(total_pixels)
+            if area_ratio < min_area_ratio:
+                continue
 
-                component_mask = np.zeros_like(thresholded, dtype=np.uint8)
-                component_mask[labels == label] = 255
-                ys, xs = np.where(component_mask > 0)
-                if xs.size == 0:
-                    continue
+            component_mask = np.zeros_like(thresholded, dtype=np.uint8)
+            component_mask[labels == label] = 255
+            ys, xs = np.where(component_mask > 0)
+            if xs.size == 0:
+                continue
 
-                bbox_area = int((xs.max() - xs.min() + 1) * (ys.max() - ys.min() + 1))
-                fill_ratio = _safe_ratio(area, bbox_area)
-                border_pixels = int(
-                    np.count_nonzero(
-                        (xs == 0) | (xs == (width - 1)) | (ys == 0) | (ys == (height - 1))
-                    )
+            bbox_area = int((xs.max() - xs.min() + 1) * (ys.max() - ys.min() + 1))
+            fill_ratio = _safe_ratio(area, bbox_area)
+            border_pixels = int(
+                np.count_nonzero(
+                    (xs == 0) | (xs == (width - 1)) | (ys == 0) | (ys == (height - 1))
                 )
-                border_ratio = _safe_ratio(border_pixels, area)
-                score = (fill_ratio * area_ratio) - (0.15 * border_ratio) - (0.10 if touches_border else 0.0)
+            )
+            border_ratio = _safe_ratio(border_pixels, area)
+            border_side_count = _border_side_count(
+                x=x,
+                y=y,
+                width=w,
+                height=h,
+                image_width=width,
+                image_height=height,
+            )
+            polarity_bonus = 0.075 if mode_name == "binary_inv" else 0.0
+            border_penalty = 0.05 * float(border_side_count)
+            score = (fill_ratio * area_ratio) + polarity_bonus - border_penalty - (
+                0.15 * border_ratio
+            )
 
-                meta = {
-                    "recovery_threshold_mode": mode_name,
-                    "recovery_threshold_value": float(threshold_value),
-                    "recovery_component_area": area,
-                    "recovery_component_area_ratio": area_ratio,
-                    "recovery_component_fill_ratio": fill_ratio,
-                    "recovery_component_border_ratio": border_ratio,
-                    "recovery_component_touches_border": bool(touches_border),
-                }
-                row = (score, component_mask, meta)
-                if local_best is None or score > local_best[0]:
-                    local_best = row
-
-        if local_best is not None:
-            best_candidate = local_best
-            break
+            meta = {
+                "recovery_threshold_mode": mode_name,
+                "recovery_threshold_value": float(threshold_value),
+                "recovery_component_area": area,
+                "recovery_component_area_ratio": area_ratio,
+                "recovery_component_fill_ratio": fill_ratio,
+                "recovery_component_border_ratio": border_ratio,
+                "recovery_component_border_side_count": int(border_side_count),
+                "recovery_component_touches_border": bool(touches_border),
+                "recovery_component_score": float(score),
+            }
+            row = (score, component_mask, meta)
+            if best_candidate is None or score > best_candidate[0]:
+                best_candidate = row
 
     if best_candidate is None:
         return None
@@ -514,6 +518,21 @@ def _component_stats(binary_mask: np.ndarray) -> tuple[int, np.ndarray, np.ndarr
     labels_source = (binary_mask > 0).astype(np.uint8)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(labels_source, connectivity=8)
     return int(count), labels, stats
+
+
+
+def _border_side_count(
+    *,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    image_width: int,
+    image_height: int,
+) -> int:
+    return int(x <= 0) + int(y <= 0) + int((x + width) >= image_width) + int(
+        (y + height) >= image_height
+    )
 
 
 
