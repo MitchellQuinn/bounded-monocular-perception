@@ -1,0 +1,19 @@
+{
+  "apply_manual_mask_to_regressor_preprocessing": true,
+  "apply_manual_mask_to_roi_locator": true,
+  "combined_ignore_excluded_from_roi_locator": true,
+  "combined_ignore_pixel_count": 1932173,
+  "frame_mask_application_space": "locator",
+  "frame_mask_applied": true,
+  "frame_mask_excluded_from_roi_locator": true,
+  "frame_mask_fill_value": 255,
+  "frame_mask_height_px": 1200,
+  "frame_mask_pixel_count": 1932173,
+  "frame_mask_revision": 1,
+  "frame_mask_source_height_px": 1200,
+  "frame_mask_source_width_px": 1920,
+  "frame_mask_width_px": 1920,
+  "manual_mask_applied_to_regressor_preprocessing": false,
+  "manual_mask_applied_to_roi_locator": true,
+  "manual_mask_available": true
+}
