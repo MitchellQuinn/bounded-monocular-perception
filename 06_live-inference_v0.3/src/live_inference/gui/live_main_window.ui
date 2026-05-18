@@ -115,6 +115,13 @@
          </widget>
         </item>
         <item>
+         <widget class="QCheckBox" name="useSilhouettePreprocessingCheckBox">
+          <property name="text">
+           <string>Use silhouette preprocessing</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QGroupBox" name="drawMaskGroup">
           <property name="title">
            <string>Draw Mask</string>

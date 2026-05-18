@@ -38,6 +38,16 @@ class ContractsV03Tests(unittest.TestCase):
             ),
         )
 
+    def test_foreground_extraction_modes_are_contract_values(self) -> None:
+        self.assertEqual(
+            contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
+            "threshold_foreground_v1",
+        )
+        self.assertEqual(
+            contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value,
+            "silhouette_contour_v2",
+        )
+
     def test_locator_result_serializes_plain_values(self) -> None:
         candidate = contracts.RoiCandidate(
             candidate_id="c0",

@@ -53,6 +53,7 @@ class LiveInferenceMainWindow(QMainWindow):
         background_state: BackgroundState | None = None,
         mask_state: FrameMaskState | None = None,
         locator_parameter_state: object | None = None,
+        foreground_extraction_policy_state: object | None = None,
         locator_kind: contracts.LocatorKind | str = contracts.LocatorKind.BACKGROUND_EDGE_V1,
         stop_wait_ms: int = 1000,
         parent: QWidget | None = None,
@@ -66,6 +67,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.background_state = background_state or BackgroundState()
         self.mask_state = mask_state or FrameMaskState()
         self.locator_parameter_state = locator_parameter_state
+        self.foreground_extraction_policy_state = foreground_extraction_policy_state
         self.locator_kind = (
             locator_kind
             if isinstance(locator_kind, contracts.LocatorKind)
@@ -85,6 +87,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._connect_ui()
         self._connect_worker_signals()
         self._sync_parameter_widgets()
+        self._sync_preprocessing_widgets()
         self._sync_mask_widgets()
         self._append_log("INFO", f"Locator: {self.locator_kind.value}")
 
@@ -128,6 +131,10 @@ class LiveInferenceMainWindow(QMainWindow):
         self.show_edges_checkbox = self._require(QCheckBox, "showEdgesCheckBox")
         self.show_candidate_contours_checkbox = self._require(QCheckBox, "showCandidateContoursCheckBox")
         self.show_chosen_contour_checkbox = self._require(QCheckBox, "showChosenContourCheckBox")
+        self.use_silhouette_preprocessing_checkbox = self._require(
+            QCheckBox,
+            "useSilhouettePreprocessingCheckBox",
+        )
         self.background_threshold_spinbox = self._require(QSpinBox, "backgroundThresholdSpinBox")
         self.min_foreground_area_spinbox = self._require(QSpinBox, "minForegroundAreaSpinBox")
         self.canny_low_spinbox = self._require(QSpinBox, "cannyLowSpinBox")
@@ -160,6 +167,9 @@ class LiveInferenceMainWindow(QMainWindow):
         self.clear_mask_button.clicked.connect(self.clear_mask)
         self.mask_brush_size_spinbox.valueChanged.connect(self._on_mask_brush_size_changed)
         self.mask_fill_white_checkbox.toggled.connect(self._on_mask_fill_toggled)
+        self.use_silhouette_preprocessing_checkbox.toggled.connect(
+            self._on_use_silhouette_preprocessing_toggled
+        )
         for checkbox in (
             self.show_roi_checkbox,
             self.show_bbox_checkbox,
@@ -547,6 +557,55 @@ class LiveInferenceMainWindow(QMainWindow):
         self.canny_low_spinbox.setValue(int(config.canny_low_threshold))
         self.canny_high_spinbox.setValue(int(config.canny_high_threshold))
 
+    def _sync_preprocessing_widgets(self) -> None:
+        state = self.foreground_extraction_policy_state
+        snapshot = _policy_snapshot(state)
+        if snapshot is None:
+            self.use_silhouette_preprocessing_checkbox.setEnabled(False)
+            self.use_silhouette_preprocessing_checkbox.setChecked(False)
+            return
+        mode = _text(
+            _payload_value(
+                snapshot,
+                contracts.PREPROCESSING_RUNTIME_PARAMETER_FOREGROUND_EXTRACTION_MODE,
+            ),
+            default=contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
+        )
+        self.use_silhouette_preprocessing_checkbox.blockSignals(True)
+        self.use_silhouette_preprocessing_checkbox.setChecked(
+            mode == contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value
+        )
+        self.use_silhouette_preprocessing_checkbox.blockSignals(False)
+
+    def _on_use_silhouette_preprocessing_toggled(self, checked: bool) -> None:
+        state = self.foreground_extraction_policy_state
+        update = getattr(state, "update", None)
+        if not callable(update):
+            return
+        mode = (
+            contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value
+            if bool(checked)
+            else contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value
+        )
+        snapshot, revision = update(
+            **{
+                contracts.PREPROCESSING_RUNTIME_PARAMETER_FOREGROUND_EXTRACTION_MODE: (
+                    mode
+                )
+            }
+        )
+        current_mode = _text(
+            _payload_value(
+                snapshot,
+                contracts.PREPROCESSING_RUNTIME_PARAMETER_FOREGROUND_EXTRACTION_MODE,
+            ),
+            default=mode,
+        )
+        self._append_log(
+            "INFO",
+            f"Foreground extraction: {current_mode}; revision={revision}",
+        )
+
     def _sync_mask_widgets(self) -> None:
         snapshot = self.mask_state.get_snapshot()
         self.mask_fill_white_checkbox.blockSignals(True)
@@ -728,6 +787,16 @@ def _mapping_payload(payload: object | None) -> Mapping[str, object]:
         if isinstance(converted, Mapping):
             return converted
     return {}
+
+
+def _policy_snapshot(state: object | None) -> object | None:
+    if state is None:
+        return None
+    for method_name in ("snapshot", "get_snapshot"):
+        method = getattr(state, method_name, None)
+        if callable(method):
+            return method()
+    return None
 
 
 def _sequence_payload(payload: object | None) -> tuple[object, ...]:
