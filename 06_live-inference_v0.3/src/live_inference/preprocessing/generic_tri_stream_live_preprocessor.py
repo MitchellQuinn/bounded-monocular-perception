@@ -31,6 +31,7 @@ from live_inference.model_registry.model_manifest import (
 from .debug_artifacts import (
     ARTIFACT_ACCEPTED_RAW_FRAME,
     ARTIFACT_DISTANCE_IMAGE,
+    ARTIFACT_FOREGROUND_MASK,
     ARTIFACT_GRAYSCALE_FRAME,
     ARTIFACT_MANUAL_MASK,
     ARTIFACT_ORIENTATION_IMAGE,
@@ -42,6 +43,10 @@ from .debug_artifacts import (
     default_debug_output_dir,
 )
 from .locators import FixedCenterRoiLocator, LocatorRuntimeParameterState
+from .foreground_policy import (
+    ForegroundExtractionPolicySnapshot,
+    ForegroundExtractionPolicyState,
+)
 from .preprocessing_config import TriStreamPreprocessingConfig
 from .tri_stream_live_preprocessor import (
     PreprocessingDebugError,
@@ -71,7 +76,6 @@ from rb_pipeline_v4.foreground_enhancement import apply_foreground_enhancement_v
 from rb_pipeline_v4.pack_dual_stream_stage import (
     _place_image_on_canvas,
     _render_vehicle_detail_on_white,
-    _silhouette_to_background_mask,
 )
 from rb_pipeline_v4.pack_tri_stream_stage import (
     _render_orientation_image_scaled_by_foreground_extent,
@@ -79,12 +83,15 @@ from rb_pipeline_v4.pack_tri_stream_stage import (
 
 
 @dataclass(frozen=True)
-class _SilhouetteResult:
+class _ForegroundExtractionResult:
     roi_silhouette: np.ndarray
     full_silhouette: np.ndarray
+    roi_foreground_mask: np.ndarray
+    full_foreground_mask: np.ndarray
     area_px: int
     bbox_inclusive_xyxy_px: tuple[int, int, int, int]
     feature_bbox_xyxy_px: np.ndarray
+    extraction_mode: str
     fallback_used: bool
     primary_break_reason: str
     diagnostics: Mapping[str, Any]
@@ -127,6 +134,7 @@ class TriStreamLivePreprocessor:
         background_state: BackgroundState | None = None,
         mask_state: FrameMaskState | None = None,
         locator_parameter_state: LocatorRuntimeParameterState | None = None,
+        foreground_extraction_policy_state: ForegroundExtractionPolicyState | None = None,
         **_legacy_kwargs: Any,
     ) -> None:
         if config is None:
@@ -144,6 +152,9 @@ class TriStreamLivePreprocessor:
         self._background_state = background_state
         self._mask_state = mask_state
         self._locator_parameter_state = locator_parameter_state
+        self._foreground_extraction_policy_state = (
+            foreground_extraction_policy_state or ForegroundExtractionPolicyState()
+        )
 
     @property
     def config(self) -> TriStreamPreprocessingConfig:
@@ -152,6 +163,10 @@ class TriStreamLivePreprocessor:
     @property
     def locator(self) -> contracts.RoiLocator:
         return self._locator
+
+    @property
+    def foreground_extraction_policy_state(self) -> ForegroundExtractionPolicyState:
+        return self._foreground_extraction_policy_state
 
     def preview_locator_input(
         self,
@@ -219,6 +234,7 @@ class TriStreamLivePreprocessor:
             preprocessor_source_gray=mask_preparation.regressor_source_gray,
             manual_mask=mask_preparation.manual_mask,
             roi_crop=roi_crop,
+            foreground_mask=None,
             distance_image=None,
             orientation_image=None,
             metadata=metadata,
@@ -282,6 +298,7 @@ class TriStreamLivePreprocessor:
                 preprocessor_source_gray=mask_preparation.regressor_source_gray,
                 manual_mask=mask_preparation.manual_mask,
                 roi_crop=None,
+                foreground_mask=None,
                 distance_image=None,
                 orientation_image=None,
                 metadata=metadata,
@@ -325,8 +342,12 @@ class TriStreamLivePreprocessor:
         foreground_mask: np.ndarray | None = None
         distance_image_2d: np.ndarray | None = None
         orientation_image_2d: np.ndarray | None = None
-        silhouette_result: _SilhouetteResult | None = None
+        foreground_extraction_result: _ForegroundExtractionResult | None = None
+        foreground_extraction_policy = (
+            self._foreground_extraction_policy_state.snapshot()
+        )
         mask_metadata = dict(mask_preparation.metadata)
+        mask_metadata.update(foreground_extraction_policy.to_metadata())
         mask_metadata.update(
             self._background_metadata(
                 snapshot=background_snapshot,
@@ -336,20 +357,21 @@ class TriStreamLivePreprocessor:
         )
         mask_metadata.update(roi_background.metadata)
         try:
-            silhouette_result = self._render_silhouette(
+            foreground_extraction_result = self._extract_foreground(
                 roi_gray=roi_background.preview_gray,
                 source_gray=mask_preparation.regressor_source_gray,
                 source_bounds=source_bounds,
                 roi_bounds=roi_bounds,
+                policy=foreground_extraction_policy,
             )
-            _validate_silhouette_locator_consistency(
-                silhouette_result=silhouette_result,
+            _validate_foreground_locator_consistency(
+                foreground_result=foreground_extraction_result,
                 locator_result=locator_result,
             )
-            silhouette_background_mask = _silhouette_to_background_mask(
-                silhouette_result.roi_silhouette
+            foreground_mask = foreground_extraction_result.roi_foreground_mask.astype(
+                bool,
+                copy=True,
             )
-            foreground_mask = silhouette_background_mask < 0.5
             foreground_mask, foreground_background_metadata = (
                 _foreground_mask_after_background_removal(
                     foreground_mask,
@@ -363,14 +385,14 @@ class TriStreamLivePreprocessor:
                 model_background_mask,
                 image_representation_mode=self._config.image_representation_mode,
             )
-            foreground_result = None
+            foreground_enhancement_result = None
             if self._config.foreground_runtime.active():
-                foreground_result = apply_foreground_enhancement_v4(
+                foreground_enhancement_result = apply_foreground_enhancement_v4(
                     roi_repr,
                     foreground_mask.astype(bool, copy=False),
                     self._config.foreground_runtime.config,
                 )
-                roi_repr = foreground_result.image
+                roi_repr = foreground_enhancement_result.image
             orientation_repr = roi_repr
             raw_orientation_source_gray = _raw_orientation_source_after_background_removal(
                 roi_gray,
@@ -393,7 +415,7 @@ class TriStreamLivePreprocessor:
                 foreground_mask=foreground_mask,
             )
             geometry = _bbox_features_from_xyxy(
-                silhouette_result.feature_bbox_xyxy_px,
+                foreground_extraction_result.feature_bbox_xyxy_px,
                 image_width_px=source_w,
                 image_height_px=source_h,
             )
@@ -420,7 +442,12 @@ class TriStreamLivePreprocessor:
                         None if foreground_mask is None else int(np.count_nonzero(foreground_mask))
                     ),
                     "silhouette_diagnostics": (
-                        None if silhouette_result is None else dict(silhouette_result.diagnostics)
+                        None if foreground_extraction_result is None else dict(foreground_extraction_result.diagnostics)
+                    ),
+                    "foreground_extraction_diagnostics": (
+                        None
+                        if foreground_extraction_result is None
+                        else dict(foreground_extraction_result.diagnostics)
                     ),
                 }
             )
@@ -432,6 +459,7 @@ class TriStreamLivePreprocessor:
                 preprocessor_source_gray=mask_preparation.regressor_source_gray,
                 manual_mask=mask_preparation.manual_mask,
                 roi_crop=roi_background.preview_gray,
+                foreground_mask=foreground_mask,
                 distance_image=distance_image_2d,
                 orientation_image=orientation_image_2d,
                 metadata=metadata,
@@ -462,26 +490,44 @@ class TriStreamLivePreprocessor:
         metadata.update(mask_metadata)
         metadata.update(
             {
+                contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_MODE: (
+                    foreground_extraction_result.extraction_mode
+                ),
+                contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_REVISION: (
+                    int(foreground_extraction_policy.revision)
+                ),
+                contracts.PREPROCESSING_METADATA_FOREGROUND_BBOX_XYXY_PX: (
+                    _array_xyxy_to_tuple(foreground_extraction_result.feature_bbox_xyxy_px)
+                ),
+                contracts.PREPROCESSING_METADATA_FOREGROUND_BBOX_INCLUSIVE_XYXY_PX: (
+                    foreground_extraction_result.bbox_inclusive_xyxy_px
+                ),
+                contracts.PREPROCESSING_METADATA_FOREGROUND_AREA_PX: int(
+                    foreground_extraction_result.area_px
+                ),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_XYXY_PX: (
-                    _array_xyxy_to_tuple(silhouette_result.feature_bbox_xyxy_px)
+                    _array_xyxy_to_tuple(foreground_extraction_result.feature_bbox_xyxy_px)
                 ),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_INCLUSIVE_XYXY_PX: (
-                    silhouette_result.bbox_inclusive_xyxy_px
+                    foreground_extraction_result.bbox_inclusive_xyxy_px
                 ),
-                contracts.PREPROCESSING_METADATA_SILHOUETTE_AREA_PX: int(silhouette_result.area_px),
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_AREA_PX: int(foreground_extraction_result.area_px),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_FALLBACK_USED: bool(
-                    silhouette_result.fallback_used
+                    foreground_extraction_result.fallback_used
                 ),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_PRIMARY_BREAK_REASON: (
-                    silhouette_result.primary_break_reason
+                    foreground_extraction_result.primary_break_reason
                 ),
-                "silhouette_diagnostics": dict(silhouette_result.diagnostics),
+                "silhouette_diagnostics": dict(foreground_extraction_result.diagnostics),
+                "foreground_extraction_diagnostics": dict(
+                    foreground_extraction_result.diagnostics
+                ),
                 "foreground_mask_empty": not bool(np.any(foreground_mask)),
                 "foreground_pixel_count": int(np.count_nonzero(foreground_mask)),
                 "brightness_normalization": brightness_payload,
                 "foreground_enhancement": _foreground_enhancement_payload(
                     self._config.foreground_runtime,
-                    foreground_result,
+                    foreground_enhancement_result,
                     foreground_mask,
                 ),
                 "distance_clipped": bool(distance_clipped),
@@ -506,6 +552,7 @@ class TriStreamLivePreprocessor:
             preprocessor_source_gray=mask_preparation.regressor_source_gray,
             manual_mask=mask_preparation.manual_mask,
             roi_crop=roi_background.preview_gray,
+            foreground_mask=foreground_mask,
             distance_image=distance_image_2d,
             orientation_image=orientation_image_2d,
             metadata=metadata,
@@ -612,7 +659,7 @@ class TriStreamLivePreprocessor:
             "locator_debug_artifacts": locator_result.debug_artifacts.to_dict(),
             **dict(locator_result.extras),
         }
-        return {
+        metadata = {
             "preprocessing_contract_name": self._config.preprocessing_contract_name,
             "preprocessing_contract_version": self._config.preprocessing_contract_version,
             "input_mode": contracts.TRI_STREAM_INPUT_MODE,
@@ -697,6 +744,8 @@ class TriStreamLivePreprocessor:
             "request_id": request.request_id,
             "distance_orientation_regressor_reached": bool(regressor_reached),
         }
+        metadata.update(self._foreground_extraction_policy_state.snapshot().to_metadata())
+        return metadata
 
     def _background_metadata(
         self,
@@ -821,6 +870,84 @@ class TriStreamLivePreprocessor:
             fill_value=fill_value,
         )
 
+    def _extract_foreground(
+        self,
+        *,
+        roi_gray: np.ndarray,
+        source_gray: np.ndarray,
+        source_bounds: np.ndarray,
+        roi_bounds: np.ndarray,
+        policy: ForegroundExtractionPolicySnapshot,
+    ) -> _ForegroundExtractionResult:
+        mode = str(policy.foreground_extraction_mode)
+        if mode == contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value:
+            return self._extract_threshold_foreground(
+                roi_gray=roi_gray,
+                source_gray=source_gray,
+                source_bounds=source_bounds,
+                roi_bounds=roi_bounds,
+                policy=policy,
+            )
+        if mode == contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value:
+            return self._render_silhouette(
+                roi_gray=roi_gray,
+                source_gray=source_gray,
+                source_bounds=source_bounds,
+                roi_bounds=roi_bounds,
+            )
+        raise ValueError(f"Unsupported foreground extraction mode: {mode!r}.")
+
+    def _extract_threshold_foreground(
+        self,
+        *,
+        roi_gray: np.ndarray,
+        source_gray: np.ndarray,
+        source_bounds: np.ndarray,
+        roi_bounds: np.ndarray,
+        policy: ForegroundExtractionPolicySnapshot,
+    ) -> _ForegroundExtractionResult:
+        foreground_mask, diagnostics = _threshold_foreground_mask(
+            roi_gray,
+            policy=policy,
+        )
+        if not bool(np.any(foreground_mask)):
+            raise ValueError("Threshold foreground extraction produced an empty mask")
+
+        roi_silhouette = np.full(roi_gray.shape, 255, dtype=np.uint8)
+        roi_silhouette[foreground_mask] = 0
+        src_x1, src_y1, src_x2, src_y2 = [
+            int(value) for value in source_bounds.tolist()
+        ]
+        roi_x1, roi_y1, roi_x2, roi_y2 = [int(value) for value in roi_bounds.tolist()]
+        full_foreground_mask = np.zeros(source_gray.shape, dtype=bool)
+        full_target = full_foreground_mask[src_y1:src_y2, src_x1:src_x2]
+        full_target[:, :] = foreground_mask[roi_y1:roi_y2, roi_x1:roi_x2]
+        full_foreground_mask[src_y1:src_y2, src_x1:src_x2] = full_target
+        full_silhouette = np.full(source_gray.shape, 255, dtype=np.uint8)
+        full_silhouette[full_foreground_mask] = 0
+        area_px, bbox = _mask_geometry(full_foreground_mask)
+        feature_bbox_xyxy = _feature_bbox_from_geometry(
+            bbox,
+            area_px=area_px,
+            fallback_bounds=source_bounds,
+            source_shape=source_gray.shape,
+        )
+        return _ForegroundExtractionResult(
+            roi_silhouette=roi_silhouette,
+            full_silhouette=full_silhouette,
+            roi_foreground_mask=foreground_mask.astype(bool, copy=False),
+            full_foreground_mask=full_foreground_mask,
+            area_px=area_px,
+            bbox_inclusive_xyxy_px=bbox,
+            feature_bbox_xyxy_px=feature_bbox_xyxy,
+            extraction_mode=(
+                contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value
+            ),
+            fallback_used=False,
+            primary_break_reason="",
+            diagnostics=diagnostics,
+        )
+
     def _render_silhouette(
         self,
         *,
@@ -828,7 +955,7 @@ class TriStreamLivePreprocessor:
         source_gray: np.ndarray,
         source_bounds: np.ndarray,
         roi_bounds: np.ndarray,
-    ) -> _SilhouetteResult:
+    ) -> _ForegroundExtractionResult:
         silhouette_config = self._config.silhouette_config
         generator, fallback, writer = _select_silhouette_components(silhouette_config)
         generated = generator.generate(
@@ -870,32 +997,35 @@ class TriStreamLivePreprocessor:
             if _render_is_empty(roi_silhouette):
                 raise ValueError("Rendered silhouette is empty after fallback")
 
-        src_x1, src_y1, src_x2, src_y2 = [int(value) for value in source_bounds.tolist()]
+        src_x1, src_y1, src_x2, src_y2 = [
+            int(value) for value in source_bounds.tolist()
+        ]
         roi_x1, roi_y1, roi_x2, roi_y2 = [int(value) for value in roi_bounds.tolist()]
         full_silhouette = np.full(source_gray.shape, 255, dtype=np.uint8)
         roi_target = full_silhouette[src_y1:src_y2, src_x1:src_x2]
         roi_source_aligned = roi_silhouette[roi_y1:roi_y2, roi_x1:roi_x2]
         roi_target[roi_source_aligned < 255] = 0
         full_silhouette[src_y1:src_y2, src_x1:src_x2] = roi_target
-        area_px, bbox = _mask_geometry(full_silhouette < 255)
-        if area_px > 0:
-            feature_bbox_xyxy = np.asarray(
-                [
-                    float(bbox[0]),
-                    float(bbox[1]),
-                    float(min(int(source_gray.shape[1]), bbox[2] + 1)),
-                    float(min(int(source_gray.shape[0]), bbox[3] + 1)),
-                ],
-                dtype=np.float32,
-            )
-        else:
-            feature_bbox_xyxy = np.asarray(source_bounds, dtype=np.float32)
-        return _SilhouetteResult(
+        full_foreground_mask = full_silhouette < 255
+        roi_foreground_mask = roi_silhouette < 255
+        area_px, bbox = _mask_geometry(full_foreground_mask)
+        feature_bbox_xyxy = _feature_bbox_from_geometry(
+            bbox,
+            area_px=area_px,
+            fallback_bounds=source_bounds,
+            source_shape=source_gray.shape,
+        )
+        return _ForegroundExtractionResult(
             roi_silhouette=roi_silhouette,
             full_silhouette=full_silhouette,
+            roi_foreground_mask=roi_foreground_mask,
+            full_foreground_mask=full_foreground_mask,
             area_px=area_px,
             bbox_inclusive_xyxy_px=bbox,
             feature_bbox_xyxy_px=feature_bbox_xyxy,
+            extraction_mode=(
+                contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value
+            ),
             fallback_used=fallback_used,
             primary_break_reason=primary_break_reason,
             diagnostics=getattr(generated, "diagnostics", {}),
@@ -972,6 +1102,7 @@ class TriStreamLivePreprocessor:
         preprocessor_source_gray: np.ndarray,
         manual_mask: np.ndarray | None,
         roi_crop: np.ndarray | None,
+        foreground_mask: np.ndarray | None,
         distance_image: np.ndarray | None,
         orientation_image: np.ndarray | None,
         metadata: Mapping[str, Any],
@@ -997,6 +1128,7 @@ class TriStreamLivePreprocessor:
                 ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS: preprocessor_source_gray,
                 ARTIFACT_MANUAL_MASK: manual_mask,
                 ARTIFACT_ROI_CROP: roi_crop,
+                ARTIFACT_FOREGROUND_MASK: foreground_mask,
                 ARTIFACT_DISTANCE_IMAGE: distance_image,
                 ARTIFACT_ORIENTATION_IMAGE: orientation_image,
             },
@@ -1023,6 +1155,151 @@ class TriStreamLivePreprocessor:
             int(self._config.silhouette_config.normalized_roi_canvas_width_px()),
             int(self._config.silhouette_config.normalized_roi_canvas_height_px()),
         )
+
+
+def _threshold_foreground_mask(
+    roi_gray: np.ndarray,
+    *,
+    policy: ForegroundExtractionPolicySnapshot,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    gray = np.asarray(roi_gray, dtype=np.uint8)
+    if gray.ndim != 2:
+        raise ValueError(
+            "threshold foreground expects a 2D grayscale ROI; "
+            f"got {gray.shape}."
+        )
+    background_white = _estimate_background_white(
+        gray,
+        policy.threshold_white_percentile,
+    )
+    relative_threshold = _clamped_uint8(
+        int(round(background_white)) - int(policy.threshold_margin_px)
+    )
+    otsu_threshold, _otsu_image = cv2.threshold(
+        gray,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    )
+    otsu_threshold_i = _clamped_uint8(int(round(float(otsu_threshold))))
+    otsu_mask = gray <= otsu_threshold_i
+    otsu_fraction = _mask_fraction(otsu_mask)
+    if (
+        otsu_fraction >= float(policy.threshold_min_foreground_fraction)
+        and otsu_fraction <= float(policy.threshold_max_foreground_fraction)
+    ):
+        selected_threshold = min(otsu_threshold_i, relative_threshold)
+        threshold_source = "otsu_capped_by_background_white"
+    else:
+        selected_threshold = relative_threshold
+        threshold_source = "background_white_relative"
+
+    foreground_mask = gray <= int(selected_threshold)
+    foreground_before_cleanup_px = int(np.count_nonzero(foreground_mask))
+    foreground_mask = _close_binary_mask(
+        foreground_mask,
+        kernel_size_px=int(policy.threshold_morphology_close_kernel_px),
+    )
+    if bool(policy.threshold_fill_holes):
+        foreground_mask = _fill_binary_holes(foreground_mask)
+    foreground_after_cleanup_px = int(np.count_nonzero(foreground_mask))
+    diagnostics = {
+        "foreground_extraction_algorithm": (
+            contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value
+        ),
+        "background_white_estimate": float(background_white),
+        "background_white_percentile": float(policy.threshold_white_percentile),
+        "relative_threshold": int(relative_threshold),
+        "otsu_threshold": int(otsu_threshold_i),
+        "otsu_foreground_fraction": float(otsu_fraction),
+        "selected_threshold": int(selected_threshold),
+        "selected_threshold_source": threshold_source,
+        "foreground_pixel_count_before_cleanup": foreground_before_cleanup_px,
+        "foreground_pixel_count_after_cleanup": foreground_after_cleanup_px,
+        "morphology_close_kernel_px": int(
+            _normalized_odd_kernel_size(policy.threshold_morphology_close_kernel_px)
+        ),
+        "fill_holes": bool(policy.threshold_fill_holes),
+    }
+    return foreground_mask.astype(bool, copy=False), diagnostics
+
+
+def _estimate_background_white(gray: np.ndarray, percentile: float) -> float:
+    flat = np.asarray(gray, dtype=np.uint8).reshape(-1)
+    if flat.size == 0:
+        return 255.0
+    saturated_fraction = float(np.mean(flat >= 250))
+    unsaturated = flat[flat < 250]
+    if saturated_fraction < 0.50 and unsaturated.size >= max(
+        32,
+        int(flat.size * 0.05),
+    ):
+        sample = unsaturated
+    else:
+        sample = flat
+    return float(np.percentile(sample.astype(np.float32), float(percentile)))
+
+
+def _close_binary_mask(mask: np.ndarray, *, kernel_size_px: int) -> np.ndarray:
+    kernel_size = _normalized_odd_kernel_size(kernel_size_px)
+    if kernel_size <= 1:
+        return mask.astype(bool, copy=True)
+    kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+    closed = cv2.morphologyEx(
+        mask.astype(np.uint8) * 255,
+        cv2.MORPH_CLOSE,
+        kernel,
+    )
+    return closed > 0
+
+
+def _fill_binary_holes(mask: np.ndarray) -> np.ndarray:
+    source = mask.astype(np.uint8)
+    padded = np.pad(source, 1, mode="constant", constant_values=0)
+    flood = padded.copy()
+    cv2.floodFill(flood, None, (0, 0), 1)
+    holes = (flood == 0) & (padded == 0)
+    filled = padded.astype(bool) | holes
+    return filled[1:-1, 1:-1]
+
+
+def _normalized_odd_kernel_size(value: int) -> int:
+    size = max(0, int(value))
+    if size <= 1:
+        return 0
+    return size if size % 2 == 1 else size + 1
+
+
+def _mask_fraction(mask: np.ndarray) -> float:
+    total = int(mask.size)
+    if total <= 0:
+        return 0.0
+    return float(np.count_nonzero(mask)) / float(total)
+
+
+def _feature_bbox_from_geometry(
+    bbox: tuple[int, int, int, int],
+    *,
+    area_px: int,
+    fallback_bounds: np.ndarray,
+    source_shape: tuple[int, ...],
+) -> np.ndarray:
+    if area_px <= 0:
+        return np.asarray(fallback_bounds, dtype=np.float32)
+    source_h, source_w = int(source_shape[0]), int(source_shape[1])
+    return np.asarray(
+        [
+            float(bbox[0]),
+            float(bbox[1]),
+            float(min(source_w, bbox[2] + 1)),
+            float(min(source_h, bbox[3] + 1)),
+        ],
+        dtype=np.float32,
+    )
+
+
+def _clamped_uint8(value: int) -> int:
+    return max(0, min(255, int(value)))
 
 
 def _locator_display_image(
@@ -1059,33 +1336,35 @@ def _reason_text(reasons: tuple[str, ...]) -> str:
     return ";".join(str(reason) for reason in reasons if str(reason).strip())
 
 
-def _validate_silhouette_locator_consistency(
+def _validate_foreground_locator_consistency(
     *,
-    silhouette_result: _SilhouetteResult,
+    foreground_result: _ForegroundExtractionResult,
     locator_result: contracts.LocatorResult,
 ) -> None:
     locator_bbox = locator_result.bbox_xyxy_px
     if locator_bbox is None:
         return
     lx1, ly1, lx2, ly2 = [float(value) for value in locator_bbox]
-    sx1, sy1, sx2, sy2 = [float(value) for value in silhouette_result.feature_bbox_xyxy_px]
+    sx1, sy1, sx2, sy2 = [
+        float(value) for value in foreground_result.feature_bbox_xyxy_px
+    ]
     locator_w = max(1e-6, lx2 - lx1)
     locator_h = max(1e-6, ly2 - ly1)
-    silhouette_w = max(0.0, sx2 - sx1)
-    silhouette_h = max(0.0, sy2 - sy1)
+    foreground_w = max(0.0, sx2 - sx1)
+    foreground_h = max(0.0, sy2 - sy1)
     locator_area = locator_w * locator_h
     if locator_area < 5_000.0:
         return
 
-    width_ratio = silhouette_w / locator_w
-    height_ratio = silhouette_h / locator_h
-    area_ratio = (silhouette_w * silhouette_h) / locator_area
+    width_ratio = foreground_w / locator_w
+    height_ratio = foreground_h / locator_h
+    area_ratio = (foreground_w * foreground_h) / locator_area
     if area_ratio >= 0.02 or width_ratio >= 0.15 or height_ratio >= 0.15:
         return
 
     raise ValueError(
-        "silhouette bbox is implausibly small relative to accepted locator bbox: "
-        f"silhouette=({silhouette_w:.1f}x{silhouette_h:.1f}), "
+        "foreground bbox is implausibly small relative to accepted locator bbox: "
+        f"foreground=({foreground_w:.1f}x{foreground_h:.1f}), "
         f"locator=({locator_w:.1f}x{locator_h:.1f}), "
         f"area_ratio={area_ratio:.4f}"
     )

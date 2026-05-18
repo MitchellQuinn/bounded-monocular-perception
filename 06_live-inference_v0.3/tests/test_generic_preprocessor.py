@@ -29,6 +29,7 @@ from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     BackgroundEdgeLocator,
     FixedCenterRoiLocator,
+    ForegroundExtractionPolicyState,
     ManualFixedRoiLocator,
     TriStreamLivePreprocessor,
 )
@@ -62,6 +63,12 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         self.assertEqual(
             prepared.preprocessing_metadata[contracts.PREPROCESSING_METADATA_LOCATOR_KIND],
             contracts.LocatorKind.BACKGROUND_EDGE_V1.value,
+        )
+        self.assertEqual(
+            prepared.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_MODE
+            ],
+            contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
         )
 
     def test_locator_only_trace_writes_required_debug_artifacts(self) -> None:
@@ -181,7 +188,7 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         ):
             self.assertTrue((trace_path / filename).is_file(), filename)
 
-    def test_incident_roi_does_not_collapse_to_tiny_silhouette(self) -> None:
+    def test_incident_roi_does_not_collapse_to_tiny_threshold_foreground(self) -> None:
         fixture = (
             PROJECT_ROOT.parent
             / "failure-analysis"
@@ -201,12 +208,50 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         prepared = preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
 
         metadata = prepared.preprocessing_metadata
+        self.assertEqual(
+            metadata[contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_MODE],
+            contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
+        )
         self.assertGreater(metadata["foreground_pixel_count"], 40_000)
+        self.assertLess(metadata["foreground_pixel_count"], 70_000)
+        diagnostics = metadata["foreground_extraction_diagnostics"]
+        self.assertEqual(
+            diagnostics["foreground_extraction_algorithm"],
+            contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
+        )
+        self.assertGreater(diagnostics["background_white_estimate"], 180.0)
         geometry = prepared.model_inputs[contracts.TRI_STREAM_GEOMETRY_KEY]
         self.assertGreater(float(geometry[2]), 230.0)
         self.assertGreater(float(geometry[3]), 290.0)
         distance_image = prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
         self.assertGreater(int(np.count_nonzero(distance_image < 250)), 40_000)
+
+    def test_foreground_policy_can_select_legacy_silhouette_path(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        policy_state = ForegroundExtractionPolicyState()
+        policy_state.update(
+            foreground_extraction_mode=(
+                contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value
+            )
+        )
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=FixedCenterRoiLocator(roi_wh_px=(320, 320)),
+            foreground_extraction_policy_state=policy_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        self.assertEqual(
+            prepared.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_MODE
+            ],
+            contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value,
+        )
+        self.assertEqual(
+            prepared.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_REVISION
+            ],
+            1,
+        )
 
 
 def _manifest() -> object:

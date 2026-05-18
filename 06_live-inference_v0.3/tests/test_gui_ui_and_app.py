@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 import interfaces.contracts as contracts  # noqa: E402
 from live_inference.gui.app import build_live_inference_gui_context  # noqa: E402
 from live_inference.gui.main_window import LiveInferenceMainWindow  # noqa: E402
+from live_inference.preprocessing import ForegroundExtractionPolicyState  # noqa: E402
 
 
 class _Controller:
@@ -53,7 +54,29 @@ class GuiUiAndAppTests(unittest.TestCase):
         self.assertEqual(window.erase_mask_button.text(), "Erase")
         self.assertEqual(window.apply_mask_button.text(), "Apply")
         self.assertEqual(window.mask_brush_size_spinbox.value(), 100)
+        self.assertEqual(
+            window.use_silhouette_preprocessing_checkbox.text(),
+            "Use silhouette preprocessing",
+        )
+        self.assertFalse(window.use_silhouette_preprocessing_checkbox.isChecked())
         self.assertIn("mask:", window.mask_status_value.text())
+
+    def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
+        policy_state = ForegroundExtractionPolicyState()
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+            foreground_extraction_policy_state=policy_state,
+        )
+
+        window.use_silhouette_preprocessing_checkbox.setChecked(True)
+
+        snapshot = policy_state.snapshot()
+        self.assertEqual(
+            snapshot.foreground_extraction_mode,
+            contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value,
+        )
+        self.assertEqual(snapshot.revision, 1)
 
     def test_draw_mask_buttons_commit_to_shared_mask_state(self) -> None:
         window = LiveInferenceMainWindow(
@@ -91,6 +114,10 @@ class GuiUiAndAppTests(unittest.TestCase):
             self.assertEqual(
                 type(context.frame_mask_state).__name__,
                 "FrameMaskState",
+            )
+            self.assertEqual(
+                context.foreground_extraction_policy_state.snapshot().foreground_extraction_mode,
+                contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
             )
         finally:
             context.camera_controller.request_stop()
