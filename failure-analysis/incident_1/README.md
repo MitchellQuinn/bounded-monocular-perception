@@ -254,7 +254,42 @@ Useful assertions:
 - generated `x_distance_image` contains the full vehicle
 - the bad trace no longer produces tiny geometry
 
-## 11. Engineering Lessons
+## 11. Outcome and Improvements
+
+The incident has now been converted into a concrete preprocessing improvement and regression test case.
+
+The intensity-recovery selector was changed so that border-touching components are no longer searched only after all non-border candidates. Instead, all Otsu-threshold candidates are scored together. Border contact remains a weak penalty, but it is no longer strong enough to make a tiny interior fragment beat a much larger plausible vehicle component. The selector also applies a small preference for the expected live-capture polarity: a dark foreground object on a light or white background.
+
+The incident ROI now recovers the full vehicle-sized foreground component:
+
+```text
+selected component area: ~45,299 px
+selected component bbox: [35, 10, 283, 319] in ROI coordinates
+threshold mode: binary_inv
+border contact: true, bottom edge
+```
+
+This is the desired behaviour for a close vehicle that legitimately touches the ROI crop boundary.
+
+A locator-relative consistency guard was also added before model inference. It only applies when the accepted locator bbox is large enough to make a tiny silhouette implausible, so it does not reject genuinely distant vehicles that are small in both the locator and silhouette outputs. The guard is designed to fail closed: if a large accepted ROI collapses to a tiny silhouette, the system reports a preprocessing failure instead of feeding corrupted geometry and image streams to the regressor.
+
+Regression coverage was added at two levels:
+
+- `test_v4_silhouette_algorithms.py` verifies that the incident ROI crop selects the large border-touching vehicle component rather than the tiny fragment.
+- `test_generic_preprocessor.py` verifies the live v0.3 preprocessor produces a large foreground mask, large geometry, and a non-empty vehicle representation from the incident frame and locator bbox.
+
+The focused and broader validation suites passed after the change:
+
+```text
+v4 silhouette algorithm tests: pass
+v0.3 generic preprocessor tests: pass
+v4 pipeline integration tests: pass
+v0.3 live inference test discovery: pass
+```
+
+The practical outcome is that the failure mode is no longer just documented. It is represented as a fixture-backed regression test and guarded in the live preprocessing path.
+
+## 12. Engineering Lessons
 
 This incident is a useful example of why ML systems need inspectable preprocessing artifacts, not just model output logs.
 
@@ -271,7 +306,7 @@ model output: explainable from corrupted input
 
 That distinction matters. It turns an apparently vague "the model is wrong" problem into a targeted engineering fix with testable acceptance criteria.
 
-## 12. Appendix: Key Artifact Links
+## 13. Appendix: Key Artifact Links
 
 Failing trace:
 
