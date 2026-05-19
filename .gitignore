@@ -63,6 +63,9 @@ pip-wheel-metadata/
 06_live-inference_v*/live_debug/
 06_live-inference_v*/live_frames/
 06_live-inference_v*/live_traces/
+calibration_runs/*
+charuco-calibration/calibration_runs/*
+!charuco-calibration/calibration_runs/.gitkeep
 
 
 # ------------------------------

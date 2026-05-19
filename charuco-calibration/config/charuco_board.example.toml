@@ -1,0 +1,16 @@
+[board]
+pattern_type = "charuco"
+
+# 30 mm A4 board: 6 columns x 9 rows.
+# If Board Debug reports the reverse as more plausible, swap these.
+squares_x = 6
+squares_y = 9
+
+square_length_m = 0.030
+marker_length_m = 0.022
+
+# Required. Replace with the exact OpenCV dictionary constant.
+# Example format: "DICT_4X4_50", "DICT_5X5_100", etc.
+aruco_dictionary = "DICT_4X4_100"
+
+board_name = "calibio_charuco_30mm_a4"

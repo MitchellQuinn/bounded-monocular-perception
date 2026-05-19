@@ -1,0 +1,18 @@
+[capture_policy]
+target_accepted_frame_count = 45
+min_marker_count = 8
+min_charuco_corner_count = 24
+min_board_area_fraction = 0.03
+max_board_area_fraction = 0.85
+min_edge_margin_px = 12
+min_laplacian_variance = 80.0
+cooldown_seconds = 1.5
+require_pose_novelty = true
+require_stability = true
+stability_window_frames = 3
+pose_grid_cols = 3
+pose_grid_rows = 3
+scale_bin_count = 3
+# Two tilt bins are enough for this fixed-focus AR0234 setup: flatter views and
+# visibly oblique views. A third bin tends to demand impractically extreme tilt.
+tilt_bin_count = 2

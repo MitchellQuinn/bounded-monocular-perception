@@ -1,0 +1,11 @@
+[camera]
+camera_source_type = "opencv_v4l2"
+camera_device = "/dev/video0"
+camera_name = "Arducam B0495 AR0234"
+
+# Match the live inference camera mode. Intrinsics are resolution/mode specific.
+width_px = 1920
+height_px = 1200
+fps = 80
+pixel_format = "YUYV"
+backend = "V4L2"
