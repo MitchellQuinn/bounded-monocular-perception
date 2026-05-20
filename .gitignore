@@ -106,6 +106,7 @@ analysis/
 *.zip
 *.zip.meta
 !examples/defender-images/**
+*.pdf
 
 # ------------------------------
 # Unity project generated and user-specific files
