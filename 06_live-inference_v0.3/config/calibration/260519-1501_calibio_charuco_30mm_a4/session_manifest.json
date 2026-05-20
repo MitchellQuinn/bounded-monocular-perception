@@ -1,0 +1,1500 @@
+{
+  "accepted_frames": [
+    {
+      "captured_at_utc": "2026-05-19T14:46:00.497Z",
+      "charuco_corner_count": 38,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0001.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "65b90759cd90524dc298fbe3da20111b"
+      },
+      "frame_id": "frame-00000507-9edb1124",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.08924045138888889,
+        "center_x_norm": 0.35078125,
+        "center_y_norm": 0.32083333333333336,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.17750002767668394
+        },
+        "grid_cell": [
+          1,
+          0
+        ],
+        "perspective_skew_score": 0.33850506240578204,
+        "roll_like_angle_deg": -5.376705646514893,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.17750002767668394,
+        "clipped_black_fraction": 0.11867621527777777,
+        "clipped_white_fraction": 0.012422309027777778,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 88.75001383834197,
+        "luma_std": 67.81001281738281,
+        "mean_luma": 70.14912414550781
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:02.094Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0002.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "882189dde1c7edd5962721a66d196f72"
+      },
+      "frame_id": "frame-00000517-1d22ee48",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.08518619791666666,
+        "center_x_norm": 0.23463541666666668,
+        "center_y_norm": 0.32166666666666666,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.21574589749517145
+        },
+        "grid_cell": [
+          0,
+          0
+        ],
+        "perspective_skew_score": 0.35170363222018275,
+        "roll_like_angle_deg": -3.179830312728882,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.21574589749517145,
+        "clipped_black_fraction": 0.11032378472222222,
+        "clipped_white_fraction": 0.006822916666666666,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 107.87294874758572,
+        "luma_std": 69.28662109375,
+        "mean_luma": 75.93321990966797
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:07.341Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0003.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "ca11df4f99e085fa9b0bd53688a80b8f"
+      },
+      "frame_id": "frame-00000551-4fe786fc",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.08772526041666667,
+        "center_x_norm": 0.40286458333333336,
+        "center_y_norm": 0.28833333333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.21724799148139068
+        },
+        "grid_cell": [
+          1,
+          0
+        ],
+        "perspective_skew_score": 0.333202048923677,
+        "roll_like_angle_deg": 0.6365966796875,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.21724799148139068,
+        "clipped_black_fraction": 0.09875434027777778,
+        "clipped_white_fraction": 0.026452256944444443,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 108.62399574069534,
+        "luma_std": 71.19696807861328,
+        "mean_luma": 79.25408935546875
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:12.751Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0004.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "800b40b3eb2498a570ad529be0db0fe3"
+      },
+      "frame_id": "frame-00000587-f4e60c88",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07737760416666667,
+        "center_x_norm": 0.678125,
+        "center_y_norm": 0.2679166666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.22251818733110557
+        },
+        "grid_cell": [
+          2,
+          0
+        ],
+        "perspective_skew_score": 0.3704490286541632,
+        "roll_like_angle_deg": -1.3971810340881348,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.22251818733110557,
+        "clipped_black_fraction": 0.09745399305555555,
+        "clipped_white_fraction": 0.019688802083333335,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 111.25909366555278,
+        "luma_std": 66.93062591552734,
+        "mean_luma": 75.03175354003906
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:17.054Z",
+      "charuco_corner_count": 31,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0005.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "0b6d535fdc8716d5ac5ca13280258362"
+      },
+      "frame_id": "frame-00000615-20d46f71",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005.png",
+      "marker_count": 24,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.06569618055555555,
+        "center_x_norm": 0.671875,
+        "center_y_norm": 0.38625,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.19846240091228873
+        },
+        "grid_cell": [
+          2,
+          1
+        ],
+        "perspective_skew_score": 0.341782988620441,
+        "roll_like_angle_deg": -5.612203121185303,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.19846240091228873,
+        "clipped_black_fraction": 0.09446875,
+        "clipped_white_fraction": 0.028735243055555557,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 99.23120045614436,
+        "luma_std": 67.63949584960938,
+        "mean_luma": 79.28536224365234
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:18.864Z",
+      "charuco_corner_count": 38,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0006.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "8427d5be57623e7d142f1c6670e8b4fe"
+      },
+      "frame_id": "frame-00000627-222696fe",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07048589409722222,
+        "center_x_norm": 0.3,
+        "center_y_norm": 0.51875,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.197358742099606
+        },
+        "grid_cell": [
+          0,
+          1
+        ],
+        "perspective_skew_score": 0.3096222330998931,
+        "roll_like_angle_deg": -7.268051624298096,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.197358742099606,
+        "clipped_black_fraction": 0.12462847222222222,
+        "clipped_white_fraction": 0.006797309027777778,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 98.679371049803,
+        "luma_std": 65.43573760986328,
+        "mean_luma": 72.1085433959961
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:20.968Z",
+      "charuco_corner_count": 36,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0007.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "aaf93e08cdeacbe18f673d9897731ebe"
+      },
+      "frame_id": "frame-00000641-bcb95888",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07153559027777778,
+        "center_x_norm": 0.19088541666666667,
+        "center_y_norm": 0.4791666666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2318409426800477
+        },
+        "grid_cell": [
+          0,
+          1
+        ],
+        "perspective_skew_score": 0.3401805737568415,
+        "roll_like_angle_deg": 1.10406494140625,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.2318409426800477,
+        "clipped_black_fraction": 0.10378515625,
+        "clipped_white_fraction": 0.007932725694444445,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 115.92047134002385,
+        "luma_std": 66.9766616821289,
+        "mean_luma": 82.58404541015625
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:24.573Z",
+      "charuco_corner_count": 35,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0008.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "4a98ef73a5d982db427609cacc7bd30e"
+      },
+      "frame_id": "frame-00000665-3dcb8274",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008.png",
+      "marker_count": 25,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07106401909722222,
+        "center_x_norm": 0.4515625,
+        "center_y_norm": 0.4708333333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.18381044591597795
+        },
+        "grid_cell": [
+          1,
+          1
+        ],
+        "perspective_skew_score": 0.3159119356136936,
+        "roll_like_angle_deg": -2.7702159881591797,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.18381044591597795,
+        "clipped_black_fraction": 0.13003342013888888,
+        "clipped_white_fraction": 0.02142404513888889,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 91.90522295798897,
+        "luma_std": 67.14793395996094,
+        "mean_luma": 68.2298355102539
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:32.409Z",
+      "charuco_corner_count": 24,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0009.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "ddd11c7755c2ad242b0267756e6a7ed5"
+      },
+      "frame_id": "frame-00000717-b2cfcdab",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009.png",
+      "marker_count": 20,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.04256271701388889,
+        "center_x_norm": 0.35078125,
+        "center_y_norm": 0.725,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.21708318208757715
+        },
+        "grid_cell": [
+          1,
+          2
+        ],
+        "perspective_skew_score": 0.3327799143150393,
+        "roll_like_angle_deg": -10.251199722290039,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.21708318208757715,
+        "clipped_black_fraction": 0.10528211805555555,
+        "clipped_white_fraction": 0.006045572916666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 108.54159104378857,
+        "luma_std": 64.74055480957031,
+        "mean_luma": 78.88336181640625
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:33.978Z",
+      "charuco_corner_count": 36,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0010.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "810654281cf59a7358518218104cb52a"
+      },
+      "frame_id": "frame-00000727-2257d90e",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010.png",
+      "marker_count": 25,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.04466384548611111,
+        "center_x_norm": 0.27057291666666666,
+        "center_y_norm": 0.7408333333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2288420536305881
+        },
+        "grid_cell": [
+          0,
+          2
+        ],
+        "perspective_skew_score": 0.28821098827186975,
+        "roll_like_angle_deg": -5.727835655212402,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.2288420536305881,
+        "clipped_black_fraction": 0.09698828125,
+        "clipped_white_fraction": 0.007965277777777778,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 114.42102681529406,
+        "luma_std": 64.30021667480469,
+        "mean_luma": 83.41177368164062
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:37.420Z",
+      "charuco_corner_count": 34,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0011.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "bcb7c01897239b0ad76d4cfb4d9d21f9"
+      },
+      "frame_id": "frame-00000750-a636a687",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011.png",
+      "marker_count": 25,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.043782118055555555,
+        "center_x_norm": 0.16822916666666668,
+        "center_y_norm": 0.7483333333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.22596072203443138
+        },
+        "grid_cell": [
+          0,
+          2
+        ],
+        "perspective_skew_score": 0.34466783517463795,
+        "roll_like_angle_deg": 0.28936767578125,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.22596072203443138,
+        "clipped_black_fraction": 0.10187977430555556,
+        "clipped_white_fraction": 0.008418402777777778,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 0.9541268348693848,
+        "extras": {},
+        "laplacian_variance": 112.98036101721569,
+        "luma_std": 61.064117431640625,
+        "mean_luma": 84.16197967529297
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:53.647Z",
+      "charuco_corner_count": 24,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0012.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "3e1cb7b861b1d00133154b495e15d72d"
+      },
+      "frame_id": "frame-00000859-c85856ad",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012.png",
+      "marker_count": 20,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.034230685763888886,
+        "center_x_norm": 0.7747395833333334,
+        "center_y_norm": 0.74375,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.23524665277642146
+        },
+        "grid_cell": [
+          2,
+          2
+        ],
+        "perspective_skew_score": 0.3824278812381793,
+        "roll_like_angle_deg": -4.916566371917725,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.23524665277642146,
+        "clipped_black_fraction": 0.08887760416666667,
+        "clipped_white_fraction": 0.006342013888888889,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 0.994081437587738,
+        "extras": {},
+        "laplacian_variance": 117.62332638821073,
+        "luma_std": 63.621212005615234,
+        "mean_luma": 84.07792663574219
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:46:55.525Z",
+      "charuco_corner_count": 27,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0013.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "1394da8d938ed9ab1b4431e0200a9982"
+      },
+      "frame_id": "frame-00000871-7dc7f6dc",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013.png",
+      "marker_count": 21,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.039299913194444445,
+        "center_x_norm": 0.78984375,
+        "center_y_norm": 0.73,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.25385751550173
+        },
+        "grid_cell": [
+          2,
+          2
+        ],
+        "perspective_skew_score": 0.2956722391323088,
+        "roll_like_angle_deg": -11.575188636779785,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.25385751550173,
+        "clipped_black_fraction": 0.07703211805555556,
+        "clipped_white_fraction": 0.014752170138888888,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 126.92875775086502,
+        "luma_std": 66.1250228881836,
+        "mean_luma": 91.1148681640625
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:47:05.933Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0014.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "f2ed5732443300713eb5c043728d8d8d"
+      },
+      "frame_id": "frame-00000943-a550a867",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07480186631944444,
+        "center_x_norm": 0.47682291666666665,
+        "center_y_norm": 0.4816666666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.1770185729166124
+        },
+        "grid_cell": [
+          1,
+          1
+        ],
+        "perspective_skew_score": 0.3436428541847265,
+        "roll_like_angle_deg": -3.911571979522705,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.1770185729166124,
+        "clipped_black_fraction": 0.12979947916666668,
+        "clipped_white_fraction": 0.005686197916666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 88.5092864583062,
+        "luma_std": 66.89228057861328,
+        "mean_luma": 67.43228149414062
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:49:41.387Z",
+      "charuco_corner_count": 25,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0015.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "25e4b0440813935b74511cb5eb04ba7a"
+      },
+      "frame_id": "frame-00002012-458d4186",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015.png",
+      "marker_count": 21,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.06250542534722223,
+        "center_x_norm": 0.6700520833333333,
+        "center_y_norm": 0.4870833333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.1855991414899356
+        },
+        "grid_cell": [
+          2,
+          1
+        ],
+        "perspective_skew_score": 0.3293046485723048,
+        "roll_like_angle_deg": -8.937031745910645,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.1855991414899356,
+        "clipped_black_fraction": 0.09093880208333334,
+        "clipped_white_fraction": 0.0003745659722222222,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 92.7995707449678,
+        "luma_std": 65.75818634033203,
+        "mean_luma": 80.31716918945312
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:11.126Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0001.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "4d33f7feea86aaa240ae86e267a2fb0f"
+      },
+      "frame_id": "frame-00000099-3b378fe1",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.06741449652777778,
+        "center_x_norm": 0.47109375,
+        "center_y_norm": 0.46416666666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2317254591943175
+        },
+        "grid_cell": [
+          1,
+          1
+        ],
+        "perspective_skew_score": 0.35999301997762057,
+        "roll_like_angle_deg": -1.5343414545059204,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.2317254591943175,
+        "clipped_black_fraction": 0.09833029513888888,
+        "clipped_white_fraction": 0.005623263888888889,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 115.86272959715875,
+        "luma_std": 64.0814437866211,
+        "mean_luma": 75.92245483398438
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:16.916Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0002.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "9f9c3583e87b46aa3f2843246f3f21a9"
+      },
+      "frame_id": "frame-00000137-3f3d054e",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.084361328125,
+        "center_x_norm": 0.22890625,
+        "center_y_norm": 0.34208333333333335,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2480033593314465
+        },
+        "grid_cell": [
+          0,
+          1
+        ],
+        "perspective_skew_score": 0.34272068006434797,
+        "roll_like_angle_deg": -4.382714748382568,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.2480033593314465,
+        "clipped_black_fraction": 0.09963324652777777,
+        "clipped_white_fraction": 0.007557291666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 124.00167966572324,
+        "luma_std": 68.14385223388672,
+        "mean_luma": 80.36505889892578
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:19.341Z",
+      "charuco_corner_count": 33,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0003.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "1574b157624690ad192751899f4c5b37"
+      },
+      "frame_id": "frame-00000152-347a9705",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018.png",
+      "marker_count": 25,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07683268229166666,
+        "center_x_norm": 0.14166666666666666,
+        "center_y_norm": 0.2995833333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.25869475168728295
+        },
+        "grid_cell": [
+          0,
+          0
+        ],
+        "perspective_skew_score": 0.3505026691447056,
+        "roll_like_angle_deg": -3.179830312728882,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.25869475168728295,
+        "clipped_black_fraction": 0.08373871527777778,
+        "clipped_white_fraction": 0.008289496527777778,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 129.3473758436415,
+        "luma_std": 65.82392883300781,
+        "mean_luma": 88.3432388305664
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:23.778Z",
+      "charuco_corner_count": 39,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0004.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "686c45f2d489f3259e606fda0c791c6b"
+      },
+      "frame_id": "frame-00000180-b95a322a",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07696332465277778,
+        "center_x_norm": 0.3932291666666667,
+        "center_y_norm": 0.2841666666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.250370708963267
+        },
+        "grid_cell": [
+          1,
+          0
+        ],
+        "perspective_skew_score": 0.3412987923331473,
+        "roll_like_angle_deg": -2.602562189102173,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.250370708963267,
+        "clipped_black_fraction": 0.08889670138888889,
+        "clipped_white_fraction": 0.010048177083333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 125.1853544816335,
+        "luma_std": 68.75749969482422,
+        "mean_luma": 84.16280364990234
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:27.353Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0005.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "2e0d9df5cf1d58a4685457f739c04405"
+      },
+      "frame_id": "frame-00000203-7a2cf323",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07904535590277778,
+        "center_x_norm": 0.6911458333333333,
+        "center_y_norm": 0.29541666666666666,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.24881150432565613
+        },
+        "grid_cell": [
+          2,
+          0
+        ],
+        "perspective_skew_score": 0.34580553488778887,
+        "roll_like_angle_deg": -2.1427199840545654,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.24881150432565613,
+        "clipped_black_fraction": 0.06792621527777777,
+        "clipped_white_fraction": 0.006870225694444444,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 124.40575216282807,
+        "luma_std": 66.555908203125,
+        "mean_luma": 87.05574798583984
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:30.056Z",
+      "charuco_corner_count": 38,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0006.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "2d90e9b16f974a1225f94ff18f1722b2"
+      },
+      "frame_id": "frame-00000220-01c478bd",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07416427951388889,
+        "center_x_norm": 0.7338541666666667,
+        "center_y_norm": 0.3775,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.23261562760389198
+        },
+        "grid_cell": [
+          2,
+          1
+        ],
+        "perspective_skew_score": 0.3401796910253455,
+        "roll_like_angle_deg": -2.576571464538574,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.23261562760389198,
+        "clipped_black_fraction": 0.059923177083333334,
+        "clipped_white_fraction": 0.014049913194444444,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 116.307813801946,
+        "luma_std": 65.35906982421875,
+        "mean_luma": 87.26658630371094
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:31.707Z",
+      "charuco_corner_count": 34,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0007.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "af097af21d1fb76f6a5297306bf34df6"
+      },
+      "frame_id": "frame-00000230-536f52c8",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022.png",
+      "marker_count": 25,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.06799739583333334,
+        "center_x_norm": 0.7736979166666667,
+        "center_y_norm": 0.50125,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.24778673517176306
+        },
+        "grid_cell": [
+          2,
+          1
+        ],
+        "perspective_skew_score": 0.32770032840336527,
+        "roll_like_angle_deg": -1.4906319379806519,
+        "scale_bin": 1,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.24778673517176306,
+        "clipped_black_fraction": 0.06859592013888889,
+        "clipped_white_fraction": 0.012362847222222223,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 123.89336758588153,
+        "luma_std": 64.2042236328125,
+        "mean_luma": 86.15583038330078
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:36.000Z",
+      "charuco_corner_count": 28,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0008.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "f0a917e7586da11c42bfec814a212b3d"
+      },
+      "frame_id": "frame-00000257-47ed0d1e",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023.png",
+      "marker_count": 22,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.04444422743055555,
+        "center_x_norm": 0.23619791666666667,
+        "center_y_norm": 0.7608333333333334,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.23221702683842974
+        },
+        "grid_cell": [
+          0,
+          2
+        ],
+        "perspective_skew_score": 0.2978244562880301,
+        "roll_like_angle_deg": -8.690382957458496,
+        "scale_bin": 0,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.23221702683842974,
+        "clipped_black_fraction": 0.1080390625,
+        "clipped_white_fraction": 0.007778211805555556,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 0.9089043736457825,
+        "extras": {},
+        "laplacian_variance": 116.10851341921487,
+        "luma_std": 58.16987991333008,
+        "mean_luma": 79.96287536621094
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:46.749Z",
+      "charuco_corner_count": 24,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0009.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "eb73c456ec8aaa560c0793bd7531c154"
+      },
+      "frame_id": "frame-00000328-e8bb25ef",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024.png",
+      "marker_count": 20,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.053206380208333334,
+        "center_x_norm": 0.51328125,
+        "center_y_norm": 0.7345833333333334,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2436235189104938
+        },
+        "grid_cell": [
+          1,
+          2
+        ],
+        "perspective_skew_score": 0.34380542923572777,
+        "roll_like_angle_deg": 2.5448074340820312,
+        "scale_bin": 1,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.2436235189104938,
+        "clipped_black_fraction": 0.09621701388888888,
+        "clipped_white_fraction": 0.01709592013888889,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 121.8117594552469,
+        "luma_std": 68.88752746582031,
+        "mean_luma": 87.16996765136719
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:51:53.775Z",
+      "charuco_corner_count": 24,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0010.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "a49f36473ee2d8283b192189f40c4d59"
+      },
+      "frame_id": "frame-00000373-bf22a076",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025.png",
+      "marker_count": 21,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.05073589409722222,
+        "center_x_norm": 0.7716145833333333,
+        "center_y_norm": 0.7816666666666666,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.23995959117249854
+        },
+        "grid_cell": [
+          2,
+          2
+        ],
+        "perspective_skew_score": 0.3126736810561894,
+        "roll_like_angle_deg": 1.1233062744140625,
+        "scale_bin": 1,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.23995959117249854,
+        "clipped_black_fraction": 0.08102039930555556,
+        "clipped_white_fraction": 0.0003771701388888889,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 119.97979558624927,
+        "luma_std": 64.6568832397461,
+        "mean_luma": 89.57563018798828
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:52:02.853Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0011.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "bf1a37a6bda084308dca6ee391421665"
+      },
+      "frame_id": "frame-00000431-ceb0a44e",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.0962654079861111,
+        "center_x_norm": 0.496875,
+        "center_y_norm": 0.5358333333333334,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.1953666715027474
+        },
+        "grid_cell": [
+          1,
+          1
+        ],
+        "perspective_skew_score": 0.33274996730877293,
+        "roll_like_angle_deg": -3.5632681846618652,
+        "scale_bin": 2,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.1953666715027474,
+        "clipped_black_fraction": 0.11890407986111111,
+        "clipped_white_fraction": 0.009413194444444445,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 97.68333575137369,
+        "luma_std": 69.94154357910156,
+        "mean_luma": 75.51322174072266
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:52:04.395Z",
+      "charuco_corner_count": 40,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0012.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "b50cffeca60491ecc6f652d683524d77"
+      },
+      "frame_id": "frame-00000441-4508a3e2",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027.png",
+      "marker_count": 27,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.10123741319444444,
+        "center_x_norm": 0.5333333333333333,
+        "center_y_norm": 0.5504166666666667,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.19480277578709582
+        },
+        "grid_cell": [
+          1,
+          1
+        ],
+        "perspective_skew_score": 0.3355397164130902,
+        "roll_like_angle_deg": -3.3664603233337402,
+        "scale_bin": 2,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.19480277578709582,
+        "clipped_black_fraction": 0.11648914930555555,
+        "clipped_white_fraction": 0.004086805555555555,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 97.4013878935479,
+        "luma_std": 71.342041015625,
+        "mean_luma": 77.13008117675781
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:52:12.495Z",
+      "charuco_corner_count": 38,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0013.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "a442dda101030b822ab1b9e85cbfd4f8"
+      },
+      "frame_id": "frame-00000496-9d57bb78",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.08042751736111112,
+        "center_x_norm": 0.46197916666666666,
+        "center_y_norm": 0.6,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2224132780730489
+        },
+        "grid_cell": [
+          1,
+          1
+        ],
+        "perspective_skew_score": 0.2581280004997689,
+        "roll_like_angle_deg": 0.8363723754882812,
+        "scale_bin": 1,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.2224132780730489,
+        "clipped_black_fraction": 0.10736067708333333,
+        "clipped_white_fraction": 8.680555555555556e-07,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 1.0,
+        "extras": {},
+        "laplacian_variance": 111.20663903652445,
+        "luma_std": 65.83609008789062,
+        "mean_luma": 78.12483978271484
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:52:40.727Z",
+      "charuco_corner_count": 38,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0014.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "f41c3a0d99ad69504583fb18fa7477f5"
+      },
+      "frame_id": "frame-00000685-99e78ecf",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.07034830729166666,
+        "center_x_norm": 0.33125,
+        "center_y_norm": 0.49666666666666665,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.24324982316066826
+        },
+        "grid_cell": [
+          0,
+          1
+        ],
+        "perspective_skew_score": 0.27105092025402144,
+        "roll_like_angle_deg": 30.963756561279297,
+        "scale_bin": 1,
+        "tilt_bin": 0
+      },
+      "quality": {
+        "blur_score": 0.24324982316066826,
+        "clipped_black_fraction": 0.10191493055555556,
+        "clipped_white_fraction": 0.0050572916666666665,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 0.9561487436294556,
+        "extras": {},
+        "laplacian_variance": 121.62491158033413,
+        "luma_std": 61.193519592285156,
+        "mean_luma": 78.9437026977539
+      }
+    },
+    {
+      "captured_at_utc": "2026-05-19T14:55:42.217Z",
+      "charuco_corner_count": 36,
+      "contract_version": "rb-camera-calibration-v0_1",
+      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030_detection.json",
+      "extras": {
+        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0015.png",
+        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+      },
+      "frame_hash": {
+        "algorithm": "blake2b-128",
+        "contract_version": "rb-camera-calibration-v0_1",
+        "digest_size_bytes": 16,
+        "value": "7d8af337d6e13817d41a8afef61251c9"
+      },
+      "frame_id": "frame-00001916-3c3787a5",
+      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030.png",
+      "marker_count": 26,
+      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030_overlay.png",
+      "pose_signature": {
+        "area_fraction": 0.03660720486111111,
+        "center_x_norm": 0.22838541666666667,
+        "center_y_norm": 0.16083333333333333,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "extras": {
+          "quality_blur_score": 0.2618556550987379
+        },
+        "grid_cell": [
+          0,
+          0
+        ],
+        "perspective_skew_score": 0.4665495075014342,
+        "roll_like_angle_deg": -1.8183029890060425,
+        "scale_bin": 0,
+        "tilt_bin": 1
+      },
+      "quality": {
+        "blur_score": 0.2618556550987379,
+        "clipped_black_fraction": 0.09690885416666667,
+        "clipped_white_fraction": 0.006621961805555555,
+        "contract_version": "rb-camera-calibration-v0_1",
+        "contrast_score": 0.80008465051651,
+        "extras": {},
+        "laplacian_variance": 130.92782754936897,
+        "luma_std": 51.20541763305664,
+        "mean_luma": 65.68665313720703
+      }
+    }
+  ],
+  "generated_at_utc": "2026-05-19T15:02:03.363Z",
+  "session_config": {
+    "board_config": {
+      "aruco_dictionary": "DICT_4X4_100",
+      "board_name": "calibio_charuco_30mm_a4",
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "marker_length_m": 0.022,
+      "pattern_type": "charuco",
+      "square_length_m": 0.03,
+      "squares_x": 6,
+      "squares_y": 9
+    },
+    "camera_config": {
+      "auto_exposure": null,
+      "auto_white_balance": null,
+      "backend": "V4L2",
+      "camera_device": "/dev/video0",
+      "camera_source_type": "opencv_v4l2",
+      "contract_version": "rb-camera-calibration-v0_1",
+      "exposure": null,
+      "extras": {
+        "camera_name": "Arducam B0495 AR0234"
+      },
+      "focus": null,
+      "fps": 80.0,
+      "gain": null,
+      "height_px": 1200,
+      "pixel_format": "YUYV",
+      "width_px": 1920
+    },
+    "capture_policy": {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "cooldown_seconds": 1.5,
+      "extras": {},
+      "max_board_area_fraction": 0.85,
+      "min_board_area_fraction": 0.03,
+      "min_charuco_corner_count": 24,
+      "min_edge_margin_px": 12.0,
+      "min_laplacian_variance": 80.0,
+      "min_marker_count": 8,
+      "pose_grid_cols": 3,
+      "pose_grid_rows": 3,
+      "require_pose_novelty": true,
+      "require_stability": true,
+      "scale_bin_count": 3,
+      "stability_window_frames": 3,
+      "target_accepted_frame_count": 45,
+      "tilt_bin_count": 2
+    },
+    "contract_version": "rb-camera-calibration-v0_1",
+    "extras": {},
+    "save_debug_overlays": true,
+    "save_rejected_samples": true,
+    "session_root": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4"
+  }
+}

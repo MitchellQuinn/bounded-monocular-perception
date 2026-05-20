@@ -1,0 +1,65 @@
+{
+  "accepted_frame_dir": "charuco-calibration/calibration_runs/260520-1130_unity_ar0234_pinhole_1920x1200/accepted",
+  "artifact_version": "rb-camera-calibration-artifact-v0_1",
+  "board_config": {
+    "aruco_dictionary": "DICT_4X4_100",
+    "board_name": "calibio_charuco_30mm_a4",
+    "contract_version": "rb-camera-calibration-v0_1",
+    "extras": {},
+    "marker_length_m": 0.022,
+    "pattern_type": "charuco",
+    "square_length_m": 0.03,
+    "squares_x": 6,
+    "squares_y": 9
+  },
+  "camera_config": {
+    "auto_exposure": null,
+    "auto_white_balance": null,
+    "backend": "Unity RenderTexture",
+    "camera_device": "01_rb_synthetic-data_3/Assets/Scenes/rb_synthetic-data_1.unity::Main Camera",
+    "camera_source_type": "opencv_generic",
+    "contract_version": "rb-camera-calibration-v0_1",
+    "exposure": null,
+    "extras": {
+      "camera_name": "Unity Main Camera AR0234 analytic pinhole"
+    },
+    "focus": null,
+    "fps": 80.0,
+    "gain": null,
+    "height_px": 1200,
+    "pixel_format": "RGB24",
+    "width_px": 1920
+  },
+  "capture_policy": {
+    "contract_version": "rb-camera-calibration-v0_1",
+    "cooldown_seconds": 1.5,
+    "extras": {},
+    "max_board_area_fraction": 0.85,
+    "min_board_area_fraction": 0.03,
+    "min_charuco_corner_count": 24,
+    "min_edge_margin_px": 12.0,
+    "min_laplacian_variance": 80.0,
+    "min_marker_count": 8,
+    "pose_grid_cols": 3,
+    "pose_grid_rows": 3,
+    "require_pose_novelty": true,
+    "require_stability": true,
+    "scale_bin_count": 3,
+    "stability_window_frames": 3,
+    "target_accepted_frame_count": 45,
+    "tilt_bin_count": 2
+  },
+  "contract_version": "rb-camera-calibration-v0_1",
+  "extras": {
+    "calibration_origin": "analytic_unity_physical_camera_model",
+    "reference_ar0234_session": "charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4",
+    "unity_run_config_path": "01_rb_synthetic-data_3/Assets/Scripts/SyntheticData/RunConfigAsset.asset",
+    "unity_scene_path": "01_rb_synthetic-data_3/Assets/Scenes/rb_synthetic-data_1.unity"
+  },
+  "generated_at_utc": "2026-05-20T11:30:05.773Z",
+  "rejected_sample_dir": "charuco-calibration/calibration_runs/260520-1130_unity_ar0234_pinhole_1920x1200/rejected_samples",
+  "report_csv_path": "charuco-calibration/calibration_runs/260520-1130_unity_ar0234_pinhole_1920x1200/per_view_reprojection_errors.csv",
+  "result_json_path": "charuco-calibration/calibration_runs/260520-1130_unity_ar0234_pinhole_1920x1200/calibration_result.json",
+  "result_yaml_path": "charuco-calibration/calibration_runs/260520-1130_unity_ar0234_pinhole_1920x1200/calibration_result.yaml",
+  "session_root": "charuco-calibration/calibration_runs/260520-1130_unity_ar0234_pinhole_1920x1200"
+}

@@ -1,0 +1,353 @@
+{
+  "accepted_frame_count": 30,
+  "artifact_version": "rb-camera-calibration-artifact-v0_1",
+  "board": {
+    "aruco_dictionary": "DICT_4X4_100",
+    "board_name": "calibio_charuco_30mm_a4",
+    "marker_length_m": 0.022,
+    "square_length_m": 0.03,
+    "squares_x": 6,
+    "squares_y": 9,
+    "type": "charuco"
+  },
+  "calibration_flags": [],
+  "camera_device": "/dev/video0",
+  "camera_matrix": [
+    [
+      1216.1079845655604,
+      0.0,
+      937.535806530776
+    ],
+    [
+      0.0,
+      1210.4238681715408,
+      634.6140735664482
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "camera_name": "Arducam B0495 AR0234",
+  "distortion_coefficients": [
+    -0.08009245406753474,
+    -0.0527386979031787,
+    0.00010909157347698496,
+    -0.0011162269656244464,
+    0.03409414461699875
+  ],
+  "extras": {},
+  "generated_at_utc": "2026-05-19T15:09:13.884Z",
+  "image_size_wh_px": [
+    1920,
+    1200
+  ],
+  "opencv_version": "4.13.0",
+  "per_view_errors": [
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000507-9edb1124",
+      "include_in_final": true,
+      "max_error_px": 0.22767018358991026,
+      "mean_error_px": 0.09118011163237388,
+      "point_count": 38,
+      "rms_error_px": 0.10316329566832723
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000517-1d22ee48",
+      "include_in_final": true,
+      "max_error_px": 0.2532805527783963,
+      "mean_error_px": 0.11694891076734512,
+      "point_count": 40,
+      "rms_error_px": 0.13037623799815254
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000551-4fe786fc",
+      "include_in_final": true,
+      "max_error_px": 0.27467613331231183,
+      "mean_error_px": 0.10245893499227524,
+      "point_count": 40,
+      "rms_error_px": 0.11960970662493131
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000587-f4e60c88",
+      "include_in_final": true,
+      "max_error_px": 0.27649886470382357,
+      "mean_error_px": 0.11787050902710608,
+      "point_count": 40,
+      "rms_error_px": 0.1323348840655013
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000615-20d46f71",
+      "include_in_final": true,
+      "max_error_px": 0.21373337212868362,
+      "mean_error_px": 0.09474001783471435,
+      "point_count": 31,
+      "rms_error_px": 0.10961340472583245
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000627-222696fe",
+      "include_in_final": true,
+      "max_error_px": 0.23306101785509725,
+      "mean_error_px": 0.10349236796366135,
+      "point_count": 38,
+      "rms_error_px": 0.12235934031680185
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000641-bcb95888",
+      "include_in_final": true,
+      "max_error_px": 0.3255381481016188,
+      "mean_error_px": 0.15233859187025847,
+      "point_count": 36,
+      "rms_error_px": 0.16457677627446343
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000665-3dcb8274",
+      "include_in_final": true,
+      "max_error_px": 0.26779291484176454,
+      "mean_error_px": 0.12679235720389329,
+      "point_count": 35,
+      "rms_error_px": 0.14108692022907782
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000717-b2cfcdab",
+      "include_in_final": true,
+      "max_error_px": 0.25668825320144245,
+      "mean_error_px": 0.11706685120963002,
+      "point_count": 24,
+      "rms_error_px": 0.13307347030829306
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000727-2257d90e",
+      "include_in_final": true,
+      "max_error_px": 0.3277750149764943,
+      "mean_error_px": 0.1355909358026288,
+      "point_count": 36,
+      "rms_error_px": 0.15287471245680767
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000750-a636a687",
+      "include_in_final": true,
+      "max_error_px": 0.4792518372660305,
+      "mean_error_px": 0.19627606517006718,
+      "point_count": 34,
+      "rms_error_px": 0.22132602566772253
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000859-c85856ad",
+      "include_in_final": true,
+      "max_error_px": 0.2697408386474281,
+      "mean_error_px": 0.13183354384386325,
+      "point_count": 24,
+      "rms_error_px": 0.1442369571841107
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000871-7dc7f6dc",
+      "include_in_final": true,
+      "max_error_px": 0.3215636091982411,
+      "mean_error_px": 0.14309842013906968,
+      "point_count": 27,
+      "rms_error_px": 0.16740527543647007
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000943-a550a867",
+      "include_in_final": true,
+      "max_error_px": 0.35647181712856213,
+      "mean_error_px": 0.12354684677766674,
+      "point_count": 40,
+      "rms_error_px": 0.13909678915428392
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00002012-458d4186",
+      "include_in_final": true,
+      "max_error_px": 0.3013701000554972,
+      "mean_error_px": 0.12037036803652688,
+      "point_count": 25,
+      "rms_error_px": 0.13577000463316322
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000099-3b378fe1",
+      "include_in_final": true,
+      "max_error_px": 0.25936699877887526,
+      "mean_error_px": 0.10533496620055956,
+      "point_count": 40,
+      "rms_error_px": 0.11783622432945207
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000137-3f3d054e",
+      "include_in_final": true,
+      "max_error_px": 0.23154789224745223,
+      "mean_error_px": 0.1026920677050613,
+      "point_count": 40,
+      "rms_error_px": 0.11344196717897863
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000152-347a9705",
+      "include_in_final": true,
+      "max_error_px": 0.28689633789262364,
+      "mean_error_px": 0.12307206436447696,
+      "point_count": 33,
+      "rms_error_px": 0.13797663062084045
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000180-b95a322a",
+      "include_in_final": true,
+      "max_error_px": 0.28400466877917785,
+      "mean_error_px": 0.11729635891281569,
+      "point_count": 39,
+      "rms_error_px": 0.13278664744161206
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000203-7a2cf323",
+      "include_in_final": true,
+      "max_error_px": 0.3435371780487829,
+      "mean_error_px": 0.15994615584113828,
+      "point_count": 40,
+      "rms_error_px": 0.17885464851430238
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000220-01c478bd",
+      "include_in_final": true,
+      "max_error_px": 0.34034018732529703,
+      "mean_error_px": 0.12653859406002285,
+      "point_count": 38,
+      "rms_error_px": 0.14365897755007181
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000230-536f52c8",
+      "include_in_final": true,
+      "max_error_px": 0.3113086940871243,
+      "mean_error_px": 0.135468740497896,
+      "point_count": 34,
+      "rms_error_px": 0.154361158910013
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000257-47ed0d1e",
+      "include_in_final": true,
+      "max_error_px": 0.45249098887513906,
+      "mean_error_px": 0.16105688116037856,
+      "point_count": 28,
+      "rms_error_px": 0.18238226038730151
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000328-e8bb25ef",
+      "include_in_final": true,
+      "max_error_px": 0.37145998099505984,
+      "mean_error_px": 0.16107734771776516,
+      "point_count": 24,
+      "rms_error_px": 0.17801794810986207
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000373-bf22a076",
+      "include_in_final": true,
+      "max_error_px": 0.3029377162122732,
+      "mean_error_px": 0.1356868357333757,
+      "point_count": 24,
+      "rms_error_px": 0.1549047916302148
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000431-ceb0a44e",
+      "include_in_final": true,
+      "max_error_px": 0.1630671513182085,
+      "mean_error_px": 0.07195768917928144,
+      "point_count": 40,
+      "rms_error_px": 0.0814247366359424
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000441-4508a3e2",
+      "include_in_final": true,
+      "max_error_px": 0.16324471836177493,
+      "mean_error_px": 0.07473673411766017,
+      "point_count": 40,
+      "rms_error_px": 0.08190861998820205
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000496-9d57bb78",
+      "include_in_final": true,
+      "max_error_px": 0.25213581677091,
+      "mean_error_px": 0.11282641839986066,
+      "point_count": 38,
+      "rms_error_px": 0.12449602455301569
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00000685-99e78ecf",
+      "include_in_final": true,
+      "max_error_px": 0.4576105904520852,
+      "mean_error_px": 0.15704453110990393,
+      "point_count": 38,
+      "rms_error_px": 0.18324837993635967
+    },
+    {
+      "contract_version": "rb-camera-calibration-v0_1",
+      "extras": {},
+      "frame_id": "frame-00001916-3c3787a5",
+      "include_in_final": true,
+      "max_error_px": 0.46787127544771384,
+      "mean_error_px": 0.17446641470730148,
+      "point_count": 36,
+      "rms_error_px": 0.20180628261608244
+    }
+  ],
+  "rejected_outlier_count": 0,
+  "rms_reprojection_error_px": 0.14473211332925065,
+  "success": true,
+  "used_frame_count": 30
+}

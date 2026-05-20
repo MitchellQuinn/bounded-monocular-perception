@@ -1,0 +1,64 @@
+artifact_version: rb-camera-calibration-artifact-v0_1
+generated_at_utc: '2026-05-20T11:30:05.773Z'
+success: true
+camera_name: Unity Main Camera AR0234 analytic pinhole
+camera_device: 01_rb_synthetic-data_3/Assets/Scenes/rb_synthetic-data_1.unity::Main Camera
+image_size_wh_px:
+- 1920
+- 1200
+board:
+  type: charuco
+  squares_x: 6
+  squares_y: 9
+  square_length_m: 0.03
+  marker_length_m: 0.022
+  aruco_dictionary: DICT_4X4_100
+  board_name: calibio_charuco_30mm_a4
+camera_matrix:
+- - 1186.6666666666667
+  - 0.0
+  - 960.0
+- - 0.0
+  - 1186.6666666666667
+  - 600.0
+- - 0.0
+  - 0.0
+  - 1.0
+distortion_coefficients:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+rms_reprojection_error_px: 0.0
+per_view_errors: []
+opencv_version: not_required_analytic_unity_pinhole
+calibration_flags: []
+accepted_frame_count: 0
+used_frame_count: 0
+rejected_outlier_count: 0
+extras:
+  calibration_origin: analytic_unity_physical_camera_model
+  distortion_model: opencv_standard_5_coefficient_zero_distortion
+  unity_camera:
+    scene_path: 01_rb_synthetic-data_3/Assets/Scenes/rb_synthetic-data_1.unity
+    game_object: Main Camera
+    projection_matrix_mode: physical_camera
+    focal_length_mm: 3.56
+    sensor_size_mm:
+    - 5.76
+    - 3.6
+    lens_shift:
+    - 0.0
+    - 0.0
+    gate_fit_mode: 2
+    field_of_view_vertical_deg: 53.643962403163
+    field_of_view_horizontal_deg: 77.94493940895747
+    near_clip_plane_m: 0.3
+    far_clip_plane_m: 1000.0
+  derivation:
+    fx_formula: focal_length_mm / sensor_width_mm * image_width_px
+    fy_formula: focal_length_mm / sensor_height_mm * image_height_px
+    principal_point_convention: centered Unity viewport converted to OpenCV pixel coordinates
+    reference_ar0234_session: charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4
+  runtime_note: Unity renders an ideal pinhole image unless a post-process lens distortion effect is enabled; use zero distortion as the target camera when remapping AR0234 frames into Unity-trained geometry.
