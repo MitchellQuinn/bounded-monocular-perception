@@ -28,6 +28,7 @@ class TopologyRegistryTests(unittest.TestCase):
         self.assertIn("distance_regressor_2d_cnn", topology_ids)
         self.assertIn("distance_regressor_dual_stream", topology_ids)
         self.assertIn("distance_regressor_dual_stream_yaw", topology_ids)
+        self.assertIn("distance_regressor_dual_stream_yaw_from_tri_stream", topology_ids)
         self.assertIn("distance_regressor_tri_stream_yaw", topology_ids)
         self.assertIn("distance_regressor_global_pool_cnn", topology_ids)
 
@@ -36,6 +37,7 @@ class TopologyRegistryTests(unittest.TestCase):
 
         self.assertIn("distance_regressor_dual_stream", topology_ids)
         self.assertIn("distance_regressor_dual_stream_yaw", topology_ids)
+        self.assertIn("distance_regressor_dual_stream_yaw_from_tri_stream", topology_ids)
         self.assertIn("distance_regressor_tri_stream_yaw", topology_ids)
         self.assertNotIn("distance_regressor_2d_cnn", topology_ids)
         self.assertNotIn("distance_regressor_global_pool_cnn", topology_ids)

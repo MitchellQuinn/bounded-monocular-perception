@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from .data import Batch
+from .data import Batch, input_mode_uses_bbox_features
 from .topologies.contracts import (
     reporting_family,
     reporting_orientation_accuracy_thresholds_deg,
@@ -53,12 +53,13 @@ def batch_to_model_inputs(
     input_mode = str(task_contract.get("input_mode", "image_tensor")).strip() or "image_tensor"
     if input_mode == "image_tensor":
         return images
-    if input_mode == "dual_stream_image_bbox_features":
-        if batch.bbox_features is None:
+    if input_mode_uses_bbox_features(input_mode):
+        feature_array = batch.bbox_features if batch.bbox_features is not None else batch.geometry
+        if feature_array is None:
             raise ValueError(
-                "Topology input_mode='dual_stream_image_bbox_features' requires bbox_features in the batch."
+                f"Topology input_mode={input_mode!r} requires bbox_features in the batch."
             )
-        bbox_features = torch.from_numpy(batch.bbox_features).to(device=device, dtype=torch.float32)
+        bbox_features = torch.from_numpy(feature_array).to(device=device, dtype=torch.float32)
         return {
             "silhouette_crop": images,
             "bbox_features": bbox_features,

@@ -22,10 +22,15 @@ from .config import TrainConfig
 from .data import (
     ALLOWED_TRAIN_SHUFFLE_MODES,
     ShardArrayCache,
+    TRI_STREAM_DUAL_INPUT_MODE,
     detect_overlap_warnings,
     determine_target_hw,
+    extra_input_array_keys_for_input_mode,
+    input_mode_uses_bbox_features,
+    input_mode_uses_geometry,
     iter_batches,
     load_root_metadata,
+    primary_image_array_key_for_input_mode,
     summarize_metadata,
     validate_task_contract_schema,
     validate_root_schema,
@@ -339,19 +344,15 @@ def _train_one_epoch(
             shuffle_mode=shuffle_mode,
             active_shard_count=active_shard_count,
             target_columns=tuple(task_contract.get("target_columns", [])),
-            include_bbox_features=(
-                str(task_contract.get("input_mode", "")).strip()
-                == "dual_stream_image_bbox_features"
+            include_bbox_features=input_mode_uses_bbox_features(
+                task_contract.get("input_mode", "")
             ),
-            include_geometry=(
-                str(task_contract.get("input_mode", "")).strip()
-                == "tri_stream_distance_orientation_geometry"
+            include_geometry=input_mode_uses_geometry(task_contract.get("input_mode", "")),
+            extra_input_array_keys=extra_input_array_keys_for_input_mode(
+                task_contract.get("input_mode", "")
             ),
-            extra_input_array_keys=(
-                ("x_orientation_image",)
-                if str(task_contract.get("input_mode", "")).strip()
-                == "tri_stream_distance_orientation_geometry"
-                else ()
+            primary_image_array_key=primary_image_array_key_for_input_mode(
+                task_contract.get("input_mode", "")
             ),
         ),
         start=1,
@@ -634,6 +635,8 @@ def _write_model_card(
     declared_component_losses = set(_declared_component_loss_names(topology_spec.task_contract))
     if input_mode == "dual_stream_image_bbox_features":
         input_text = "grayscale crop tensor plus bbox feature vector"
+    elif input_mode == TRI_STREAM_DUAL_INPUT_MODE:
+        input_text = "tri-stream distance image tensor plus geometry vector as dual-stream input"
     elif input_mode == "tri_stream_distance_orientation_geometry":
         input_text = "distance image tensor plus orientation image tensor plus geometry vector"
     else:
@@ -985,8 +988,19 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         preprocessing_contract_sources
     )
 
-    training_schema = validate_root_schema(training_metadata, root_name="training")
-    validation_schema = validate_root_schema(validation_metadata, root_name="validation")
+    primary_image_array_key = primary_image_array_key_for_input_mode(
+        topology_spec.task_contract.get("input_mode", "")
+    )
+    training_schema = validate_root_schema(
+        training_metadata,
+        root_name="training",
+        image_array_key=primary_image_array_key,
+    )
+    validation_schema = validate_root_schema(
+        validation_metadata,
+        root_name="validation",
+        image_array_key=primary_image_array_key,
+    )
     validate_task_contract_schema(
         training_metadata,
         training_schema,
@@ -1172,7 +1186,10 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             max_bytes=validation_cache_budget_bytes,
             name="validation_shard_cache",
         )
-        validation_shard_cache.preload(validation_shard_paths)
+        validation_shard_cache.preload(
+            validation_shard_paths,
+            array_key=primary_image_array_key,
+        )
         preload_elapsed = perf_counter() - preload_started
         preload_stats = validation_shard_cache.stats()
         print(

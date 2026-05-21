@@ -18,8 +18,12 @@ from .config import EvalConfig
 from .data import (
     ShardArrayCache,
     determine_target_hw,
+    extra_input_array_keys_for_input_mode,
+    input_mode_uses_bbox_features,
+    input_mode_uses_geometry,
     iter_batches,
     load_root_metadata,
+    primary_image_array_key_for_input_mode,
     validate_task_contract_schema,
     validate_root_schema,
 )
@@ -182,19 +186,15 @@ def evaluate_split(
                 shuffle_shards=False,
                 shard_cache=shard_cache,
                 target_columns=tuple(task_contract.get("target_columns", [])),
-                include_bbox_features=(
-                    str(task_contract.get("input_mode", "")).strip()
-                    == "dual_stream_image_bbox_features"
+                include_bbox_features=input_mode_uses_bbox_features(
+                    task_contract.get("input_mode", "")
                 ),
-                include_geometry=(
-                    str(task_contract.get("input_mode", "")).strip()
-                    == "tri_stream_distance_orientation_geometry"
+                include_geometry=input_mode_uses_geometry(task_contract.get("input_mode", "")),
+                extra_input_array_keys=extra_input_array_keys_for_input_mode(
+                    task_contract.get("input_mode", "")
                 ),
-                extra_input_array_keys=(
-                    ("x_orientation_image",)
-                    if str(task_contract.get("input_mode", "")).strip()
-                    == "tri_stream_distance_orientation_geometry"
-                    else ()
+                primary_image_array_key=primary_image_array_key_for_input_mode(
+                    task_contract.get("input_mode", "")
                 ),
             ),
             start=1,
@@ -471,8 +471,16 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         config.validation_data_root,
         default_rel=DEFAULT_VALIDATION_ROOT,
     )
+    topology_spec_for_schema = resolve_topology_spec_from_mapping(run_config)
+    primary_image_array_key = primary_image_array_key_for_input_mode(
+        topology_spec_for_schema.task_contract.get("input_mode", "")
+    )
     val_metadata, _ = load_root_metadata(validation_root, source_root="validation", repo_root=repo_root)
-    val_schema = validate_root_schema(val_metadata, root_name="validation")
+    val_schema = validate_root_schema(
+        val_metadata,
+        root_name="validation",
+        image_array_key=primary_image_array_key,
+    )
 
     padding_mode = config.padding_mode_override or str(run_config.get("padding_mode", "disabled"))
     if "target_height" in run_config and "target_width" in run_config:
@@ -512,7 +520,10 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
                 max_bytes=val_cache_budget_bytes,
                 name="validation_eval_shard_cache",
             )
-            validation_shard_cache.preload(val_shard_paths)
+            validation_shard_cache.preload(
+                val_shard_paths,
+                array_key=primary_image_array_key,
+            )
             preload_elapsed = perf_counter() - preload_started
             preload_stats = validation_shard_cache.stats()
             print(
@@ -606,7 +617,11 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
             source_root="training",
             repo_root=repo_root,
         )
-        training_schema = validate_root_schema(training_metadata, root_name="training")
+        training_schema = validate_root_schema(
+            training_metadata,
+            root_name="training",
+            image_array_key=primary_image_array_key,
+        )
         validate_task_contract_schema(
             training_metadata,
             training_schema,

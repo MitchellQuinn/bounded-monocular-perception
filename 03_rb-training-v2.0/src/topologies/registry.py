@@ -13,6 +13,7 @@ from . import (
     topology_2d_cnn,
     topology_dual_stream_v0_2,
     topology_dual_stream_yaw,
+    topology_dual_stream_yaw_from_tri_stream,
     topology_global_pool_cnn,
     topology_tri_stream_yaw,
 )
@@ -116,6 +117,7 @@ _REGISTRY: dict[str, TopologyDefinition] = {
         topology_global_pool_cnn,
         topology_dual_stream_v0_2,
         topology_dual_stream_yaw,
+        topology_dual_stream_yaw_from_tri_stream,
         topology_tri_stream_yaw,
     )
 }

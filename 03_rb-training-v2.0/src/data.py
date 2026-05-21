@@ -33,6 +33,7 @@ TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY = "x_orientation_image"
 TRI_STREAM_GEOMETRY_ARRAY_KEY = "x_geometry"
 DUAL_STREAM_INPUT_MODE = "dual_stream_image_bbox_features"
 TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
+TRI_STREAM_DUAL_INPUT_MODE = "tri_stream_distance_geometry_as_dual"
 SUPPORTED_NPZ_LAYOUTS: tuple[tuple[str, str], ...] = (
     (LEGACY_IMAGE_ARRAY_KEY, LEGACY_TARGET_ARRAY_KEY),
     (DUAL_STREAM_IMAGE_ARRAY_KEY, DUAL_STREAM_TARGET_ARRAY_KEY),
@@ -76,6 +77,37 @@ TARGET_COLUMN_TO_NPZ_KEY = {
 
 ALLOWED_PADDING_MODES = {"disabled", "pad_to_max_bottom_right"}
 ALLOWED_TRAIN_SHUFFLE_MODES = {"sequential", "shard", "active_shard_reservoir"}
+
+
+def input_mode_uses_bbox_features(input_mode: Any) -> bool:
+    """Return whether loader batches should include bbox-style feature vectors."""
+    normalized = str(input_mode).strip()
+    return normalized in {
+        DUAL_STREAM_INPUT_MODE,
+        TRI_STREAM_DUAL_INPUT_MODE,
+    }
+
+
+def input_mode_uses_geometry(input_mode: Any) -> bool:
+    """Return whether loader batches should include the tri-stream geometry input."""
+    return str(input_mode).strip() == TRI_STREAM_INPUT_MODE
+
+
+def extra_input_array_keys_for_input_mode(input_mode: Any) -> tuple[str, ...]:
+    """Return extra NPZ image arrays required by the model input mode."""
+    if str(input_mode).strip() == TRI_STREAM_INPUT_MODE:
+        return (TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,)
+    return ()
+
+
+def primary_image_array_key_for_input_mode(input_mode: Any) -> str | None:
+    """Return the preferred primary NPZ image array for an input mode."""
+    normalized = str(input_mode).strip()
+    if normalized == DUAL_STREAM_INPUT_MODE:
+        return DUAL_STREAM_IMAGE_ARRAY_KEY
+    if normalized in {TRI_STREAM_INPUT_MODE, TRI_STREAM_DUAL_INPUT_MODE}:
+        return TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY
+    return None
 
 
 @dataclass(frozen=True)
@@ -149,7 +181,20 @@ def discover_corpus_infos(data_root: Path, source_root: str) -> list[CorpusInfo]
     return infos
 
 
-def _resolve_npz_layout(key_set: set[str]) -> tuple[str, str]:
+def _resolve_npz_layout(
+    key_set: set[str],
+    preferred_image_array_key: str | None = None,
+) -> tuple[str, str]:
+    preferred = str(preferred_image_array_key).strip() if preferred_image_array_key else ""
+    if preferred:
+        for image_key, target_key in SUPPORTED_NPZ_LAYOUTS:
+            if image_key == preferred and image_key in key_set and target_key in key_set:
+                return image_key, target_key
+        raise ValueError(
+            "NPZ shard is missing the preferred input/target layout. "
+            f"Expected image key {preferred!r} with a supported target key; "
+            f"found keys={sorted(key_set)}."
+        )
     for image_key, target_key in SUPPORTED_NPZ_LAYOUTS:
         if image_key in key_set and target_key in key_set:
             return image_key, target_key
@@ -389,7 +434,10 @@ def _infer_frame_geometry(x_shape: tuple[int, ...]) -> tuple[int, int, int]:
     raise ValueError(f"Unsupported X shape {x_shape}; expected 3D or 4D arrays.")
 
 
-def inspect_shard_schema(metadata_df: pd.DataFrame) -> pd.DataFrame:
+def inspect_shard_schema(
+    metadata_df: pd.DataFrame,
+    image_array_key: str | None = None,
+) -> pd.DataFrame:
     """Inspect NPZ shard headers without decoding the full image tensor."""
     required_columns = {"dataset_id", "npz_path", "npz_row_index"}
     missing = sorted(required_columns - set(metadata_df.columns))
@@ -403,7 +451,10 @@ def inspect_shard_schema(metadata_df: pd.DataFrame) -> pd.DataFrame:
         if not path.exists():
             raise FileNotFoundError(f"Shard not found during inspection: {path}")
         keys, key_set = _list_npz_keys(path)
-        image_key, target_key = _resolve_npz_layout(key_set)
+        image_key, target_key = _resolve_npz_layout(
+            key_set,
+            preferred_image_array_key=image_array_key,
+        )
         x_dtype, x_shape, _ = _read_npy_header_from_npz_member(path, f"{image_key}.npy")
         y_dtype, y_shape, _ = _read_npy_header_from_npz_member(path, f"{target_key}.npy")
         sid_dtype, sid_shape, _ = _read_npy_header_from_npz_member(path, "sample_id.npy")
@@ -444,11 +495,15 @@ def inspect_shard_schema(metadata_df: pd.DataFrame) -> pd.DataFrame:
     return schema_df
 
 
-def validate_root_schema(metadata_df: pd.DataFrame, root_name: str) -> pd.DataFrame:
+def validate_root_schema(
+    metadata_df: pd.DataFrame,
+    root_name: str,
+    image_array_key: str | None = None,
+) -> pd.DataFrame:
     """Validate manifest/shard schema linkage for one root."""
     if metadata_df.empty:
         raise ValueError(f"{root_name}: metadata is empty.")
-    schema_df = inspect_shard_schema(metadata_df)
+    schema_df = inspect_shard_schema(metadata_df, image_array_key=image_array_key)
 
     if schema_df["missing_required_keys"].map(len).any():
         bad = schema_df[schema_df["missing_required_keys"].map(len) > 0]
@@ -618,13 +673,16 @@ def validate_task_contract_schema(
     if not target_columns:
         raise ValueError(f"{root_name}: task_contract is missing target_columns.")
     required_columns = set(target_columns) | set(debug_target_columns)
-    uses_bbox_features = input_mode == DUAL_STREAM_INPUT_MODE
+    uses_dual_bbox_arrays = input_mode == DUAL_STREAM_INPUT_MODE
+    uses_tri_stream_dual = input_mode == TRI_STREAM_DUAL_INPUT_MODE
+    uses_bbox_features = input_mode_uses_bbox_features(input_mode)
     uses_geometry = input_mode == TRI_STREAM_INPUT_MODE
+    uses_tri_geometry_source = uses_geometry or uses_tri_stream_dual
     if uses_bbox_features or uses_geometry:
         required_columns.update(BBOX_FEATURE_COLUMNS)
         expected_image_key = (
             TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY
-            if uses_geometry
+            if uses_tri_geometry_source
             else DUAL_STREAM_IMAGE_ARRAY_KEY
         )
         image_keys = set(schema_df["image_array_key"].astype(str))
@@ -693,16 +751,17 @@ def validate_task_contract_schema(
         for npz_key, _ in (*head_target_bindings, *head_debug_bindings):
             required_npz_keys.add(npz_key)
 
-        if uses_bbox_features:
+        if uses_dual_bbox_arrays:
             required_npz_keys.update({"bbox_features", "bbox_features_schema"})
-        if uses_geometry:
+        if uses_tri_geometry_source:
             required_npz_keys.update(
                 {
-                    TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
                     TRI_STREAM_GEOMETRY_ARRAY_KEY,
                     "x_geometry_schema",
                 }
             )
+        if uses_geometry:
+            required_npz_keys.add(TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY)
 
         missing_npz_keys = sorted(required_npz_keys - shard_keys)
         if missing_npz_keys:
@@ -737,7 +796,7 @@ def validate_task_contract_schema(
                         f"{npz_path.name}; max abs diff={diff}."
                     )
 
-            if uses_bbox_features:
+            if uses_dual_bbox_arrays:
                 bbox_features = np.asarray(payload["bbox_features"], dtype=np.float32)
                 if bbox_features.shape != (n_rows, len(BBOX_FEATURE_COLUMNS)):
                     raise ValueError(
@@ -765,7 +824,7 @@ def validate_task_contract_schema(
                         f"expected {list(BBOX_FEATURE_SCHEMA)}, got {raw_schema}."
                     )
 
-            if uses_geometry:
+            if uses_tri_geometry_source:
                 geometry = np.asarray(payload[TRI_STREAM_GEOMETRY_ARRAY_KEY], dtype=np.float32)
                 if geometry.shape != (n_rows, len(BBOX_FEATURE_COLUMNS)):
                     raise ValueError(
@@ -793,6 +852,7 @@ def validate_task_contract_schema(
                         f"expected {list(BBOX_FEATURE_SCHEMA)}, got {raw_schema}."
                     )
 
+            if uses_geometry:
                 orientation_image = payload[TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY]
                 expected_shape = tuple(int(value) for value in record["x_shape"])
                 if tuple(orientation_image.shape) != expected_shape:
@@ -1049,9 +1109,20 @@ class ShardArrayCache:
             allow_temporary_load=allow_temporary_load,
         )
 
-    def preload(self, shard_paths: list[Path] | tuple[Path, ...]) -> None:
+    def preload(
+        self,
+        shard_paths: list[Path] | tuple[Path, ...],
+        array_key: str | None = None,
+    ) -> None:
         for shard_path in shard_paths:
-            _ = self.get_or_load_x(Path(shard_path), allow_temporary_load=False)
+            if array_key is None:
+                _ = self.get_or_load_x(Path(shard_path), allow_temporary_load=False)
+            else:
+                _ = self.get_or_load_array(
+                    Path(shard_path),
+                    str(array_key),
+                    allow_temporary_load=False,
+                )
 
     def stats(self) -> dict[str, Any]:
         total_requests = int(self.hits + self.misses)
@@ -1161,6 +1232,7 @@ def iter_batches(
     include_bbox_features: bool = False,
     include_geometry: bool = False,
     extra_input_array_keys: tuple[str, ...] = (),
+    primary_image_array_key: str | None = None,
 ) -> Iterator[Batch]:
     """Stream mini-batches from shard-backed metadata.
 
@@ -1197,12 +1269,17 @@ def iter_batches(
         str(key): [] for key in extra_input_array_keys if str(key).strip()
     }
     image_array_key_by_shard: dict[str, str] = {}
+    resolved_primary_image_array_key = (
+        str(primary_image_array_key).strip() if primary_image_array_key else ""
+    )
 
     resolved_target_columns = tuple(str(column).strip() for column in target_columns if str(column).strip())
     if not resolved_target_columns:
         raise ValueError("target_columns must contain at least one column.")
 
     def _resolve_image_array_key_for_shard(shard_path: str) -> str:
+        if resolved_primary_image_array_key:
+            return resolved_primary_image_array_key
         cached = image_array_key_by_shard.get(shard_path)
         if cached is not None:
             return cached
@@ -1337,9 +1414,16 @@ def iter_batches(
                 shard_rows = grouped[shard_path]
                 if shard_rows.empty:
                     continue
-                shard_x = shard_cache.get_or_load_x(
-                    Path(shard_path), allow_temporary_load=True
-                )
+                if resolved_primary_image_array_key:
+                    shard_x = shard_cache.get_or_load_array(
+                        Path(shard_path),
+                        resolved_primary_image_array_key,
+                        allow_temporary_load=True,
+                    )
+                else:
+                    shard_x = shard_cache.get_or_load_x(
+                        Path(shard_path), allow_temporary_load=True
+                    )
                 if shard_x is None:
                     raise RuntimeError(f"Failed to load shard array for {shard_path}")
                 extra_arrays = {
@@ -1447,9 +1531,16 @@ def iter_batches(
 
         cached_x: np.ndarray | None = None
         if shard_cache is not None:
-            cached_x = shard_cache.get_or_load_x(
-                Path(shard_path), allow_temporary_load=False
-            )
+            if resolved_primary_image_array_key:
+                cached_x = shard_cache.get_or_load_array(
+                    Path(shard_path),
+                    resolved_primary_image_array_key,
+                    allow_temporary_load=False,
+                )
+            else:
+                cached_x = shard_cache.get_or_load_x(
+                    Path(shard_path), allow_temporary_load=False
+                )
         cached_extra: dict[str, np.ndarray] | None = None
         if cached_x is not None:
             cached_extra = _load_extra_arrays_for_shard(shard_path, allow_cached_only=True)
