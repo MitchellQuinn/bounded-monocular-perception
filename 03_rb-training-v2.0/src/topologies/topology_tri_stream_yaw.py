@@ -11,6 +11,7 @@ from . import (
     topology_tri_stream_yaw_v0_2,
     topology_tri_stream_yaw_v0_3,
     topology_tri_stream_yaw_v0_4,
+    topology_tri_stream_yaw_v0_5,
 )
 from .contracts import TOPOLOGY_CONTRACT_VERSION, task_contract_from_topology_contract
 from .topology_tri_stream_yaw_common import parse_common_topology_params
@@ -30,6 +31,7 @@ _VARIANT_BUILDERS: dict[str, Callable[..., nn.Module]] = {
     topology_tri_stream_yaw_v0_2.VARIANT: topology_tri_stream_yaw_v0_2.build_model,
     topology_tri_stream_yaw_v0_3.VARIANT: topology_tri_stream_yaw_v0_3.build_model,
     topology_tri_stream_yaw_v0_4.VARIANT: topology_tri_stream_yaw_v0_4.build_model,
+    topology_tri_stream_yaw_v0_5.VARIANT: topology_tri_stream_yaw_v0_5.build_model,
 }
 _SUPPORTED_VARIANTS = frozenset(_VARIANT_BUILDERS)
 
@@ -127,13 +129,22 @@ def build_model(
     topology_params: Mapping[str, Any] | None = None,
 ) -> nn.Module:
     """Build one tri-stream multitask model instance from topology variant + params."""
-    builder = _VARIANT_BUILDERS.get(str(topology_variant).strip())
+    variant = str(topology_variant).strip()
+    builder = _VARIANT_BUILDERS.get(variant)
     if builder is None:
         raise ValueError(
             f"Unsupported topology_variant={topology_variant}; "
             f"expected one of {supported_variants()}"
         )
-    parsed_params = parse_common_topology_params(topology_params, topology_id=TOPOLOGY_ID)
+    params = dict(topology_params or {})
+    residual_limit_m: float | None = None
+    if variant == topology_tri_stream_yaw_v0_5.VARIANT:
+        raw_residual_limit_m = params.pop("residual_limit_m", None)
+        if raw_residual_limit_m is not None:
+            residual_limit_m = float(raw_residual_limit_m)
+    parsed_params = parse_common_topology_params(params, topology_id=TOPOLOGY_ID)
+    if residual_limit_m is not None:
+        parsed_params["residual_limit_m"] = residual_limit_m
     return builder(**parsed_params)
 
 

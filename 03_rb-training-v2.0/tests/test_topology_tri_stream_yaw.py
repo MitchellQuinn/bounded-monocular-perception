@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -27,16 +28,30 @@ from src.data import (
 from src.task_runtime import batch_to_model_inputs
 from src.topologies import build_model_from_spec, list_topology_variants, resolve_topology_spec
 from src.topologies.topology_tri_stream_yaw import build_model as build_tri_stream_yaw_model
+from src.topologies.topology_tri_stream_yaw_v0_5 import (
+    DEFAULT_RESIDUAL_LIMIT_M,
+    RESIDUAL_GEOMETRY_SCHEMA,
+)
+
+
+def _has_nonzero_grad(model: nn.Module, prefixes: tuple[str, ...]) -> bool:
+    for name, parameter in model.named_parameters():
+        if not name.startswith(prefixes) or parameter.grad is None:
+            continue
+        if torch.count_nonzero(parameter.grad).item() > 0:
+            return True
+    return False
 
 
 class TriStreamYawTests(unittest.TestCase):
-    def test_supported_variants_include_v0_1_v0_2_v0_3_and_v0_4(self) -> None:
+    def test_supported_variants_include_v0_1_v0_2_v0_3_v0_4_and_v0_5(self) -> None:
         variants = list_topology_variants("distance_regressor_tri_stream_yaw")
 
         self.assertIn("tri_stream_yaw_v0_1", variants)
         self.assertIn("tri_stream_yaw_v0_2", variants)
         self.assertIn("tri_stream_yaw_v0_3", variants)
         self.assertIn("tri_stream_yaw_v0_4", variants)
+        self.assertIn("tri_stream_yaw_v0_5", variants)
 
     def test_variants_dispatch_to_separate_modules_with_stable_state_keys(self) -> None:
         expectations = {
@@ -58,6 +73,15 @@ class TriStreamYawTests(unittest.TestCase):
             "tri_stream_yaw_v0_4": {
                 "module_suffix": "topology_tri_stream_yaw_v0_4",
                 "present_prefixes": ("camera_trunk.", "yaw_trunk."),
+                "absent_prefixes": ("fusion_trunk.", "distance_trunk."),
+            },
+            "tri_stream_yaw_v0_5": {
+                "module_suffix": "topology_tri_stream_yaw_v0_5",
+                "present_prefixes": (
+                    "camera_trunk.",
+                    "yaw_trunk.",
+                    "distance_residual_head.",
+                ),
                 "absent_prefixes": ("fusion_trunk.", "distance_trunk."),
             },
         }
@@ -265,6 +289,104 @@ class TriStreamYawTests(unittest.TestCase):
             distance_with_zero_orientation,
         )
         self.assertEqual(tuple(outputs_with_one_orientation["yaw_sin_cos"].shape), (2, 2))
+
+    def test_tri_stream_yaw_v0_5_uses_pose_conditioned_bounded_residual_structure(
+        self,
+    ) -> None:
+        params = {
+            "fusion_hidden": 96,
+            "geom_feature_dim": 24,
+            "distance_feature_dim": 40,
+            "orientation_feature_dim": 48,
+            "residual_limit_m": 0.25,
+        }
+        model = build_tri_stream_yaw_model("tri_stream_yaw_v0_5", params)
+        camera_dim = max(16, params["fusion_hidden"] // 2)
+        yaw_input_dim = (
+            params["geom_feature_dim"]
+            + params["distance_feature_dim"]
+            + camera_dim
+            + params["orientation_feature_dim"]
+        )
+        residual_input_dim = camera_dim + 2 + len(RESIDUAL_GEOMETRY_SCHEMA)
+
+        self.assertTrue(hasattr(model, "camera_trunk"))
+        self.assertTrue(hasattr(model, "yaw_trunk"))
+        self.assertTrue(hasattr(model, "distance_residual_head"))
+        self.assertFalse(hasattr(model, "fusion_trunk"))
+        self.assertFalse(hasattr(model, "distance_trunk"))
+        self.assertEqual(model.residual_limit_m, 0.25)
+        self.assertEqual(model.distance_head.in_features, camera_dim)
+        self.assertEqual(model.yaw_trunk[0].in_features, yaw_input_dim)
+        self.assertEqual(model.distance_residual_head[0].in_features, residual_input_dim)
+        self.assertEqual(model.distance_residual_head[-1].out_features, 1)
+
+    def test_tri_stream_yaw_v0_5_residual_geometry_uses_normalized_fields_and_derivatives(
+        self,
+    ) -> None:
+        model = build_tri_stream_yaw_model("tri_stream_yaw_v0_5", {})
+        raw_geometry = torch.tensor(
+            [[100.0, 120.0, 50.0, 80.0, 0.5, 0.6, 0.25, 0.4, 0.625, 0.1]],
+            dtype=torch.float32,
+        )
+
+        residual_geometry = model._residual_geometry_features(raw_geometry)
+
+        expected = torch.tensor(
+            [
+                [
+                    0.5,
+                    0.6,
+                    0.25,
+                    0.4,
+                    0.625,
+                    math.log(0.625),
+                    0.1,
+                    math.sqrt(0.1),
+                ]
+            ],
+            dtype=torch.float32,
+        )
+        self.assertEqual(RESIDUAL_GEOMETRY_SCHEMA[0], "cx_norm")
+        self.assertEqual(RESIDUAL_GEOMETRY_SCHEMA[-1], "sqrt_area_norm")
+        torch.testing.assert_close(residual_geometry, expected)
+
+    def test_tri_stream_yaw_v0_5_distance_loss_does_not_backpropagate_into_yaw_path(
+        self,
+    ) -> None:
+        torch.manual_seed(17)
+        model = build_tri_stream_yaw_model("tri_stream_yaw_v0_5", {})
+        batch = {
+            TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY: torch.rand(2, 1, 64, 64),
+            TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY: torch.rand(2, 1, 64, 64),
+            TRI_STREAM_GEOMETRY_ARRAY_KEY: torch.rand(2, 10),
+        }
+
+        model.zero_grad(set_to_none=True)
+        distance_outputs = model(batch)
+        distance_outputs["distance_m"].sum().backward()
+
+        yaw_prefixes = ("orientation_cnn.", "yaw_trunk.", "orientation_head.")
+        for name, parameter in model.named_parameters():
+            if not name.startswith(yaw_prefixes):
+                continue
+            self.assertTrue(
+                parameter.grad is None or torch.count_nonzero(parameter.grad).item() == 0,
+                name,
+            )
+        self.assertTrue(
+            _has_nonzero_grad(
+                model,
+                ("camera_trunk.", "distance_head.", "distance_residual_head."),
+            )
+        )
+
+        model.zero_grad(set_to_none=True)
+        yaw_outputs = model(batch)
+        yaw_outputs["yaw_sin_cos"].sum().backward()
+
+        self.assertTrue(_has_nonzero_grad(model, yaw_prefixes))
+        self.assertEqual(model.residual_limit_m, DEFAULT_RESIDUAL_LIMIT_M)
 
     def test_missing_orientation_image_raises_clear_error(self) -> None:
         spec = resolve_topology_spec(
