@@ -35,9 +35,6 @@ from .output_decoding import decode_distance_yaw_outputs
 
 DEFAULT_CHECKPOINT_NAME = "best.pt"
 DEFAULT_SELECTION_PATH = Path("models/selections/current.toml")
-DEFAULT_DISTANCE_ORIENTATION_ROOT = Path(
-    "models/distance-orientation/260504-1100_ts-2d-cnn__run_0001"
-)
 
 
 class TorchTriStreamInferenceEngine:
@@ -264,10 +261,8 @@ def _resolve_selected_model_root_and_device(
 
     project_root = _live_project_root()
     selection_path = (project_root / DEFAULT_SELECTION_PATH).resolve()
-    if selection_path.is_file():
-        selection = load_model_selection(selection_path)
-        return selection.distance_orientation_root, selection.distance_orientation_device
-    return (project_root / DEFAULT_DISTANCE_ORIENTATION_ROOT).resolve(), "auto"
+    selection = load_model_selection(selection_path)
+    return selection.distance_orientation_root, selection.distance_orientation_device
 
 
 def _prepare_model_inputs(

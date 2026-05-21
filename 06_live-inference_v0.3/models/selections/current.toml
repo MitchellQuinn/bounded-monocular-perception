@@ -1,5 +1,6 @@
 [distance_orientation]
-root = "../distance-orientation/260515-1301_ts-2d-cnn"
+# root = "../distance-orientation/260515-1301_ts-2d-cnn"
+root = "../distance-orientation/260521-1029_ts-2d-cnn"
 
 [roi_fcn]
 root = "../roi-fcn/260516-1714_roi-fcn-tiny__run_0002"
