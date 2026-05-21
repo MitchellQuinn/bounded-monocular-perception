@@ -21,7 +21,11 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 import interfaces.contracts as contracts  # noqa: E402
 from live_inference.gui.app import build_live_inference_gui_context  # noqa: E402
 from live_inference.gui.main_window import LiveInferenceMainWindow  # noqa: E402
-from live_inference.preprocessing import ForegroundExtractionPolicyState  # noqa: E402
+from live_inference.preprocessing import (  # noqa: E402
+    CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP,
+    CameraIntrinsicsTransformState,
+    ForegroundExtractionPolicyState,
+)
 
 
 class _Controller:
@@ -59,6 +63,7 @@ class GuiUiAndAppTests(unittest.TestCase):
             "Use silhouette preprocessing",
         )
         self.assertFalse(window.use_silhouette_preprocessing_checkbox.isChecked())
+        self.assertEqual(window.camera_intrinsics_mode_combo.currentData(), "disabled")
         self.assertIn("mask:", window.mask_status_value.text())
 
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
@@ -75,6 +80,27 @@ class GuiUiAndAppTests(unittest.TestCase):
         self.assertEqual(
             snapshot.foreground_extraction_mode,
             contracts.ForegroundExtractionMode.SILHOUETTE_CONTOUR_V2.value,
+        )
+        self.assertEqual(snapshot.revision, 1)
+
+    def test_camera_intrinsics_dropdown_updates_shared_state(self) -> None:
+        intrinsics_state = CameraIntrinsicsTransformState()
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+            camera_intrinsics_state=intrinsics_state,
+        )
+
+        index = window.camera_intrinsics_mode_combo.findData(
+            CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP
+        )
+        self.assertGreaterEqual(index, 0)
+        window.camera_intrinsics_mode_combo.setCurrentIndex(index)
+
+        snapshot = intrinsics_state.snapshot()
+        self.assertEqual(
+            snapshot.camera_intrinsics_mode,
+            CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP,
         )
         self.assertEqual(snapshot.revision, 1)
 
@@ -118,6 +144,10 @@ class GuiUiAndAppTests(unittest.TestCase):
             self.assertEqual(
                 context.foreground_extraction_policy_state.snapshot().foreground_extraction_mode,
                 contracts.ForegroundExtractionMode.THRESHOLD_FOREGROUND_V1.value,
+            )
+            self.assertEqual(
+                context.camera_intrinsics_state.snapshot().camera_intrinsics_mode,
+                "disabled",
             )
         finally:
             context.camera_controller.request_stop()

@@ -47,6 +47,10 @@ from .foreground_policy import (
     ForegroundExtractionPolicySnapshot,
     ForegroundExtractionPolicyState,
 )
+from .camera_intrinsics import (
+    CameraIntrinsicsFrameTransformer,
+    CameraIntrinsicsTransformState,
+)
 from .preprocessing_config import TriStreamPreprocessingConfig
 from .tri_stream_live_preprocessor import (
     PreprocessingDebugError,
@@ -120,6 +124,13 @@ class _FrameMaskPreparation:
     fill_value: int
 
 
+@dataclass(frozen=True)
+class _PreparedSourceFrame:
+    source_gray: np.ndarray
+    locator_image_bytes: bytes
+    metadata: Mapping[str, Any]
+
+
 class TriStreamLivePreprocessor:
     """Prepare live raw image bytes as v0.3 generic-locator tri-stream inputs."""
 
@@ -135,6 +146,8 @@ class TriStreamLivePreprocessor:
         mask_state: FrameMaskState | None = None,
         locator_parameter_state: LocatorRuntimeParameterState | None = None,
         foreground_extraction_policy_state: ForegroundExtractionPolicyState | None = None,
+        camera_intrinsics_state: CameraIntrinsicsTransformState | None = None,
+        camera_intrinsics_transformer: CameraIntrinsicsFrameTransformer | None = None,
         **_legacy_kwargs: Any,
     ) -> None:
         if config is None:
@@ -154,6 +167,15 @@ class TriStreamLivePreprocessor:
         self._locator_parameter_state = locator_parameter_state
         self._foreground_extraction_policy_state = (
             foreground_extraction_policy_state or ForegroundExtractionPolicyState()
+        )
+        self._camera_intrinsics_transformer = (
+            camera_intrinsics_transformer
+            if camera_intrinsics_transformer is not None
+            else (
+                CameraIntrinsicsFrameTransformer(camera_intrinsics_state)
+                if camera_intrinsics_state is not None
+                else None
+            )
         )
 
     @property
@@ -190,7 +212,8 @@ class TriStreamLivePreprocessor:
         image_bytes: bytes,
     ) -> LocatorDiagnosticResult:
         """Run only the configured locator and ROI guard for an exact frame."""
-        source_gray = _decode_image_bytes_to_grayscale(image_bytes)
+        prepared_source = self._prepare_source_frame(image_bytes)
+        source_gray = prepared_source.source_gray
         input_image_hash = _accepted_input_image_hash(request, image_bytes)
         runtime_revision = self._runtime_parameter_revision()
         mask_preparation = self._prepare_frame_mask(
@@ -202,7 +225,7 @@ class TriStreamLivePreprocessor:
         warnings.extend(mask_preparation.warnings)
         locator_result = self._locate(
             request,
-            image_bytes,
+            prepared_source.locator_image_bytes,
             source_wh=(int(source_gray.shape[1]), int(source_gray.shape[0])),
             runtime_revision=runtime_revision,
             mask_preparation=mask_preparation,
@@ -217,6 +240,7 @@ class TriStreamLivePreprocessor:
             regressor_reached=False,
         )
         metadata.update(mask_preparation.metadata)
+        metadata.update(prepared_source.metadata)
         roi_crop = None
         if locator_result.center_xy_px is not None:
             roi_crop, _source_bounds, _roi_bounds, _request_bounds = _extract_centered_canvas(
@@ -259,7 +283,8 @@ class TriStreamLivePreprocessor:
     ) -> PreparedInferenceInputs:
         """Decode raw bytes and reproduce the selected v4 tri-stream contract."""
         start = perf_counter()
-        source_gray = _decode_image_bytes_to_grayscale(image_bytes)
+        prepared_source = self._prepare_source_frame(image_bytes)
+        source_gray = prepared_source.source_gray
         source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
         input_image_hash = _accepted_input_image_hash(request, image_bytes)
         runtime_revision = self._runtime_parameter_revision()
@@ -272,7 +297,7 @@ class TriStreamLivePreprocessor:
         warnings.extend(mask_preparation.warnings)
         locator_result = self._locate(
             request,
-            image_bytes,
+            prepared_source.locator_image_bytes,
             source_wh=(source_w, source_h),
             runtime_revision=runtime_revision,
             mask_preparation=mask_preparation,
@@ -290,6 +315,7 @@ class TriStreamLivePreprocessor:
                 regressor_reached=False,
             )
             metadata.update(mask_preparation.metadata)
+            metadata.update(prepared_source.metadata)
             debug_paths = self._write_debug_artifacts(
                 request=request,
                 input_image_hash=input_image_hash,
@@ -430,6 +456,7 @@ class TriStreamLivePreprocessor:
                 regressor_reached=False,
             )
             metadata.update(mask_metadata)
+            metadata.update(prepared_source.metadata)
             metadata.update(
                 {
                     "preprocessing_failure_type": type(exc).__name__,
@@ -488,6 +515,7 @@ class TriStreamLivePreprocessor:
             regressor_reached=True,
         )
         metadata.update(mask_metadata)
+        metadata.update(prepared_source.metadata)
         metadata.update(
             {
                 contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_MODE: (
@@ -637,6 +665,21 @@ class TriStreamLivePreprocessor:
                 f"result={result.source_image_wh_px}, decoded={source_wh}."
             )
         return result
+
+    def _prepare_source_frame(self, image_bytes: bytes) -> _PreparedSourceFrame:
+        transformer = self._camera_intrinsics_transformer
+        if transformer is None:
+            return _PreparedSourceFrame(
+                source_gray=_decode_image_bytes_to_grayscale(image_bytes),
+                locator_image_bytes=image_bytes,
+                metadata={},
+            )
+        result = transformer.transform_image_bytes(image_bytes, grayscale=True)
+        return _PreparedSourceFrame(
+            source_gray=np.asarray(result.image, dtype=np.uint8),
+            locator_image_bytes=result.image_bytes,
+            metadata=dict(result.metadata),
+        )
 
     def _base_metadata(
         self,

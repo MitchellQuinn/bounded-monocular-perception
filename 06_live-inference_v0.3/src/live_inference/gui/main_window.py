@@ -16,6 +16,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QLabel,
     QMainWindow,
     QPlainTextEdit,
@@ -27,6 +28,13 @@ from PySide6.QtWidgets import (
 import interfaces.contracts as contracts
 from live_inference.frame_handoff import compute_frame_hash
 from live_inference.masking import BackgroundState, FrameMaskState
+from live_inference.preprocessing import (
+    CAMERA_INTRINSICS_MODE_LABELS,
+    SUPPORTED_CAMERA_INTRINSICS_MODES,
+    CameraIntrinsicsFrameTransformer,
+    CameraIntrinsicsTransformState,
+    normalize_camera_intrinsics_mode,
+)
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
 
@@ -54,6 +62,8 @@ class LiveInferenceMainWindow(QMainWindow):
         mask_state: FrameMaskState | None = None,
         locator_parameter_state: object | None = None,
         foreground_extraction_policy_state: object | None = None,
+        camera_intrinsics_state: CameraIntrinsicsTransformState | None = None,
+        camera_intrinsics_frame_transformer: CameraIntrinsicsFrameTransformer | None = None,
         locator_kind: contracts.LocatorKind | str = contracts.LocatorKind.BACKGROUND_EDGE_V1,
         stop_wait_ms: int = 1000,
         parent: QWidget | None = None,
@@ -68,6 +78,12 @@ class LiveInferenceMainWindow(QMainWindow):
         self.mask_state = mask_state or FrameMaskState()
         self.locator_parameter_state = locator_parameter_state
         self.foreground_extraction_policy_state = foreground_extraction_policy_state
+        self.camera_intrinsics_state = camera_intrinsics_state or CameraIntrinsicsTransformState()
+        self.camera_intrinsics_frame_transformer = (
+            camera_intrinsics_frame_transformer
+            if camera_intrinsics_frame_transformer is not None
+            else CameraIntrinsicsFrameTransformer(self.camera_intrinsics_state)
+        )
         self.locator_kind = (
             locator_kind
             if isinstance(locator_kind, contracts.LocatorKind)
@@ -78,14 +94,17 @@ class LiveInferenceMainWindow(QMainWindow):
         self._base_preview_image: QImage | None = None
         self._last_overlay: FramePreviewOverlay | None = None
         self._debug_paths: dict[str, Path] = {}
+        self._last_camera_intrinsics_preview_warning: str | None = None
         self._last_preview_update_seconds = 0.0
         self._preview_update_interval_seconds = 1.0 / 15.0
 
         self.setWindowTitle("Live Defender Inference v0.3")
         self._load_ui()
         self._bind_widgets()
+        self._populate_camera_intrinsics_mode_combo()
         self._connect_ui()
         self._connect_worker_signals()
+        self._sync_camera_intrinsics_widgets()
         self._sync_parameter_widgets()
         self._sync_preprocessing_widgets()
         self._sync_mask_widgets()
@@ -118,6 +137,10 @@ class LiveInferenceMainWindow(QMainWindow):
         self.start_continuous_button = self._require(QPushButton, "startContinuousButton")
         self.stop_continuous_button = self._require(QPushButton, "stopContinuousButton")
         self.record_trace_checkbox = self._require(QCheckBox, "recordTraceCheckBox")
+        self.camera_intrinsics_mode_combo = self._require(
+            QComboBox,
+            "cameraIntrinsicsModeComboBox",
+        )
         self.draw_mask_button = self._require(QPushButton, "drawMaskButton")
         self.erase_mask_button = self._require(QPushButton, "eraseMaskButton")
         self.apply_mask_button = self._require(QPushButton, "applyMaskButton")
@@ -170,6 +193,9 @@ class LiveInferenceMainWindow(QMainWindow):
         self.use_silhouette_preprocessing_checkbox.toggled.connect(
             self._on_use_silhouette_preprocessing_toggled
         )
+        self.camera_intrinsics_mode_combo.currentIndexChanged.connect(
+            self._on_camera_intrinsics_mode_changed
+        )
         for checkbox in (
             self.show_roi_checkbox,
             self.show_bbox_checkbox,
@@ -206,6 +232,16 @@ class LiveInferenceMainWindow(QMainWindow):
                 if signal is not None:
                     signal.connect(handler)
 
+    def _populate_camera_intrinsics_mode_combo(self) -> None:
+        self.camera_intrinsics_mode_combo.blockSignals(True)
+        self.camera_intrinsics_mode_combo.clear()
+        for mode in SUPPORTED_CAMERA_INTRINSICS_MODES:
+            self.camera_intrinsics_mode_combo.addItem(
+                CAMERA_INTRINSICS_MODE_LABELS.get(mode, mode),
+                mode,
+            )
+        self.camera_intrinsics_mode_combo.blockSignals(False)
+
     def _require(self, widget_type: type, object_name: str) -> Any:
         widget = self.findChild(widget_type, object_name)
         if widget is None:
@@ -240,6 +276,7 @@ class LiveInferenceMainWindow(QMainWindow):
             self._append_log("WARNING", "Capture Frame requires a completed frame.")
             return
         image_bytes = self.frame_reader.read_frame_bytes(latest_frame)
+        preview_image = self._preview_qimage_from_bytes(image_bytes)
         frame_hash = compute_frame_hash(image_bytes)
         source_path = _path_or_none(_payload_value(latest_frame, "image_path"))
         metadata = _payload_value(latest_frame, "metadata")
@@ -250,7 +287,8 @@ class LiveInferenceMainWindow(QMainWindow):
             source_path=source_path,
             frame_metadata=frame_metadata,
         )
-        self._set_base_preview_from_bytes(image_bytes)
+        if preview_image is not None:
+            self._set_base_preview_image(preview_image)
         self.frame_hash_value.setText(f"frame hash: {frame_hash.value}")
         self._append_log("INFO", f"Captured frame {frame_hash.value}")
 
@@ -263,7 +301,7 @@ class LiveInferenceMainWindow(QMainWindow):
         if image_bytes is None:
             self._append_log("WARNING", "Capture Background requires a frame.")
             return
-        gray = _decode_grayscale(image_bytes)
+        gray = self._preview_grayscale_from_bytes(image_bytes)
         revision = self.background_state.capture_background(gray)
         self.background_state.set_enabled(True)
         self._append_log("INFO", f"Background captured; revision={revision}")
@@ -408,14 +446,15 @@ class LiveInferenceMainWindow(QMainWindow):
     def _on_frame_written(self, frame: object) -> None:
         if self._captured_single_frame is not None:
             return
+        if self.main_preview_widget.is_mask_editing():
+            return
         now = monotonic()
-        if now - self._last_preview_update_seconds < self._preview_update_interval_seconds:
+        if now - self._last_preview_update_seconds < self._current_preview_update_interval_seconds():
             return
         self._last_preview_update_seconds = now
         path = _path_or_none(_payload_value(frame, "image_path"))
         if path is not None:
-            if self.main_preview_widget.load_image(path):
-                self._sync_preview_mask_snapshot()
+            self._load_preview_frame(path)
 
     def _on_status_changed(self, status: object) -> None:
         worker = _enum_text(_payload_value(status, "worker_name")) or "worker"
@@ -577,6 +616,70 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         self.use_silhouette_preprocessing_checkbox.blockSignals(False)
 
+    def _sync_camera_intrinsics_widgets(self) -> None:
+        snapshot = _policy_snapshot(self.camera_intrinsics_state)
+        if snapshot is None:
+            self.camera_intrinsics_mode_combo.setEnabled(False)
+            return
+        mode = _text(
+            _payload_value(snapshot, "camera_intrinsics_mode")
+            or _payload_value(snapshot, "mode"),
+            default=SUPPORTED_CAMERA_INTRINSICS_MODES[0],
+        )
+        try:
+            mode = normalize_camera_intrinsics_mode(mode)
+        except ValueError:
+            mode = SUPPORTED_CAMERA_INTRINSICS_MODES[0]
+        self.camera_intrinsics_mode_combo.blockSignals(True)
+        index = self.camera_intrinsics_mode_combo.findData(mode)
+        self.camera_intrinsics_mode_combo.setCurrentIndex(max(0, index))
+        self.camera_intrinsics_mode_combo.blockSignals(False)
+
+    def _on_camera_intrinsics_mode_changed(self, _index: int) -> None:
+        mode = self.camera_intrinsics_mode_combo.currentData()
+        try:
+            normalized = normalize_camera_intrinsics_mode(mode)
+        except ValueError as exc:
+            self._append_log("ERROR", str(exc))
+            self._sync_camera_intrinsics_widgets()
+            return
+        update = getattr(self.camera_intrinsics_state, "update", None)
+        if not callable(update):
+            return
+        before = _policy_snapshot(self.camera_intrinsics_state)
+        previous_mode = _text(
+            _payload_value(before, "camera_intrinsics_mode")
+            or _payload_value(before, "mode"),
+            default=SUPPORTED_CAMERA_INTRINSICS_MODES[0],
+        )
+        snapshot, revision = update(mode=normalized)
+        current_mode = _text(
+            _payload_value(snapshot, "camera_intrinsics_mode")
+            or _payload_value(snapshot, "mode"),
+            default=normalized,
+        )
+        if current_mode == previous_mode:
+            return
+        label = CAMERA_INTRINSICS_MODE_LABELS.get(current_mode, current_mode)
+        self.background_state.clear()
+        self.mask_state.clear()
+        self.main_preview_widget.clear_masks()
+        self._debug_paths = {}
+        self._last_overlay = None
+        self.main_preview_widget.set_overlay(None)
+        self._refresh_artifact_summary()
+        if self._captured_single_frame is not None:
+            preview_image = self._preview_qimage_from_bytes(
+                self._captured_single_frame.image_bytes
+            )
+            if preview_image is not None:
+                self._set_base_preview_image(preview_image)
+        self._update_mask_status()
+        self._append_log(
+            "INFO",
+            f"Camera intrinsics: {label}; revision={revision}; background and mask cleared",
+        )
+
     def _on_use_silhouette_preprocessing_toggled(self, checked: bool) -> None:
         state = self.foreground_extraction_policy_state
         update = getattr(state, "update", None)
@@ -677,6 +780,71 @@ class LiveInferenceMainWindow(QMainWindow):
             return None
         return self.frame_reader.read_frame_bytes(latest_frame)
 
+    def _preview_qimage_from_bytes(self, image_bytes: bytes) -> QImage | None:
+        transformer = self.camera_intrinsics_frame_transformer
+        mode = _camera_intrinsics_mode(self.camera_intrinsics_state)
+        if transformer is None or mode == SUPPORTED_CAMERA_INTRINSICS_MODES[0]:
+            image = QImage.fromData(bytes(image_bytes))
+            if image.isNull():
+                self._append_log("WARNING", "Preview frame could not be displayed.")
+                return None
+            return image.copy()
+        try:
+            result = transformer.transform_image_bytes(image_bytes)
+            return _qimage_from_cv_image_array(result.image)
+        except Exception as exc:
+            warning = f"{type(exc).__name__}: {exc}"
+            if warning != self._last_camera_intrinsics_preview_warning:
+                self._last_camera_intrinsics_preview_warning = warning
+                self._append_log(
+                    "WARNING",
+                    "Camera intrinsics preview transform failed; showing raw frame: "
+                    f"{warning}",
+                )
+            image = QImage.fromData(bytes(image_bytes))
+            return image.copy() if not image.isNull() else None
+
+    def _preview_grayscale_from_bytes(self, image_bytes: bytes) -> np.ndarray:
+        transformer = self.camera_intrinsics_frame_transformer
+        mode = _camera_intrinsics_mode(self.camera_intrinsics_state)
+        if transformer is None or mode == SUPPORTED_CAMERA_INTRINSICS_MODES[0]:
+            return _decode_grayscale(image_bytes)
+        try:
+            result = transformer.transform_image_bytes(image_bytes, grayscale=True)
+            return np.ascontiguousarray(np.asarray(result.image, dtype=np.uint8))
+        except Exception as exc:
+            warning = f"{type(exc).__name__}: {exc}"
+            if warning != self._last_camera_intrinsics_preview_warning:
+                self._last_camera_intrinsics_preview_warning = warning
+                self._append_log(
+                    "WARNING",
+                    "Camera intrinsics background transform failed; using raw frame: "
+                    f"{warning}",
+                )
+            return _decode_grayscale(image_bytes)
+
+    def _load_preview_frame(self, path: Path) -> None:
+        transformer = self.camera_intrinsics_frame_transformer
+        mode = _camera_intrinsics_mode(self.camera_intrinsics_state)
+        if transformer is None or mode == SUPPORTED_CAMERA_INTRINSICS_MODES[0]:
+            if self.main_preview_widget.load_image(path):
+                self._sync_preview_mask_snapshot()
+            return
+        try:
+            image = self._preview_qimage_from_bytes(path.read_bytes())
+        except Exception as exc:
+            self._append_log("WARNING", f"Could not read preview frame: {exc}")
+            return
+        if image is None or image.isNull():
+            return
+        self._set_base_preview_image(image)
+
+    def _current_preview_update_interval_seconds(self) -> float:
+        mode = _camera_intrinsics_mode(self.camera_intrinsics_state)
+        if mode == SUPPORTED_CAMERA_INTRINSICS_MODES[0]:
+            return self._preview_update_interval_seconds
+        return max(self._preview_update_interval_seconds, 1.0 / 5.0)
+
     def _require_captured_frame(self, action: str) -> _CapturedSingleFrame | None:
         if self._captured_single_frame is None:
             self._append_log("WARNING", f"{action} requires Capture Frame first.")
@@ -685,6 +853,12 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def _set_base_preview_from_bytes(self, image_bytes: bytes) -> None:
         image = QImage.fromData(bytes(image_bytes))
+        if image.isNull():
+            self._append_log("WARNING", "Captured frame could not be displayed.")
+            return
+        self._set_base_preview_image(image)
+
+    def _set_base_preview_image(self, image: QImage) -> None:
         if image.isNull():
             self._append_log("WARNING", "Captured frame could not be displayed.")
             return
@@ -720,6 +894,41 @@ def _decode_grayscale(image_bytes: bytes) -> np.ndarray:
     if decoded.ndim == 3 and int(decoded.shape[2]) == 4:
         return cv2.cvtColor(decoded, cv2.COLOR_BGRA2GRAY)
     return cv2.cvtColor(decoded, cv2.COLOR_BGR2GRAY)
+
+
+def _qimage_from_cv_image_array(image: np.ndarray) -> QImage:
+    array = np.asarray(image, dtype=np.uint8)
+    if array.ndim == 2:
+        gray = np.ascontiguousarray(array)
+        qimage = QImage(
+            gray.data,
+            int(gray.shape[1]),
+            int(gray.shape[0]),
+            int(gray.strides[0]),
+            QImage.Format.Format_Grayscale8,
+        )
+        return qimage.copy()
+    if array.ndim == 3 and int(array.shape[2]) == 3:
+        rgb = cv2.cvtColor(np.ascontiguousarray(array), cv2.COLOR_BGR2RGB)
+        qimage = QImage(
+            rgb.data,
+            int(rgb.shape[1]),
+            int(rgb.shape[0]),
+            int(rgb.strides[0]),
+            QImage.Format.Format_RGB888,
+        )
+        return qimage.copy()
+    if array.ndim == 3 and int(array.shape[2]) == 4:
+        rgba = cv2.cvtColor(np.ascontiguousarray(array), cv2.COLOR_BGRA2RGBA)
+        qimage = QImage(
+            rgba.data,
+            int(rgba.shape[1]),
+            int(rgba.shape[0]),
+            int(rgba.strides[0]),
+            QImage.Format.Format_RGBA8888,
+        )
+        return qimage.copy()
+    raise ValueError(f"Unsupported preview image shape: {array.shape!r}.")
 
 
 def _overlay_from_roi_metadata(roi_metadata: object) -> FramePreviewOverlay | None:
@@ -797,6 +1006,20 @@ def _policy_snapshot(state: object | None) -> object | None:
         if callable(method):
             return method()
     return None
+
+
+def _camera_intrinsics_mode(state: object | None) -> str:
+    snapshot = _policy_snapshot(state)
+    value = _payload_value(snapshot, "camera_intrinsics_mode") or _payload_value(
+        snapshot,
+        "mode",
+    )
+    try:
+        return normalize_camera_intrinsics_mode(
+            value if value is not None else SUPPORTED_CAMERA_INTRINSICS_MODES[0]
+        )
+    except ValueError:
+        return SUPPORTED_CAMERA_INTRINSICS_MODES[0]
 
 
 def _sequence_payload(payload: object | None) -> tuple[object, ...]:

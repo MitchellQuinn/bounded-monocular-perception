@@ -122,6 +122,25 @@
          </widget>
         </item>
         <item>
+         <widget class="QGroupBox" name="cameraIntrinsicsGroup">
+          <property name="title">
+           <string>Camera Intrinsics</string>
+          </property>
+          <layout class="QFormLayout" name="cameraIntrinsicsLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="cameraIntrinsicsModeLabel">
+             <property name="text">
+              <string>Mode</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="cameraIntrinsicsModeComboBox"/>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
          <widget class="QGroupBox" name="drawMaskGroup">
           <property name="title">
            <string>Draw Mask</string>

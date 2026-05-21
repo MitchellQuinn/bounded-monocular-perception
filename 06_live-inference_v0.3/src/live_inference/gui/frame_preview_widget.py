@@ -616,11 +616,12 @@ class FramePreviewWidget(QWidget):
                     self._draft_mask,
                     rgba=(255, 210, 55, 110),
                 )
-            painter.drawPixmap(
-                target_rect,
-                self._draft_overlay_pixmap,
-                QRectF(self._draft_overlay_pixmap.rect()),
-            )
+            if self._draft_overlay_pixmap is not None:
+                painter.drawPixmap(
+                    target_rect,
+                    self._draft_overlay_pixmap,
+                    QRectF(self._draft_overlay_pixmap.rect()),
+                )
 
     def _committed_mask_matches_current_source(self) -> bool:
         source_size = self.source_image_size()
@@ -900,8 +901,14 @@ def _event_left_button_down(event: object) -> bool:
     return bool(buttons() & Qt.MouseButton.LeftButton)
 
 
-def _mask_overlay_pixmap(mask: np.ndarray, *, rgba: tuple[int, int, int, int]) -> QPixmap:
+def _mask_overlay_pixmap(
+    mask: np.ndarray,
+    *,
+    rgba: tuple[int, int, int, int],
+) -> QPixmap | None:
     mask_array = np.asarray(mask, dtype=bool)
+    if not bool(np.any(mask_array)):
+        return None
     height, width = mask_array.shape
     overlay = np.zeros((height, width, 4), dtype=np.uint8)
     overlay[mask_array] = np.asarray(rgba, dtype=np.uint8)

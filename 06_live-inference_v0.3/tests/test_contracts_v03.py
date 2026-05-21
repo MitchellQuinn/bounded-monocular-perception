@@ -48,6 +48,24 @@ class ContractsV03Tests(unittest.TestCase):
             "silhouette_contour_v2",
         )
 
+    def test_camera_intrinsics_modes_are_contract_values(self) -> None:
+        self.assertEqual(
+            contracts.CameraIntrinsicsMode.DISABLED.value,
+            "disabled",
+        )
+        self.assertEqual(
+            contracts.CameraIntrinsicsMode.REAL_TO_UNITY_INTRINSICS_REMAP.value,
+            "real_to_unity_intrinsics_remap",
+        )
+        self.assertEqual(
+            contracts.CameraIntrinsicsMode.REAL_UNDISTORT_ONLY.value,
+            "real_undistort_only",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_CAMERA_INTRINSICS_MODE,
+            contracts.PREPROCESSING_RUNTIME_PARAMETER_CAMERA_INTRINSICS_MODE,
+        )
+
     def test_locator_result_serializes_plain_values(self) -> None:
         candidate = contracts.RoiCandidate(
             candidate_id="c0",

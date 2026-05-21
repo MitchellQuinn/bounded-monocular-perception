@@ -28,6 +28,13 @@ from live_inference.masking import FrameMaskState  # noqa: E402
 from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     BackgroundEdgeLocator,
+    CAMERA_INTRINSICS_METADATA_APPLIED,
+    CAMERA_INTRINSICS_METADATA_MODE,
+    CAMERA_INTRINSICS_METADATA_REVISION,
+    CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP,
+    CAMERA_INTRINSICS_MODE_REAL_UNDISTORT_ONLY,
+    CameraIntrinsicsFrameTransformer,
+    CameraIntrinsicsTransformState,
     FixedCenterRoiLocator,
     ForegroundExtractionPolicyState,
     ManualFixedRoiLocator,
@@ -251,6 +258,49 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
                 contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_REVISION
             ],
             1,
+        )
+
+    def test_camera_intrinsics_remap_runs_before_model_preprocessing(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        intrinsics_state = CameraIntrinsicsTransformState()
+        intrinsics_state.update(
+            mode=CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP
+        )
+
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=FixedCenterRoiLocator(roi_wh_px=(320, 320)),
+            camera_intrinsics_state=intrinsics_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertEqual(
+            metadata[CAMERA_INTRINSICS_METADATA_MODE],
+            CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP,
+        )
+        self.assertEqual(metadata[CAMERA_INTRINSICS_METADATA_REVISION], 1)
+        self.assertTrue(metadata[CAMERA_INTRINSICS_METADATA_APPLIED])
+        self.assertEqual(
+            metadata[contracts.PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX],
+            (960, 600),
+        )
+        self.assertIn("camera_intrinsics_new_camera_matrix", metadata)
+
+    def test_camera_intrinsics_transformer_supports_undistort_only_mode(self) -> None:
+        image_bytes = _fixture_image_bytes()
+        intrinsics_state = CameraIntrinsicsTransformState()
+        intrinsics_state.update(mode=CAMERA_INTRINSICS_MODE_REAL_UNDISTORT_ONLY)
+
+        result = CameraIntrinsicsFrameTransformer(intrinsics_state).transform_image_bytes(
+            image_bytes,
+            grayscale=True,
+        )
+
+        self.assertEqual(result.image.shape, (600, 960))
+        self.assertTrue(result.metadata[CAMERA_INTRINSICS_METADATA_APPLIED])
+        self.assertEqual(
+            result.metadata[CAMERA_INTRINSICS_METADATA_MODE],
+            CAMERA_INTRINSICS_MODE_REAL_UNDISTORT_ONLY,
         )
 
 

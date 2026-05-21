@@ -49,6 +49,7 @@ class LiveInferenceGuiContext:
     frame_mask_state: object
     locator_parameter_state: object
     foreground_extraction_policy_state: object
+    camera_intrinsics_state: object
     locator_kind: contracts.LocatorKind
 
 
@@ -70,6 +71,7 @@ class _RuntimeDependencies:
     background_edge_locator_cls: type
     locator_runtime_parameter_state_cls: type
     foreground_extraction_policy_state_cls: type
+    camera_intrinsics_transform_state_cls: type
     background_edge_locator_config_cls: type
     fixed_center_roi_locator_cls: type
     manual_fixed_roi_locator_cls: type
@@ -217,6 +219,7 @@ def build_live_inference_gui_context(
     background_state = BackgroundState(threshold=background_threshold)
     frame_mask_state = FrameMaskState()
     foreground_extraction_policy_state = deps.foreground_extraction_policy_state_cls()
+    camera_intrinsics_state = deps.camera_intrinsics_transform_state_cls()
     locator_parameter_state = deps.locator_runtime_parameter_state_cls(
         deps.background_edge_locator_config_cls(
             roi_width_px=int(roi_wh[0]),
@@ -255,6 +258,7 @@ def build_live_inference_gui_context(
         mask_state=frame_mask_state,
         locator_parameter_state=locator_parameter_state,
         foreground_extraction_policy_state=foreground_extraction_policy_state,
+        camera_intrinsics_state=camera_intrinsics_state,
     )
     engine = deps.torch_tri_stream_inference_engine_cls(
         model_root=selection.distance_orientation_root,
@@ -313,6 +317,7 @@ def build_live_inference_gui_context(
         frame_mask_state=frame_mask_state,
         locator_parameter_state=locator_parameter_state,
         foreground_extraction_policy_state=foreground_extraction_policy_state,
+        camera_intrinsics_state=camera_intrinsics_state,
         locator_kind=kind,
     )
 
@@ -370,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
             mask_state=context.frame_mask_state,
             locator_parameter_state=context.locator_parameter_state,
             foreground_extraction_policy_state=context.foreground_extraction_policy_state,
+            camera_intrinsics_state=context.camera_intrinsics_state,
             locator_kind=context.locator_kind,
         )
         app.aboutToQuit.connect(window.stop_all)
@@ -470,6 +476,7 @@ def _load_runtime_dependencies() -> _RuntimeDependencies:
         BackgroundEdgeLocatorConfig,
         FixedCenterRoiLocator,
         ForegroundExtractionPolicyState,
+        CameraIntrinsicsTransformState,
         LocatorRuntimeParameterState,
         ManualFixedRoiLocator,
         RoiFcnLegacyLocatorAdapter,
@@ -495,6 +502,7 @@ def _load_runtime_dependencies() -> _RuntimeDependencies:
         background_edge_locator_cls=BackgroundEdgeLocator,
         locator_runtime_parameter_state_cls=LocatorRuntimeParameterState,
         foreground_extraction_policy_state_cls=ForegroundExtractionPolicyState,
+        camera_intrinsics_transform_state_cls=CameraIntrinsicsTransformState,
         background_edge_locator_config_cls=BackgroundEdgeLocatorConfig,
         fixed_center_roi_locator_cls=FixedCenterRoiLocator,
         manual_fixed_roi_locator_cls=ManualFixedRoiLocator,
