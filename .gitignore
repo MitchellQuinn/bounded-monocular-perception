@@ -67,6 +67,9 @@ calibration_runs/*
 charuco-calibration/calibration_runs/*
 !charuco-calibration/calibration_runs/.gitkeep
 
+# Local restricted assets that must not be distributed
+01_rb_synthetic-data_3/Assets/models/1997-defender-90/FINAL_MODEL_90.fbx
+
 
 # ------------------------------
 # Generic datasets, generated outputs, and training artifacts
