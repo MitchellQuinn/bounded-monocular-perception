@@ -8,13 +8,13 @@
   "resume": {
     "additional_epochs": 6,
     "enabled": true,
-    "source_run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0002",
+    "source_run_dir": "<repo-root>/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0002",
     "source_run_id": "run_0002",
     "start_epoch": 11,
     "total_target_epochs": 16
   },
-  "resume_state_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003/resume_state.pt",
-  "run_dir": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003",
+  "resume_state_path": "<repo-root>/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003/resume_state.pt",
+  "run_dir": "<repo-root>/04_ROI-FCN/02_training/models/260420-1219_roi-fcn-tiny/runs/run_0003",
   "run_id": "run_0003",
   "train_metrics": {
     "loss_mse": 0.003786287994366139,

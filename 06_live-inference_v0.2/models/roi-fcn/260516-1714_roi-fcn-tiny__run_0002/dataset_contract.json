@@ -41,11 +41,11 @@
     "representation_kind": "roi_fcn_locator_npz",
     "representation_storage_format": "npz",
     "row_count": 300000,
-    "run_json_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train/manifests/run.json",
-    "samples_csv_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train/manifests/samples.csv",
+    "run_json_path": "<repo-root>/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train/manifests/run.json",
+    "samples_csv_path": "<repo-root>/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train/manifests/samples.csv",
     "shard_count": 37,
     "split_name": "train",
-    "split_root": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train"
+    "split_root": "<repo-root>/04_ROI-FCN/02_training/datasets/roi-fcn_v29/train"
   },
   "training_contract_version": "rb-roi-fcn-training-v0_1",
   "validation_split": {
@@ -90,10 +90,10 @@
     "representation_kind": "roi_fcn_locator_npz",
     "representation_storage_format": "npz",
     "row_count": 60000,
-    "run_json_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate/manifests/run.json",
-    "samples_csv_path": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate/manifests/samples.csv",
+    "run_json_path": "<repo-root>/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate/manifests/run.json",
+    "samples_csv_path": "<repo-root>/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate/manifests/samples.csv",
     "shard_count": 8,
     "split_name": "validate",
-    "split_root": "/home/mitch/development/raccoon-ball/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate"
+    "split_root": "<repo-root>/04_ROI-FCN/02_training/datasets/roi-fcn_v29/validate"
   }
 }

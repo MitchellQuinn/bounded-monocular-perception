@@ -17,10 +17,12 @@ This is not a generic style guide.
 It is a repo-specific implementation standard for producing code and documents that fit the architecture already present in:
 
 - `01_rb_synthetic-data_3`
-- `02_synthetic-data-processing-v3.0`
+- `02_synthetic-data-processing-v4.0`
 - `03_rb-training-v2.0`
 - `04_ROI-FCN`
-- `05_inference-v0.1`
+- `05_inference-v0.3-ds`
+- `05_inference-v0.4-ts`
+- `06_live-inference_v0.3`
 - `documents`
 
 ---
@@ -142,7 +144,7 @@ Within Unity, generated code should preserve the existing internal split:
 Do not put Unity scene behavior into `Core/`.
 Do not put domain logic only needed by runtime services into adapters if it can live in `Runtime/`.
 
-### 4.2 Preprocessing pipeline: `02_synthetic-data-processing-v3.0`
+### 4.2 Preprocessing pipeline: `02_synthetic-data-processing-v4.0`
 
 Preprocessing owns:
 
@@ -217,7 +219,7 @@ Helpers or scripts must own:
 
 Do not generate notebook code that embeds process management, manifest mutation logic, or opaque business rules inline.
 
-### 4.5 Inference: `05_inference-v0.1`
+### 4.5 Raw-image inference: `05_inference-v0.3-ds` and `05_inference-v0.4-ts`
 
 Inference owns:
 

@@ -4,10 +4,10 @@
       "captured_at_utc": "2026-05-19T14:46:00.497Z",
       "charuco_corner_count": 38,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0001.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0001.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -16,9 +16,9 @@
         "value": "65b90759cd90524dc298fbe3da20111b"
       },
       "frame_id": "frame-00000507-9edb1124",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0001_overlay.png",
       "pose_signature": {
         "area_fraction": 0.08924045138888889,
         "center_x_norm": 0.35078125,
@@ -52,10 +52,10 @@
       "captured_at_utc": "2026-05-19T14:46:02.094Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0002.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0002.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -64,9 +64,9 @@
         "value": "882189dde1c7edd5962721a66d196f72"
       },
       "frame_id": "frame-00000517-1d22ee48",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0002_overlay.png",
       "pose_signature": {
         "area_fraction": 0.08518619791666666,
         "center_x_norm": 0.23463541666666668,
@@ -100,10 +100,10 @@
       "captured_at_utc": "2026-05-19T14:46:07.341Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0003.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0003.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -112,9 +112,9 @@
         "value": "ca11df4f99e085fa9b0bd53688a80b8f"
       },
       "frame_id": "frame-00000551-4fe786fc",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0003_overlay.png",
       "pose_signature": {
         "area_fraction": 0.08772526041666667,
         "center_x_norm": 0.40286458333333336,
@@ -148,10 +148,10 @@
       "captured_at_utc": "2026-05-19T14:46:12.751Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0004.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0004.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -160,9 +160,9 @@
         "value": "800b40b3eb2498a570ad529be0db0fe3"
       },
       "frame_id": "frame-00000587-f4e60c88",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0004_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07737760416666667,
         "center_x_norm": 0.678125,
@@ -196,10 +196,10 @@
       "captured_at_utc": "2026-05-19T14:46:17.054Z",
       "charuco_corner_count": 31,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0005.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0005.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -208,9 +208,9 @@
         "value": "0b6d535fdc8716d5ac5ca13280258362"
       },
       "frame_id": "frame-00000615-20d46f71",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005.png",
       "marker_count": 24,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0005_overlay.png",
       "pose_signature": {
         "area_fraction": 0.06569618055555555,
         "center_x_norm": 0.671875,
@@ -244,10 +244,10 @@
       "captured_at_utc": "2026-05-19T14:46:18.864Z",
       "charuco_corner_count": 38,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0006.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0006.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -256,9 +256,9 @@
         "value": "8427d5be57623e7d142f1c6670e8b4fe"
       },
       "frame_id": "frame-00000627-222696fe",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0006_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07048589409722222,
         "center_x_norm": 0.3,
@@ -292,10 +292,10 @@
       "captured_at_utc": "2026-05-19T14:46:20.968Z",
       "charuco_corner_count": 36,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0007.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0007.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -304,9 +304,9 @@
         "value": "aaf93e08cdeacbe18f673d9897731ebe"
       },
       "frame_id": "frame-00000641-bcb95888",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0007_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07153559027777778,
         "center_x_norm": 0.19088541666666667,
@@ -340,10 +340,10 @@
       "captured_at_utc": "2026-05-19T14:46:24.573Z",
       "charuco_corner_count": 35,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0008.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0008.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -352,9 +352,9 @@
         "value": "4a98ef73a5d982db427609cacc7bd30e"
       },
       "frame_id": "frame-00000665-3dcb8274",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008.png",
       "marker_count": 25,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0008_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07106401909722222,
         "center_x_norm": 0.4515625,
@@ -388,10 +388,10 @@
       "captured_at_utc": "2026-05-19T14:46:32.409Z",
       "charuco_corner_count": 24,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0009.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0009.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -400,9 +400,9 @@
         "value": "ddd11c7755c2ad242b0267756e6a7ed5"
       },
       "frame_id": "frame-00000717-b2cfcdab",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009.png",
       "marker_count": 20,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0009_overlay.png",
       "pose_signature": {
         "area_fraction": 0.04256271701388889,
         "center_x_norm": 0.35078125,
@@ -436,10 +436,10 @@
       "captured_at_utc": "2026-05-19T14:46:33.978Z",
       "charuco_corner_count": 36,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0010.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0010.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -448,9 +448,9 @@
         "value": "810654281cf59a7358518218104cb52a"
       },
       "frame_id": "frame-00000727-2257d90e",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010.png",
       "marker_count": 25,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0010_overlay.png",
       "pose_signature": {
         "area_fraction": 0.04466384548611111,
         "center_x_norm": 0.27057291666666666,
@@ -484,10 +484,10 @@
       "captured_at_utc": "2026-05-19T14:46:37.420Z",
       "charuco_corner_count": 34,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0011.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0011.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -496,9 +496,9 @@
         "value": "bcb7c01897239b0ad76d4cfb4d9d21f9"
       },
       "frame_id": "frame-00000750-a636a687",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011.png",
       "marker_count": 25,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0011_overlay.png",
       "pose_signature": {
         "area_fraction": 0.043782118055555555,
         "center_x_norm": 0.16822916666666668,
@@ -532,10 +532,10 @@
       "captured_at_utc": "2026-05-19T14:46:53.647Z",
       "charuco_corner_count": 24,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0012.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0012.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -544,9 +544,9 @@
         "value": "3e1cb7b861b1d00133154b495e15d72d"
       },
       "frame_id": "frame-00000859-c85856ad",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012.png",
       "marker_count": 20,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0012_overlay.png",
       "pose_signature": {
         "area_fraction": 0.034230685763888886,
         "center_x_norm": 0.7747395833333334,
@@ -580,10 +580,10 @@
       "captured_at_utc": "2026-05-19T14:46:55.525Z",
       "charuco_corner_count": 27,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0013.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0013.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -592,9 +592,9 @@
         "value": "1394da8d938ed9ab1b4431e0200a9982"
       },
       "frame_id": "frame-00000871-7dc7f6dc",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013.png",
       "marker_count": 21,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0013_overlay.png",
       "pose_signature": {
         "area_fraction": 0.039299913194444445,
         "center_x_norm": 0.78984375,
@@ -628,10 +628,10 @@
       "captured_at_utc": "2026-05-19T14:47:05.933Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0014.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0014.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -640,9 +640,9 @@
         "value": "f2ed5732443300713eb5c043728d8d8d"
       },
       "frame_id": "frame-00000943-a550a867",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0014_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07480186631944444,
         "center_x_norm": 0.47682291666666665,
@@ -676,10 +676,10 @@
       "captured_at_utc": "2026-05-19T14:49:41.387Z",
       "charuco_corner_count": 25,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0015.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4/accepted/frame_0015.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1444_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -688,9 +688,9 @@
         "value": "25e4b0440813935b74511cb5eb04ba7a"
       },
       "frame_id": "frame-00002012-458d4186",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015.png",
       "marker_count": 21,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0015_overlay.png",
       "pose_signature": {
         "area_fraction": 0.06250542534722223,
         "center_x_norm": 0.6700520833333333,
@@ -724,10 +724,10 @@
       "captured_at_utc": "2026-05-19T14:51:11.126Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0001.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0001.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -736,9 +736,9 @@
         "value": "4d33f7feea86aaa240ae86e267a2fb0f"
       },
       "frame_id": "frame-00000099-3b378fe1",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0016_overlay.png",
       "pose_signature": {
         "area_fraction": 0.06741449652777778,
         "center_x_norm": 0.47109375,
@@ -772,10 +772,10 @@
       "captured_at_utc": "2026-05-19T14:51:16.916Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0002.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0002.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -784,9 +784,9 @@
         "value": "9f9c3583e87b46aa3f2843246f3f21a9"
       },
       "frame_id": "frame-00000137-3f3d054e",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0017_overlay.png",
       "pose_signature": {
         "area_fraction": 0.084361328125,
         "center_x_norm": 0.22890625,
@@ -820,10 +820,10 @@
       "captured_at_utc": "2026-05-19T14:51:19.341Z",
       "charuco_corner_count": 33,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0003.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0003.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -832,9 +832,9 @@
         "value": "1574b157624690ad192751899f4c5b37"
       },
       "frame_id": "frame-00000152-347a9705",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018.png",
       "marker_count": 25,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0018_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07683268229166666,
         "center_x_norm": 0.14166666666666666,
@@ -868,10 +868,10 @@
       "captured_at_utc": "2026-05-19T14:51:23.778Z",
       "charuco_corner_count": 39,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0004.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0004.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -880,9 +880,9 @@
         "value": "686c45f2d489f3259e606fda0c791c6b"
       },
       "frame_id": "frame-00000180-b95a322a",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0019_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07696332465277778,
         "center_x_norm": 0.3932291666666667,
@@ -916,10 +916,10 @@
       "captured_at_utc": "2026-05-19T14:51:27.353Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0005.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0005.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -928,9 +928,9 @@
         "value": "2e0d9df5cf1d58a4685457f739c04405"
       },
       "frame_id": "frame-00000203-7a2cf323",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0020_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07904535590277778,
         "center_x_norm": 0.6911458333333333,
@@ -964,10 +964,10 @@
       "captured_at_utc": "2026-05-19T14:51:30.056Z",
       "charuco_corner_count": 38,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0006.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0006.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -976,9 +976,9 @@
         "value": "2d90e9b16f974a1225f94ff18f1722b2"
       },
       "frame_id": "frame-00000220-01c478bd",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0021_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07416427951388889,
         "center_x_norm": 0.7338541666666667,
@@ -1012,10 +1012,10 @@
       "captured_at_utc": "2026-05-19T14:51:31.707Z",
       "charuco_corner_count": 34,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0007.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0007.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1024,9 +1024,9 @@
         "value": "af097af21d1fb76f6a5297306bf34df6"
       },
       "frame_id": "frame-00000230-536f52c8",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022.png",
       "marker_count": 25,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0022_overlay.png",
       "pose_signature": {
         "area_fraction": 0.06799739583333334,
         "center_x_norm": 0.7736979166666667,
@@ -1060,10 +1060,10 @@
       "captured_at_utc": "2026-05-19T14:51:36.000Z",
       "charuco_corner_count": 28,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0008.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0008.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1072,9 +1072,9 @@
         "value": "f0a917e7586da11c42bfec814a212b3d"
       },
       "frame_id": "frame-00000257-47ed0d1e",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023.png",
       "marker_count": 22,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0023_overlay.png",
       "pose_signature": {
         "area_fraction": 0.04444422743055555,
         "center_x_norm": 0.23619791666666667,
@@ -1108,10 +1108,10 @@
       "captured_at_utc": "2026-05-19T14:51:46.749Z",
       "charuco_corner_count": 24,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0009.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0009.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1120,9 +1120,9 @@
         "value": "eb73c456ec8aaa560c0793bd7531c154"
       },
       "frame_id": "frame-00000328-e8bb25ef",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024.png",
       "marker_count": 20,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0024_overlay.png",
       "pose_signature": {
         "area_fraction": 0.053206380208333334,
         "center_x_norm": 0.51328125,
@@ -1156,10 +1156,10 @@
       "captured_at_utc": "2026-05-19T14:51:53.775Z",
       "charuco_corner_count": 24,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0010.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0010.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1168,9 +1168,9 @@
         "value": "a49f36473ee2d8283b192189f40c4d59"
       },
       "frame_id": "frame-00000373-bf22a076",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025.png",
       "marker_count": 21,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0025_overlay.png",
       "pose_signature": {
         "area_fraction": 0.05073589409722222,
         "center_x_norm": 0.7716145833333333,
@@ -1204,10 +1204,10 @@
       "captured_at_utc": "2026-05-19T14:52:02.853Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0011.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0011.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1216,9 +1216,9 @@
         "value": "bf1a37a6bda084308dca6ee391421665"
       },
       "frame_id": "frame-00000431-ceb0a44e",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0026_overlay.png",
       "pose_signature": {
         "area_fraction": 0.0962654079861111,
         "center_x_norm": 0.496875,
@@ -1252,10 +1252,10 @@
       "captured_at_utc": "2026-05-19T14:52:04.395Z",
       "charuco_corner_count": 40,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0012.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0012.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1264,9 +1264,9 @@
         "value": "b50cffeca60491ecc6f652d683524d77"
       },
       "frame_id": "frame-00000441-4508a3e2",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027.png",
       "marker_count": 27,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0027_overlay.png",
       "pose_signature": {
         "area_fraction": 0.10123741319444444,
         "center_x_norm": 0.5333333333333333,
@@ -1300,10 +1300,10 @@
       "captured_at_utc": "2026-05-19T14:52:12.495Z",
       "charuco_corner_count": 38,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0013.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0013.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1312,9 +1312,9 @@
         "value": "a442dda101030b822ab1b9e85cbfd4f8"
       },
       "frame_id": "frame-00000496-9d57bb78",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0028_overlay.png",
       "pose_signature": {
         "area_fraction": 0.08042751736111112,
         "center_x_norm": 0.46197916666666666,
@@ -1348,10 +1348,10 @@
       "captured_at_utc": "2026-05-19T14:52:40.727Z",
       "charuco_corner_count": 38,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0014.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0014.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1360,9 +1360,9 @@
         "value": "f41c3a0d99ad69504583fb18fa7477f5"
       },
       "frame_id": "frame-00000685-99e78ecf",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0029_overlay.png",
       "pose_signature": {
         "area_fraction": 0.07034830729166666,
         "center_x_norm": 0.33125,
@@ -1396,10 +1396,10 @@
       "captured_at_utc": "2026-05-19T14:55:42.217Z",
       "charuco_corner_count": 36,
       "contract_version": "rb-camera-calibration-v0_1",
-      "detection_json_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030_detection.json",
+      "detection_json_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030_detection.json",
       "extras": {
-        "merged_from_image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0015.png",
-        "merged_from_session": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
+        "merged_from_image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4/accepted/frame_0015.png",
+        "merged_from_session": "<repo-root>/charuco-calibration/calibration_runs/260519-1450_calibio_charuco_30mm_a4"
       },
       "frame_hash": {
         "algorithm": "blake2b-128",
@@ -1408,9 +1408,9 @@
         "value": "7d8af337d6e13817d41a8afef61251c9"
       },
       "frame_id": "frame-00001916-3c3787a5",
-      "image_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030.png",
+      "image_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030.png",
       "marker_count": 26,
-      "overlay_path": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030_overlay.png",
+      "overlay_path": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4/accepted/frame_0030_overlay.png",
       "pose_signature": {
         "area_fraction": 0.03660720486111111,
         "center_x_norm": 0.22838541666666667,
@@ -1495,6 +1495,6 @@
     "extras": {},
     "save_debug_overlays": true,
     "save_rejected_samples": true,
-    "session_root": "/home/mitch/development/bounded-monocular-perception/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4"
+    "session_root": "<repo-root>/charuco-calibration/calibration_runs/260519-1501_calibio_charuco_30mm_a4"
   }
 }

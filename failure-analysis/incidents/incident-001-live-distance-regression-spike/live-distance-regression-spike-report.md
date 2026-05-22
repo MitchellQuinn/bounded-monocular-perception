@@ -56,31 +56,27 @@ The comparison therefore isolates the failure to frame-dependent preprocessing, 
 
 The ROI locator output is effectively stable. The silhouette and model input are not.
 
-## 4. Visual Evidence
+## 4. Visual Evidence Summary
 
 ### 4.1 Accepted camera frames
 
-The raw accepted frames are visually consistent with the operator report: the Defender is large in the frame in both captures.
-
-| Failing trace | Passing trace |
-| --- | --- |
-| ![Failing accepted frame](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/accepted_raw_frame.png) | ![Passing accepted frame](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/accepted_raw_frame.png) |
+The raw accepted frames inspected during the investigation were visually
+consistent with the operator report: the Defender was large in the frame in
+both captures. Generated PNG renderings from the live trace are not distributed
+in this repository snapshot; the checked-in trace JSON records the measurements
+used below.
 
 ### 4.2 ROI crops
 
-The ROI crops also contain the full Defender in both traces. This rules out a primary locator failure.
-
-| Failing trace | Passing trace |
-| --- | --- |
-| ![Failing ROI crop](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/roi_crop.png) | ![Passing ROI crop](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/roi_crop.png) |
+The ROI crops also contained the full Defender in both traces. This rules out a
+primary locator failure and is reflected in the near-identical ROI bboxes in the
+evidence table.
 
 ### 4.3 Model distance inputs
 
-The model inputs diverge dramatically. In the failing trace, the distance stream contains only a small fragment; in the passing trace, it contains the full vehicle.
-
-| Failing trace | Passing trace |
-| --- | --- |
-| ![Failing distance input](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/x_distance_image.png) | ![Passing distance input](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/x_distance_image.png) |
+The model inputs diverged dramatically. In the failing trace, the distance
+stream contained only a small fragment; in the passing trace, it contained the
+full vehicle.
 
 This is the decisive evidence. The regression model was not asked to estimate distance from the large vehicle visible in the frame. It was asked to estimate distance from a tiny, near-empty representation.
 
@@ -295,9 +291,9 @@ Post-remediation live traces captured on 2026-05-18 from `11:47:13Z` onward show
 
 | Frame hash prefix | Companion traces | Predicted distance | Foreground extraction | Foreground pixels | Foreground bbox | Locator confidence |
 | --- | --- | ---: | --- | ---: | ---: | ---: |
-| `86683b78` | [`114713`](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114713Z__04b10392-ef12-4b05-9fe3-14fbd89fc9dc__86683b78) / [`114715`](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114715Z__3d138c72-1b6c-4753-953a-3fd80d346864__86683b78) | `2.0420 m` | `threshold_foreground_v1` | `16,742 px` | `126 x 175 px` | `0.8967` |
-| `cc24cd51` | [`114732`](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114732Z__b3043800-0a91-4384-8225-18ea69802662__cc24cd51) / [`114734`](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114734Z__eb4b6eb5-fe5a-493d-86e7-19d58f1d821b__cc24cd51) | `1.7722 m` | `threshold_foreground_v1` | `29,830 px` | `199 x 231 px` | `0.9059` |
-| `1d2d137e` | [`114814`](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114814Z__0bd847ab-a9df-4bc3-9c3e-c1a2545ca5b2__1d2d137e) / [`114817`](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114817Z__7be3e7a4-44f4-4383-8671-cb40048eb370__1d2d137e) | `1.5386 m` | `threshold_foreground_v1` | `49,486 px` | `292 x 225 px` | `0.9307` |
+| `86683b78` | `114713` / `114715` | `2.0420 m` | `threshold_foreground_v1` | `16,742 px` | `126 x 175 px` | `0.8967` |
+| `cc24cd51` | `114732` / `114734` | `1.7722 m` | `threshold_foreground_v1` | `29,830 px` | `199 x 231 px` | `0.9059` |
+| `1d2d137e` | `114814` / `114817` | `1.5386 m` | `threshold_foreground_v1` | `49,486 px` | `292 x 225 px` | `0.9307` |
 
 These validation traces are not a controlled repeatability study of one unmoved frame; they are three distinct accepted frame hashes, with different poses or placements. They are still strong evidence for the incident fix because the foreground extraction no longer collapses to tiny geometry in any of the captured cases. The live operator observation after this change is also materially different from the incident behaviour: when the Defender is held still, predictions now typically remain within approximately `0.1 m`, which is boring in the correct way for this stage of the system.
 
@@ -324,29 +320,21 @@ That distinction matters. It turns an apparently vague "the model is wrong" prob
 
 Failing trace:
 
-- [`accepted_raw_frame.png`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/accepted_raw_frame.png)
-- [`roi_crop.png`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/roi_crop.png)
-- [`x_distance_image.png`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/x_distance_image.png)
-- [`x_orientation_image.png`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/x_orientation_image.png)
 - [`x_geometry.json`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/x_geometry.json)
 - [`preprocessing_metadata.json`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/preprocessing_metadata.json)
 - [`model_outputs.json`](evidence/traces/20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54/model_outputs.json)
 
 Passing comparison trace:
 
-- [`accepted_raw_frame.png`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/accepted_raw_frame.png)
-- [`roi_crop.png`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/roi_crop.png)
-- [`x_distance_image.png`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/x_distance_image.png)
-- [`x_orientation_image.png`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/x_orientation_image.png)
 - [`x_geometry.json`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/x_geometry.json)
 - [`preprocessing_metadata.json`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/preprocessing_metadata.json)
 - [`model_outputs.json`](evidence/traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/model_outputs.json)
 
 Post-remediation live validation traces:
 
-- [`20260518T114713Z` preprocessing trace](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114713Z__04b10392-ef12-4b05-9fe3-14fbd89fc9dc__86683b78)
-- [`20260518T114715Z` inference trace](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114715Z__3d138c72-1b6c-4753-953a-3fd80d346864__86683b78)
-- [`20260518T114732Z` preprocessing trace](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114732Z__b3043800-0a91-4384-8225-18ea69802662__cc24cd51)
-- [`20260518T114734Z` inference trace](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114734Z__eb4b6eb5-fe5a-493d-86e7-19d58f1d821b__cc24cd51)
-- [`20260518T114814Z` preprocessing trace](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114814Z__0bd847ab-a9df-4bc3-9c3e-c1a2545ca5b2__1d2d137e)
-- [`20260518T114817Z` inference trace](../../../06_live-inference_v0.3/live_traces/.archive/20260518T114817Z__7be3e7a4-44f4-4383-8671-cb40048eb370__1d2d137e)
+- `20260518T114713Z` preprocessing trace
+- `20260518T114715Z` inference trace
+- `20260518T114732Z` preprocessing trace
+- `20260518T114734Z` inference trace
+- `20260518T114814Z` preprocessing trace
+- `20260518T114817Z` inference trace

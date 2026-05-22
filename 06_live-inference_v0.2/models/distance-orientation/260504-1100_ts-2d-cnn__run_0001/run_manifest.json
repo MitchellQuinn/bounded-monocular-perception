@@ -241,7 +241,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00000.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00000.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00000.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -297,7 +297,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00001.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00001.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00001.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -353,7 +353,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00002.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00002.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00002.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -409,7 +409,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00003.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00003.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00003.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -465,7 +465,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00004.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00004.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00004.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -521,7 +521,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00005.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00005.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00005.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -577,7 +577,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00006.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00006.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00006.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -633,7 +633,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00007.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00007.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00007.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -689,7 +689,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00008.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00008.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00008.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -745,7 +745,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00009.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00009.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00009.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -801,7 +801,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00010.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00010.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00010.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -857,7 +857,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00011.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00011.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00011.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -913,7 +913,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00012.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00012.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00012.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -969,7 +969,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00013.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00013.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00013.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1025,7 +1025,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00014.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00014.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00014.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1081,7 +1081,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00015.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00015.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00015.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1137,7 +1137,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00016.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00016.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00016.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1193,7 +1193,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00017.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00017.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00017.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1249,7 +1249,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00018.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00018.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00018.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1305,7 +1305,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00019.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00019.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00019.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1361,7 +1361,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00020.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00020.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00020.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1417,7 +1417,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00021.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00021.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00021.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1473,7 +1473,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00022.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00022.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00022.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1529,7 +1529,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00023.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00023.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00023.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1585,7 +1585,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00024.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00024.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00024.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1641,7 +1641,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00025.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00025.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00025.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1697,7 +1697,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-train_shard_00026.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00026.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00026.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1753,7 +1753,7 @@
         "n_rows_from_x": 5787,
         "n_rows_manifest": 5787,
         "npz_filename": "v27-train_shard_00027.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00027.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/training-data/v27-train-tri/v27-train_shard_00027.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           5787
@@ -1826,7 +1826,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-validation_shard_00000.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00000.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00000.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1882,7 +1882,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-validation_shard_00001.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00001.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00001.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1938,7 +1938,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-validation_shard_00002.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00002.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00002.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -1994,7 +1994,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-validation_shard_00003.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00003.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00003.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -2050,7 +2050,7 @@
         "n_rows_from_x": 8192,
         "n_rows_manifest": 8192,
         "npz_filename": "v27-validation_shard_00004.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00004.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00004.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           8192
@@ -2106,7 +2106,7 @@
         "n_rows_from_x": 6969,
         "n_rows_manifest": 6969,
         "npz_filename": "v27-validation_shard_00005.npz",
-        "npz_path": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00005.npz",
+        "npz_path": "<repo-root>/03_rb-training-v2.0/validation-data-tri-stream/v27-validation/v27-validation_shard_00005.npz",
         "npz_row_index_dtype": "int64",
         "npz_row_index_shape": [
           6969
@@ -2139,7 +2139,7 @@
   "entrypoint_type": "cli",
   "environment": {
     "cuda_version": "12.1",
-    "cwd": "/home/mitch/development/raccoon-ball/03_rb-training-v2.0",
+    "cwd": "<repo-root>/03_rb-training-v2.0",
     "device": "cuda",
     "matplotlib_version": "3.10.8",
     "numpy_version": "2.4.4",

@@ -3,7 +3,7 @@
 
 ```text
 codex_templates/
-├── README.md
+├── template-pack-index.md
 ├── 00-template-governance.md
 ├── 01-base-task-template.md
 ├── 02-ui-consistency-contract.md
@@ -19,7 +19,7 @@ codex_templates/
 
 ---
 
-## `README.md`
+## `template-pack-index.md`
 
 ```md
 # Codex Template Pack Index

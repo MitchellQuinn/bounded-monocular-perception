@@ -12,7 +12,7 @@ This directory is the canonical home for failure-analysis material in the reposi
 
 | Report | Status | Focus |
 | --- | --- | --- |
-| [`incident-001-live-distance-regression-spike`](incidents/incident-001-live-distance-regression-spike/README.md) | Remediated | Live distance spike traced to foreground/silhouette preprocessing collapse |
+| [`incident-001-live-distance-regression-spike`](incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md) | Remediated | Live distance spike traced to foreground/silhouette preprocessing collapse |
 | [`incident-002-pose-dependent-distance-bias`](incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md) | Investigated; architectural pivot | Pose-linked live distance bias in the direct distance/yaw tri-stream model family |
 
 ## Model Evaluation Reports

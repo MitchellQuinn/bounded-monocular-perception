@@ -55,7 +55,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
     def _select_raw_corpus(self):
         corpora = discover_raw_corpora()
         if not corpora:
-            self.skipTest("No local raw-image corpora available under 05_inference-v0.4/input.")
+            self.skipTest("No local raw-image corpora available under 05_inference-v0.4-ts/input.")
         return corpora[0]
 
     def test_discover_model_runs_includes_both_runtime_families(self) -> None:

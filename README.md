@@ -19,11 +19,12 @@ tracking, or unconstrained real-world scene understanding.
 For a fast technical review, start here:
 
 1. [`documents/bounded-monocular-perception-technical-writeup-v0.8.md`](documents/bounded-monocular-perception-technical-writeup-v0.8.md) - current technical overview, architecture, results, caveats, and engineering learnings.
-2. [`06_live-inference_v0.3/RUNTIME_NOTES.md`](06_live-inference_v0.3/RUNTIME_NOTES.md) - current live-local runtime notes and diagnostic flow.
-3. [`failure-analysis/README.md`](failure-analysis/README.md) - failure-analysis index.
-4. [`failure-analysis/incidents/incident-001-live-distance-regression-spike/README.md`](failure-analysis/incidents/incident-001-live-distance-regression-spike/README.md) - remediated live preprocessing failure with trace-backed regression coverage.
-5. [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md) - live pose-linked distance-bias investigation and architectural pivot.
-6. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md) - proposed next model direction using amodal semantic keypoints.
+2. [`documents/document-index.md`](documents/document-index.md) - document routing layer for current and historical technical material.
+3. [`06_live-inference_v0.3/RUNTIME_NOTES.md`](06_live-inference_v0.3/RUNTIME_NOTES.md) - current live-local runtime notes and diagnostic flow.
+4. [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md) - failure-analysis index.
+5. [`failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md`](failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md) - remediated live preprocessing failure with trace-backed regression coverage.
+6. [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md) - live pose-linked distance-bias investigation and architectural pivot.
+7. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md) - proposed next model direction using amodal semantic keypoints.
 
 ## What This Repository Demonstrates
 
@@ -65,7 +66,7 @@ implemented registered training topology in this repository snapshot.
 - [`06_live-inference_v0.1`](06_live-inference_v0.1), [`06_live-inference_v0.2`](06_live-inference_v0.2), [`06_live-inference_v0.3`](06_live-inference_v0.3): live-local runtime iterations; v0.3 is the current path.
 - [`charuco-calibration`](charuco-calibration): PySide6/OpenCV ChArUco calibration capture, solve, and artifact export tooling.
 - [`failure-analysis`](failure-analysis): failure-analysis framework, model-evaluation reports, incident investigations, and supporting evidence.
-- [`documents`](documents): technical writeups, topology proposals, implementation notes, and specifications.
+- [`documents`](documents): technical writeups, topology proposals, implementation notes, and specifications; start with [`documents/document-index.md`](documents/document-index.md).
 - [`examples/defender-images`](examples/defender-images): scaffold for a bounded example-image corpus and its notices.
 - [`scripts/run-tests.sh`](scripts/run-tests.sh): repo-level focused test runner for the checked-in subprojects.
 

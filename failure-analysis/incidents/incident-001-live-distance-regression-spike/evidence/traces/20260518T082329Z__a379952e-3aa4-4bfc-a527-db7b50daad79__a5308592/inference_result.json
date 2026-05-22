@@ -2,28 +2,28 @@
   "contract_version": "rb-live-inference-v0_3",
   "debug": {},
   "debug_paths": {
-    "accepted_raw_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
-    "candidate_contours": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
-    "chosen_contour": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
-    "edge_map": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
-    "foreground_mask": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
-    "grayscale_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
-    "locator_overlay": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
-    "locator_result": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
-    "manual_mask": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__manual_mask.png",
-    "preprocessor_source_after_regressor_masks": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__preprocessor_source_after_regressor_masks.png",
-    "preprocessor_source_before_regressor_masks": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__preprocessor_source_before_regressor_masks.png",
-    "roi_crop": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
-    "roi_overlay_metadata": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json",
-    "x_distance_image": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__x_distance_image.png",
-    "x_orientation_image": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__x_orientation_image.png"
+    "accepted_raw_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
+    "candidate_contours": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
+    "chosen_contour": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
+    "edge_map": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
+    "foreground_mask": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
+    "grayscale_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
+    "locator_overlay": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
+    "locator_result": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
+    "manual_mask": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__manual_mask.png",
+    "preprocessor_source_after_regressor_masks": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__preprocessor_source_after_regressor_masks.png",
+    "preprocessor_source_before_regressor_masks": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__preprocessor_source_before_regressor_masks.png",
+    "roi_crop": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
+    "roi_overlay_metadata": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json",
+    "x_distance_image": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__x_distance_image.png",
+    "x_orientation_image": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__x_orientation_image.png"
   },
   "extras": {
-    "checkpoint_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/models/distance-orientation/260515-1301_ts-2d-cnn/best.pt",
+    "checkpoint_path": "<repo-root>/06_live-inference_v0.3/models/distance-orientation/260515-1301_ts-2d-cnn/best.pt",
     "device": "cpu",
     "device_policy": "auto",
     "model_label": "260515-1301_ts-2d-cnn",
-    "model_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/models/distance-orientation/260515-1301_ts-2d-cnn"
+    "model_root": "<repo-root>/06_live-inference_v0.3/models/distance-orientation/260515-1301_ts-2d-cnn"
   },
   "inference_time_ms": 2.5150630390271544,
   "input_image_hash": {
@@ -32,7 +32,7 @@
     "digest_size_bytes": 16,
     "value": "a5308592401e06cbb22142f98204d41e"
   },
-  "input_image_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_frames/latest_frame.png",
+  "input_image_path": "<repo-root>/06_live-inference_v0.3/live_frames/latest_frame.png",
   "model_input_mode": "tri_stream_distance_orientation_geometry",
   "output_contract": {
     "contract_version": "rb-live-inference-v0_3",
@@ -115,16 +115,16 @@
             "runtime_parameter_revision": 0
           },
           "paths": {
-            "accepted_raw_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
-            "candidate_contours": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
-            "chosen_contour": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
-            "edge_map": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
-            "foreground_mask": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
-            "grayscale_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
-            "locator_overlay": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
-            "locator_result": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
-            "roi_crop": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
-            "roi_overlay_metadata": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
+            "accepted_raw_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
+            "candidate_contours": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
+            "chosen_contour": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
+            "edge_map": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
+            "foreground_mask": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
+            "grayscale_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
+            "locator_overlay": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
+            "locator_result": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
+            "roi_crop": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
+            "roi_overlay_metadata": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
           }
         },
         "locator_parameters": {
@@ -12096,16 +12096,16 @@
               "runtime_parameter_revision": 0
             },
             "paths": {
-              "accepted_raw_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
-              "candidate_contours": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
-              "chosen_contour": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
-              "edge_map": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
-              "foreground_mask": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
-              "grayscale_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
-              "locator_overlay": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
-              "locator_result": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
-              "roi_crop": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
-              "roi_overlay_metadata": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
+              "accepted_raw_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
+              "candidate_contours": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
+              "chosen_contour": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
+              "edge_map": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
+              "foreground_mask": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
+              "grayscale_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
+              "locator_overlay": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
+              "locator_result": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
+              "roi_crop": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
+              "roi_overlay_metadata": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
             }
           },
           "extras": {
@@ -12243,16 +12243,16 @@
             "runtime_parameter_revision": 0
           },
           "paths": {
-            "accepted_raw_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
-            "candidate_contours": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
-            "chosen_contour": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
-            "edge_map": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
-            "foreground_mask": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
-            "grayscale_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
-            "locator_overlay": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
-            "locator_result": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
-            "roi_crop": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
-            "roi_overlay_metadata": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
+            "accepted_raw_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
+            "candidate_contours": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
+            "chosen_contour": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
+            "edge_map": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
+            "foreground_mask": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
+            "grayscale_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
+            "locator_overlay": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
+            "locator_result": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
+            "roi_crop": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
+            "roi_overlay_metadata": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
           }
         },
         "locator_parameters": {
@@ -24224,16 +24224,16 @@
               "runtime_parameter_revision": 0
             },
             "paths": {
-              "accepted_raw_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
-              "candidate_contours": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
-              "chosen_contour": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
-              "edge_map": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
-              "foreground_mask": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
-              "grayscale_frame": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
-              "locator_overlay": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
-              "locator_result": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
-              "roi_crop": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
-              "roi_overlay_metadata": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
+              "accepted_raw_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__accepted_raw_frame.png",
+              "candidate_contours": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__candidate_contours.png",
+              "chosen_contour": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__chosen_contour.png",
+              "edge_map": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__edge_map.png",
+              "foreground_mask": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__foreground_mask.png",
+              "grayscale_frame": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__grayscale_frame.png",
+              "locator_overlay": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_overlay.png",
+              "locator_result": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__locator_result.json",
+              "roi_crop": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_crop.png",
+              "roi_overlay_metadata": "<repo-root>/06_live-inference_v0.3/live_traces/20260518T082329Z__a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592/a379952e-3aa4-4bfc-a527-db7b50daad79__a5308592401e__roi_overlay_metadata.json"
             }
           },
           "extras": {

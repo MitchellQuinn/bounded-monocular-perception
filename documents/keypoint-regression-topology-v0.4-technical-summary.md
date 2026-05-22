@@ -3,7 +3,7 @@
 **Project:** Raccoon Ball  
 **Object:** 1/12 scale Defender  
 **Artifact type:** employer-facing technical summary  
-**Companion document:** `Defender_Keypoint_Regression_Topology_v0.4.md`
+**Companion document:** `keypoint-regression-topology-v0.4.md`
 
 ---
 

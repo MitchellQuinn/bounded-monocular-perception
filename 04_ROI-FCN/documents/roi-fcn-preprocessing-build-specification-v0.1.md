@@ -53,21 +53,21 @@ The ROI-FCN preprocessing build must reuse the current edge ROI path rather than
 
 Authoritative reuse points are:
 
-- `02_synthetic-data-processing-v3.0/rb_pipeline_v4/detector.py`
+- `02_synthetic-data-processing-v4.0/rb_pipeline_v4/detector.py`
   - `EdgeRoiDetector`
-- `02_synthetic-data-processing-v3.0/rb_pipeline_v4/config.py`
+- `02_synthetic-data-processing-v4.0/rb_pipeline_v4/config.py`
   - `DetectStageConfigV4`
-- `02_synthetic-data-processing-v3.0/rb_pipeline_v4/contracts.py`
+- `02_synthetic-data-processing-v4.0/rb_pipeline_v4/contracts.py`
   - `Detection`
-- `02_synthetic-data-processing-v3.0/rb_pipeline_v4/manifest.py`
+- `02_synthetic-data-processing-v4.0/rb_pipeline_v4/manifest.py`
   - existing `PreprocessingContract` update pattern
-- `02_synthetic-data-processing-v3.0/rb_pipeline_v4/widgets.py`
-- `02_synthetic-data-processing-v3.0/rb_pipeline_v4/widgets_v05.py`
+- `02_synthetic-data-processing-v4.0/rb_pipeline_v4/widgets.py`
+- `02_synthetic-data-processing-v4.0/rb_pipeline_v4/widgets_v05.py`
   - launcher interaction pattern and edge-only control behavior
-- `05_inference-v0.1/src/inference_v0_1/pipeline.py`
+- `05_inference-v0.3-ds/src/inference_v0_1/pipeline.py`
   - repository example of reusing preprocessing-side semantics instead of forking them
 
-The important rule is: ROI target bootstrapping must use the same edge ROI v1 behavior that is already trusted in `02_synthetic-data-processing-v3.0` and reused in `05_inference-v0.1`.
+The important rule is: ROI target bootstrapping must use the same edge ROI v1 behavior that is already trusted in `02_synthetic-data-processing-v4.0` and reused in `05_inference-v0.3-ds`.
 
 ---
 
@@ -422,7 +422,7 @@ Recommended module split:
 - `widgets_v01.py`
   - notebook widget assembly and event wiring helpers only
 
-This mirrors the separation-of-concerns pattern already used in `02_synthetic-data-processing-v3.0` and `05_inference-v0.1`.
+This mirrors the separation-of-concerns pattern already used in `02_synthetic-data-processing-v4.0` and `05_inference-v0.3-ds`.
 
 ---
 
