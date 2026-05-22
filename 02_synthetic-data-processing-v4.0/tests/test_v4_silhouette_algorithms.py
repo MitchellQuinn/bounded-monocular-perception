@@ -42,7 +42,10 @@ class V4SilhouetteAlgorithmsTests(unittest.TestCase):
         fixture = (
             Path(__file__).resolve().parents[2]
             / "failure-analysis"
-            / "incident_1"
+            / "incidents"
+            / "incident-001-live-distance-regression-spike"
+            / "evidence"
+            / "traces"
             / "20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54"
             / "roi_crop.png"
         )

@@ -22,7 +22,7 @@ The main changes since v0.6.2 are:
 * The live runtime now includes richer trace capture, diagnostic views, static background capture/removal, manual mask drawing, runtime locator controls, and a more explicit foreground-extraction policy.
 * The current v0.3 demo-stabilisation path defaults to an inspectable deterministic locator, `background_edge_v1`, rather than the ROI-FCN locator. ROI-FCN remains available as a legacy comparison path.
 * The selected v0.3 distance/orientation artifact is `260515-1301_ts-2d-cnn`, a `tri_stream_yaw_v0_4` model using the `rb-preprocess-v4-tri-stream-grayscale-white-v1` contract and `320 x 320` model canvases.
-* The repository now contains `failure-analysis/incident_1`, a live-runtime failure investigation that traces a large distance-prediction spike to deterministic preprocessing, applies remediation, and adds fixture-backed regression coverage.
+* The repository now contains `failure-analysis/incidents/incident-001-live-distance-regression-spike`, a live-runtime failure investigation that traces a large distance-prediction spike to deterministic preprocessing, applies remediation, and adds fixture-backed regression coverage.
 
 The most important change is not only that the live application has more controls. The project now contains a complete example of diagnosing a real live-inference failure from captured artifacts, changing the preprocessing design, and validating the fix against saved traces.
 
@@ -58,7 +58,7 @@ The repository is organised as a versioned multi-project workspace:
 * `06_live-inference_v0.1`: first live-local runtime with camera input, frame handoff, model registry, preprocessing, workers, and GUI
 * `06_live-inference_v0.2`: richer live diagnostics, trace capture, background handling, and ROI-FCN visualisation work
 * `06_live-inference_v0.3`: current demo-stabilisation runtime using generic locator interfaces, deterministic background/edge localisation, manual masks, selectable foreground extraction, and improved trace evidence
-* `failure-analysis/incident_1`: live-runtime incident investigation, remediation record, and post-remediation evidence
+* `failure-analysis`: failure-analysis framework, model-evaluation reports, live-runtime incident investigations, and supporting evidence
 
 This layout reflects a research-engineering codebase moving from offline experiments toward runtime composition. It is not packaged as a finished product, but it contains real integration surfaces, tests, artifacts, runtime contracts, and incident-analysis material.
 
@@ -253,9 +253,9 @@ The selected model's offline validation metrics are:
 
 These are offline synthetic validation metrics for the selected model artifact. They should not be interpreted as real-camera deployment accuracy.
 
-## 11. `incident_1`: Live Distance Spike Investigation
+## 11. Incident 001: Live Distance Spike Investigation
 
-The `failure-analysis/incident_1` directory is an important part of the repository's technical evidence. It records a live-inference failure, reconstructs the pipeline state from artifacts, identifies the root cause, implements remediation, and records post-remediation traces.
+The `failure-analysis/incidents/incident-001-live-distance-regression-spike` directory is an important part of the repository's technical evidence. It records a live-inference failure, reconstructs the pipeline state from artifacts, identifies the root cause, implements remediation, and records post-remediation traces.
 
 The incident began with two near-identical live captures of a stationary Defender model producing sharply different distance estimates:
 
@@ -357,7 +357,7 @@ For the `260425-1025_ds-2d-cnn` raw-image run:
 * yaw within `5 deg` was `38.42%`
 * distance improved in the bulk, but yaw degraded across the main distribution
 
-`incident_1` extends the same engineering pattern into live operation. It demonstrates that operational failures can arise after the locator and before the model, and that model-input artifact capture is essential for debugging composed ML systems.
+Incident 001 extends the same engineering pattern into live operation. It demonstrates that operational failures can arise after the locator and before the model, and that model-input artifact capture is essential for debugging composed ML systems.
 
 The main learning is that model metrics alone are insufficient. In a multi-stage perception system, accuracy depends on the contracts and failure modes of every stage: camera capture, background handling, ROI selection, foreground extraction, geometry construction, model input rendering, and output decoding.
 
@@ -371,7 +371,7 @@ The repository includes focused tests across multiple layers:
 * ROI-FCN preprocessing, geometry, targets, data contracts, and training smoke tests
 * raw-image inference sample execution and brightness analysis
 * live inference model manifests, compatibility checks, frame handoff, frame selection, device policy, runtime parameters, ROI locators, tri-stream preprocessing, inference core, PyTorch engine, workers, GUI bridge, GUI main window, synthetic camera, and OpenCV/V4L2 camera source
-* v0.3-specific tests for `background_edge_v1`, generic tri-stream preprocessing, foreground policy selection, manual mask application, trace artifact contents, GUI app wiring, and the `incident_1` preprocessing regression
+* v0.3-specific tests for `background_edge_v1`, generic tri-stream preprocessing, foreground policy selection, manual mask application, trace artifact contents, GUI app wiring, and the incident-001 preprocessing regression
 
 The test coverage is strongest around contract boundaries, data-shape assumptions, and runtime glue. That is the appropriate emphasis for a multi-stage perception codebase where silent interface drift would be expensive.
 
@@ -423,7 +423,7 @@ The current evidence should be read with the following constraints in mind:
 * The system is not a general detector, tracker, or scene-understanding model.
 * The strongest offline result and the raw-image runtime results are materially different.
 * The current live v0.3 model artifact has strong offline synthetic validation metrics, but the repository does not yet contain a full-corpus live-runtime evaluation with calibrated real-camera ground truth.
-* The physical distance references in `incident_1` are useful diagnostic context, not a calibrated camera-validation result.
+* The physical distance references in incident 001 are useful diagnostic context, not a calibrated camera-validation result.
 * `background_edge_v1` is deterministic and inspectable, but it is not a general object detector.
 * ROI-FCN targets are bootstrapped from an existing crop heuristic, so the localiser initially learns that crop-centre definition rather than independently curated ground truth.
 * The codebase is a research workspace with versioned subprojects, compatibility shims, and evolving runtime paths, not a polished packaged product.

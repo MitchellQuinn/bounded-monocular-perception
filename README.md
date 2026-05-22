@@ -31,6 +31,7 @@ The intent is to publish a bounded example-image corpus only, rather than the fu
 - [`04_ROI-FCN`](04_ROI-FCN) ROI-FCN preprocessing, training, and assessment
 - [`05_inference-v0.1`](05_inference-v0.1) raw-image inference via reused preprocessing stages
 - [`05_inference-v0.2`](05_inference-v0.2) raw-image inference via ROI-FCN plus distance-and-yaw composition
+- [`failure-analysis`](failure-analysis) framework, model-evaluation reports, incident investigations, and supporting evidence artifacts
 - [`documents`](documents) technical write-ups and supporting notes
 - [`examples/defender-images`](examples/defender-images) bounded example-image corpus scaffold and notices
 - [`scripts/run-tests.sh`](scripts/run-tests.sh) repo-level test runner for the checked-in subprojects

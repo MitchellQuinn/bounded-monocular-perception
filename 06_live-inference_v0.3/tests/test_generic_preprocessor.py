@@ -199,7 +199,10 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         fixture = (
             PROJECT_ROOT.parent
             / "failure-analysis"
-            / "incident_1"
+            / "incidents"
+            / "incident-001-live-distance-regression-spike"
+            / "evidence"
+            / "traces"
             / "20260518T082310Z__8ed41d13-9fbb-45ad-8083-dcdc385667e6__e0001d54"
             / "accepted_raw_frame.png"
         )
