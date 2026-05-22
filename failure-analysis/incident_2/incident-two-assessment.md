@@ -1,74 +1,72 @@
-Yes — you’re right. The previous version still had too much “internal scratchpad” texture. Here’s a cleaner employer-facing version: professional, evidence-led, and suitable for a repository report or portfolio appendix.
+# Incident Report: Pose-Dependent Distance Bias in Live Monocular Distance Regression
 
----
+## Summary
 
-# Incident Report: Camera-Model Alignment and Pose-Dependent Distance Bias in Live Distance Regression
+This incident investigated a repeatable live-camera distance regression error in Project Raccoon Ball, a bounded monocular perception system for estimating vehicle distance and yaw from a fixed camera view. The system is intentionally scoped around a known vehicle, constrained camera geometry, synthetic supervision, runtime preprocessing, live inference, trace capture, and failure analysis.
 
-## Executive Summary
+The failure mode was identified during real-camera testing of the current tri-stream distance/yaw model family. At fixed measured floor positions, predicted distance varied systematically with vehicle pose. Front-facing views generally predicted farther away, rear-facing views generally predicted closer, and side-facing views were usually closest to the measured reference distance.
 
-This investigation examined whether live-camera distance prediction errors in Project Raccoon Ball were being caused by a mismatch between the real AR0234 camera model and the Unity synthetic camera model used during training.
+The initial investigation tested whether the issue was primarily caused by camera-model mismatch between Unity synthetic camera geometry and the real AR0234 camera. Applying an input-space camera-model correction modestly improved aggregate distance error, but did not resolve the pose-dependent bias.
 
-The system was evaluated using three physical distance sweeps:
+A later comparison between TriStream v0.4 and TriStream v0.5 showed that v0.5 substantially improved aggregate distance accuracy. Mean absolute error fell from approximately `0.1105 m` to `0.0673 m` in the available sweep data. However, the structural pose-dependence remained.
 
-1. **Baseline sweep A** before camera-model correction.
-2. **Baseline sweep B** before camera-model correction, repeated after several hours and a mask redraw.
-3. **Corrected sweep C** after applying a camera-model delta transform before inference.
-
-The camera-model correction used OpenCV/ChArUco calibration data for the real AR0234 camera and an equivalent extracted calibration model from the Unity camera. The correction was applied upstream of inference, transforming the input image before localisation, preprocessing, geometry extraction, and model prediction.
-
-The correction produced a modest aggregate improvement in distance error:
-
-| Metric                | Baseline A | Baseline B |  Corrected C |
-| --------------------- | ---------: | ---------: | -----------: |
-| Mean absolute error   |   0.1275 m |   0.1267 m | **0.1058 m** |
-| RMSE                  |   0.1552 m |   0.1567 m | **0.1394 m** |
-| Median absolute error |   0.1000 m |   0.1200 m | **0.0750 m** |
-
-However, the main structural failure remained. At the same measured floor distance, the predicted distance continued to vary substantially depending on whether the vehicle faced front, side, or rear. In all three sweeps, front-facing views generally predicted farther away than rear-facing views.
-
-The current conclusion is that camera-model mismatch is likely a contributing factor, but not the dominant remaining failure mode. The stronger remaining issue appears to be pose-dependent representation error: foreground geometry, bounding-box features, silhouette/appearance differences, or learned correlations between pose and distance.
+The incident outcome is an architectural pivot. The current direct distance/yaw tri-stream family remains useful as a baseline and live-runtime integration path, but it is no longer the primary route for improving the system. The next model-development direction is the already-defined amodal keypoint topology, which is documented separately. This report does not reproduce that topology; it records the incident evidence that motivates the pivot.
 
 ---
 
 ## 1. System Context
 
-Project Raccoon Ball is a bounded monocular computer-vision system for estimating the distance and yaw of a known vehicle from a fixed camera view.
+Project Raccoon Ball is a bounded applied ML and computer-vision project. Its central task is to estimate the distance and yaw of a known vehicle from fixed-camera imagery under controlled conditions. The repository is not intended to demonstrate general object detection, autonomous driving, open-world scene understanding, or unconstrained real-world perception.
 
-The live inference pipeline is composed of several stages:
+The current live inference path uses a tri-stream representation:
 
 ```text
-real camera frame
-  -> optional camera-model correction
-  -> target localisation
-  -> ROI extraction
-  -> foreground / geometry preprocessing
-  -> tri-stream model inputs
-  -> PyTorch distance/yaw regression
+x_distance_image
+x_orientation_image
+x_geometry
 ```
 
-The model was trained primarily on Unity-generated synthetic imagery. The live runtime uses a real AR0234 camera. This creates a plausible source of error: the real camera may not project the vehicle into image space in exactly the same way as the synthetic Unity camera.
+The tri-stream design separates distance evidence, orientation evidence, and explicit geometry features. The distance stream preserves apparent scale, the orientation stream provides a target-centred orientation view, and the geometry vector carries bounding-box and foreground-shape metadata.
 
-Because the model uses apparent scale, foreground geometry, and image-space features as evidence for distance, camera-model mismatch can affect prediction quality even when the rest of the pipeline is functioning correctly.
+The live runtime includes model selection, compatibility checks, deterministic and learned localisation paths, foreground extraction, trace capture, debug artifact handling, and PySide6 GUI controls.
 
 ---
 
-## 2. Investigation Objective
+## 2. Incident Objective
 
-The investigation tested whether applying a real-camera-to-Unity-camera image correction would improve live distance predictions.
+The incident had three practical objectives:
 
-The hypothesis was:
+1. Determine whether live distance errors were primarily caused by camera-model mismatch between Unity and the real AR0234 camera.
+    
+2. Compare the current direct distance/yaw tri-stream model family across available model versions.
+    
+3. Decide whether further work should continue within the current direct-regression model family or move to a more inspectable representation.
+    
 
-> The trained model expects Unity camera projection geometry. If the AR0234 real camera produces different image-space geometry, applying a camera-model delta transform before inference should make live frames more consistent with the model’s training distribution and improve distance regression.
+The central diagnostic question was:
 
-This was explicitly **not** a post-processing correction to the predicted distance value. The intervention was applied to the image before the normal inference pipeline.
+> At the same measured floor position, does predicted distance remain stable across front, side, and rear vehicle poses?
+
+Distance should be broadly pose-invariant. The vehicle’s yaw changes, but its position relative to the camera does not.
 
 ---
 
 ## 3. Measurement Method
 
-The Defender model was placed manually on marked floor positions on a white hardboard surface. The floor markings were measured using a tape measure.
+The Defender model was placed manually on measured floor marks on a white hardboard surface. Marks were measured with a tape measure.
 
-At each usable measured distance, three poses were tested:
+Four usable measured positions were tested:
+
+|Mark|Measured distance|
+|--:|--:|
+|1|1.59 m|
+|2|1.77 m|
+|3|1.97 m|
+|4|2.18 m|
+
+A fifth mark at `2.39 m` was excluded because the Defender clipped at the top of the frame.
+
+At each mark, three orientations were tested:
 
 ```text
 front-facing
@@ -76,28 +74,33 @@ side-facing
 rear-facing
 ```
 
-The measured positions were:
-
-```text
-1.59 m
-1.77 m
-1.97 m
-2.18 m
-```
-
-A fifth mark at `2.39 m` was excluded because the Defender clipped at the top of the frame.
-
-The distances should be understood as **measured reference distances**, not laboratory-grade ground truth. Manual placement, model footprint, and centre-of-volume ambiguity introduce some unavoidable tolerance. The model’s synthetic distance target corresponds to the Unity vehicle object position, not a directly visible point on the real model.
-
-This limitation affects absolute accuracy, but it does not explain the main signal under investigation: distance should remain broadly pose-invariant at the same floor marking.
+The measured distances should be treated as practical reference distances, not calibrated ground truth. Manual placement, vehicle footprint, and the difference between physical floor marks and the Unity object-position target introduce tolerance. This limitation affects absolute precision, but it does not explain repeated pose-linked distance differences at the same floor mark.
 
 ---
 
-## 4. Expected Behaviour
+## 4. Evaluation Criteria
 
-At a fixed measured distance, the model’s predicted distance should be similar regardless of vehicle yaw.
+The project’s failure-analysis framework uses `10 cm` as the primary distance success boundary and `5 cm` as a stricter clean-success boundary. The same framework recommends reporting both continuous metrics and thresholded categories, rather than relying on one headline metric.
 
-For example, if the Defender is placed at the `1.77 m` mark, the predicted distance should remain close to `1.77 m` whether the vehicle is facing front, side, or rear.
+For this incident, the most relevant metrics are:
+
+```text
+mean absolute error
+RMSE
+median absolute error
+maximum absolute error
+samples within 10 cm
+samples within 5 cm
+pose spread at fixed measured distance
+```
+
+Pose spread is especially important. It measures the difference between the highest and lowest predicted distance at the same floor mark across front, side, and rear views.
+
+---
+
+## 5. Expected Behaviour
+
+At each measured mark, predicted distance should remain approximately stable across vehicle orientation.
 
 Expected pattern:
 
@@ -108,284 +111,304 @@ front prediction ≈ side prediction ≈ rear prediction
 Observed pattern:
 
 ```text
-front prediction > side prediction > rear prediction
+front prediction tends high
+side prediction tends intermediate or closest
+rear prediction tends low
 ```
 
-This repeated pose-linked ordering is the core failure mode.
+This repeated ordering is the core failure mode.
 
 ---
 
-## 5. Data Captures
+## 6. Camera-Model Correction Test
 
-### 5.1 Session A — Baseline Sweep Before Camera-Model Correction
+The first phase tested whether the live-camera distance error was primarily caused by camera-model mismatch.
 
-|   Sample | Measured mark | Pose  | Predicted distance |   Error |
-| -------: | ------------: | ----- | -----------------: | ------: |
-| LD-A-001 |        1.59 m | Front |             1.77 m | +0.18 m |
-| LD-A-002 |        1.59 m | Side  |             1.69 m | +0.10 m |
-| LD-A-003 |        1.59 m | Rear  |             1.64 m | +0.05 m |
-| LD-A-004 |        1.77 m | Front |             2.00 m | +0.23 m |
-| LD-A-005 |        1.77 m | Side  |             1.86 m | +0.09 m |
-| LD-A-006 |        1.77 m | Rear  |             1.75 m | -0.02 m |
-| LD-A-007 |        1.97 m | Front |             2.25 m | +0.28 m |
-| LD-A-008 |        1.97 m | Side  |             2.00 m | +0.03 m |
-| LD-A-009 |        1.97 m | Rear  |             1.90 m | -0.07 m |
-| LD-A-010 |        2.18 m | Front |             2.08 m | -0.10 m |
-| LD-A-011 |        2.18 m | Side  |             2.08 m | -0.10 m |
-| LD-A-012 |        2.18 m | Rear  |             1.90 m | -0.28 m |
+A camera-model correction was applied upstream of inference using AR0234 calibration data and an equivalent Unity camera model. The correction was applied to the input frame before normal localisation, preprocessing, geometry extraction, and model inference.
 
-Session A showed substantial pose-linked spread. The largest spread occurred at the `1.97 m` mark:
+Three sweeps were collected:
+
+|Session|Description|
+|---|---|
+|A|Baseline before camera-model correction|
+|B|Baseline repeat before camera-model correction|
+|C|Sweep after camera-model correction|
+
+### 6.1 Aggregate Results
+
+|Metric|Baseline A|Baseline B|Camera-corrected C|
+|---|--:|--:|--:|
+|Mean absolute error|0.1275 m|0.1267 m|**0.1058 m**|
+|RMSE|0.1552 m|0.1567 m|**0.1394 m**|
+|Median absolute error|0.1000 m|0.1200 m|**0.0750 m**|
+|Average pose spread|0.2275 m|0.1825 m|0.2425 m|
+
+### 6.2 Interpretation
+
+The camera-model correction improved aggregate distance error, but did not reduce the main pose-dependent spread. The corrected sweep retained consistent front/side/rear divergence.
+
+This indicates that camera-model mismatch contributed to live error, but was not the dominant remaining cause.
+
+---
+
+## 7. TriStream v0.4 Trace-Backed Sweep
+
+A later sweep was run against TriStream v0.4 with camera intrinsics applied. This sweep used single-frame inference and trace recording.
+
+One `1.97 m / rear` reading was rejected because the ROI locator result was visibly unsuitable. The accepted replacement reading is used below.
+
+|Sample|Mark|Pose|Predicted distance|Error|
+|--:|--:|---|--:|--:|
+|V0.4-T-001|1.59 m|Front|1.740 m|+0.150 m|
+|V0.4-T-002|1.59 m|Side|1.681 m|+0.091 m|
+|V0.4-T-003|1.59 m|Rear|1.664 m|+0.074 m|
+|V0.4-T-004|1.77 m|Front|2.014 m|+0.244 m|
+|V0.4-T-005|1.77 m|Side|1.823 m|+0.053 m|
+|V0.4-T-006|1.77 m|Rear|1.840 m|+0.070 m|
+|V0.4-T-007|1.97 m|Front|2.036 m|+0.066 m|
+|V0.4-T-008|1.97 m|Side|2.004 m|+0.034 m|
+|V0.4-T-009|1.97 m|Rear|1.913 m|-0.057 m|
+|V0.4-T-010|2.18 m|Front|2.074 m|-0.106 m|
+|V0.4-T-011|2.18 m|Side|2.067 m|-0.113 m|
+|V0.4-T-012|2.18 m|Rear|1.912 m|-0.268 m|
+
+### 7.1 v0.4 Metrics
+
+|Metric|Value|
+|---|--:|
+|Mean absolute error|0.1105 m|
+|RMSE|0.1317 m|
+|Mean signed error|+0.0198 m|
+|Median absolute error|0.0825 m|
+|Maximum absolute error|0.2680 m|
+|Samples within 10 cm|7 / 12|
+|Samples within 5 cm|1 / 12|
+
+### 7.2 v0.4 Pose Spread
+
+|Mark|Front|Side|Rear|Spread|
+|--:|--:|--:|--:|--:|
+|1.59 m|1.740 m|1.681 m|1.664 m|0.076 m|
+|1.77 m|2.014 m|1.823 m|1.840 m|0.191 m|
+|1.97 m|2.036 m|2.004 m|1.913 m|0.123 m|
+|2.18 m|2.074 m|2.067 m|1.912 m|0.162 m|
+
+The v0.4 trace-backed sweep showed usable but insufficient distance accuracy. The two strongest failure points were:
+
+|Mark|Pose|Prediction|Error|
+|--:|---|--:|--:|
+|1.77 m|Front|2.014 m|+0.244 m|
+|2.18 m|Rear|1.912 m|-0.268 m|
+
+---
+
+## 8. TriStream v0.5 Observational Sweep
+
+A second sweep was run against TriStream v0.5 with camera intrinsics applied. Trace recording was accidentally disabled, so this sweep is treated as observational evidence rather than trace-backed repository evidence.
+
+Several exploratory readings were taken while managing windscreen reflection. The table below contains the accepted sweep values only.
+
+|Sample|Mark|Pose|Predicted distance|Error|
+|--:|--:|---|--:|--:|
+|V0.5-O-001|1.59 m|Front|1.624 m|+0.034 m|
+|V0.5-O-002|1.59 m|Side|1.563 m|-0.027 m|
+|V0.5-O-003|1.59 m|Rear|1.540 m|-0.050 m|
+|V0.5-O-004|1.77 m|Front|1.913 m|+0.143 m|
+|V0.5-O-005|1.77 m|Side|1.758 m|-0.012 m|
+|V0.5-O-006|1.77 m|Rear|1.729 m|-0.041 m|
+|V0.5-O-007|1.97 m|Front|2.083 m|+0.113 m|
+|V0.5-O-008|1.97 m|Side|1.935 m|-0.035 m|
+|V0.5-O-009|1.97 m|Rear|1.849 m|-0.121 m|
+|V0.5-O-010|2.18 m|Front|2.132 m|-0.048 m|
+|V0.5-O-011|2.18 m|Side|2.204 m|+0.024 m|
+|V0.5-O-012|2.18 m|Rear|2.021 m|-0.159 m|
+
+### 8.1 v0.5 Metrics
+
+|Metric|Value|
+|---|--:|
+|Mean absolute error|0.0673 m|
+|RMSE|0.0834 m|
+|Mean signed error|-0.0149 m|
+|Median absolute error|0.0445 m|
+|Maximum absolute error|0.1590 m|
+|Samples within 10 cm|8 / 12|
+|Samples within 5 cm|8 / 12|
+
+### 8.2 v0.5 Pose Spread
+
+|Mark|Front|Side|Rear|Spread|
+|--:|--:|--:|--:|--:|
+|1.59 m|1.624 m|1.563 m|1.540 m|0.084 m|
+|1.77 m|1.913 m|1.758 m|1.729 m|0.184 m|
+|1.97 m|2.083 m|1.935 m|1.849 m|0.234 m|
+|2.18 m|2.132 m|2.204 m|2.021 m|0.183 m|
+
+TriStream v0.5 materially improved aggregate distance accuracy. However, it did not eliminate pose-dependent distance bias.
+
+---
+
+## 9. Model Comparison
+
+|Metric|TriStream v0.4|TriStream v0.5|Change|
+|---|--:|--:|--:|
+|Mean absolute error|0.1105 m|**0.0673 m**|-0.0432 m|
+|RMSE|0.1317 m|**0.0834 m**|-0.0483 m|
+|Median absolute error|0.0825 m|**0.0445 m**|-0.0380 m|
+|Maximum absolute error|0.2680 m|**0.1590 m**|-0.1090 m|
+|Samples within 10 cm|7 / 12|**8 / 12**|+1|
+|Samples within 5 cm|1 / 12|**8 / 12**|+7|
+
+TriStream v0.5 is a clear improvement over v0.4 on scalar distance accuracy.
+
+However, the pose mean error remains structured:
+
+|Pose|v0.4 mean error|v0.5 mean error|
+|---|--:|--:|
+|Front|+0.0885 m|+0.0605 m|
+|Side|+0.0162 m|-0.0125 m|
+|Rear|-0.0453 m|-0.0928 m|
+
+v0.5 reduced front-facing over-prediction but increased rear-facing under-prediction. The overall model improved, but the underlying pose-linked structure survived.
+
+---
+
+## 10. Brightness and Specular Sensitivity
+
+During the v0.5 sweep, front-facing readings appeared sensitive to windscreen reflection.
+
+Exploratory readings included:
+
+|Mark|Pose|Condition|Prediction|
+|--:|---|---|--:|
+|1.97 m|Front|visible windscreen shine|2.142 m|
+|1.97 m|Front|reduced shine / cleaner view|2.083 m|
+|2.18 m|Front|visible windscreen shine|2.232 m|
+|2.18 m|Front|reduced shine / slight off-centre adjustment|2.132 m|
+
+These exploratory values were excluded from the main metrics, but they are diagnostically important. They suggest that specular highlights can shift predicted distance by several centimetres. Against a `10 cm` operational threshold and `5 cm` clean threshold, that is large enough to matter.
+
+This supports the broader finding that the remaining error is not explained by camera geometry alone. Pose, appearance, foreground representation, and lighting all appear relevant.
+
+---
+
+## 11. Findings
+
+### 11.1 Camera-model mismatch was a contributor, not the root cause
+
+The camera-model correction improved aggregate distance metrics, indicating that real/synthetic camera mismatch had some effect. It did not resolve the pose-dependent structure.
+
+### 11.2 TriStream v0.5 improved the current direct-regression family
+
+TriStream v0.5 substantially improved scalar distance accuracy compared with v0.4. The improvement from `1 / 12` to `8 / 12` samples within `5 cm` is especially notable.
+
+### 11.3 Pose-dependent distance bias remains unresolved
+
+Across sweeps and model versions, the same pattern persisted:
 
 ```text
-front: 2.25 m
-side:  2.00 m
-rear:  1.90 m
-spread: 0.35 m
+front-facing views tend to predict farther
+rear-facing views tend to predict closer
+side-facing views tend to be closest or intermediate
 ```
 
----
+This is a structural failure mode rather than a random measurement issue.
 
-### 5.2 Session B — Baseline Repeat Before Camera-Model Correction
+### 11.4 Scalar distance/yaw outputs are too opaque for the remaining problem
 
-Session B repeated the baseline sweep several hours later. The mask was redrawn before the sweep.
+The direct-regression model family can report that distance and yaw are wrong. It cannot expose enough intermediate geometric state to determine whether the model has misinterpreted scale, pose, extent, foreground shape, visibility, lighting, or some combination of those factors.
 
-|   Sample | Measured mark | Pose  | Predicted distance |   Error | Notes                                                               |
-| -------: | ------------: | ----- | -----------------: | ------: | ------------------------------------------------------------------- |
-| LD-B-001 |        1.59 m | Front |             1.80 m | +0.21 m |                                                                     |
-| LD-B-002 |        1.59 m | Side  |             1.64 m | +0.05 m |                                                                     |
-| LD-B-003 |        1.59 m | Rear  |             1.60 m | +0.01 m |                                                                     |
-| LD-B-004 |        1.77 m | Front |             1.92 m | +0.15 m |                                                                     |
-| LD-B-005 |        1.77 m | Side  |             1.86 m | +0.09 m | Prediction fluctuated between 1.83 m and 1.90 m; recorded as 1.86 m |
-| LD-B-006 |        1.77 m | Rear  |             1.72 m | -0.05 m |                                                                     |
-| LD-B-007 |        1.97 m | Front |             1.96 m | -0.01 m |                                                                     |
-| LD-B-008 |        1.97 m | Side  |             1.90 m | -0.07 m |                                                                     |
-| LD-B-009 |        1.97 m | Rear  |             1.78 m | -0.19 m |                                                                     |
-| LD-B-010 |        2.18 m | Front |             2.00 m | -0.18 m |                                                                     |
-| LD-B-011 |        2.18 m | Side  |             2.00 m | -0.18 m |                                                                     |
-| LD-B-012 |        2.18 m | Rear  |             1.85 m | -0.33 m |                                                                     |
-
-The exact values differed from Session A, which is expected given manual placement and mask redraw. However, the same structural pattern remained: front-facing views generally predicted farther than rear-facing views.
+This is the key architectural lesson from the incident.
 
 ---
 
-### 5.3 Session C — Corrected Sweep After Camera-Model Delta
+## 12. Engineering Outcome
 
-Session C was collected after applying the camera-model delta transform before inference.
-
-|   Sample | Measured mark | Pose  | Predicted distance |   Error |
-| -------: | ------------: | ----- | -----------------: | ------: |
-| LD-C-001 |        1.59 m | Front |             1.84 m | +0.25 m |
-| LD-C-002 |        1.59 m | Side  |             1.63 m | +0.04 m |
-| LD-C-003 |        1.59 m | Rear  |             1.60 m | +0.01 m |
-| LD-C-004 |        1.77 m | Front |             1.99 m | +0.22 m |
-| LD-C-005 |        1.77 m | Side  |             1.84 m | +0.07 m |
-| LD-C-006 |        1.77 m | Rear  |             1.75 m | -0.02 m |
-| LD-C-007 |        1.97 m | Front |             2.09 m | +0.12 m |
-| LD-C-008 |        1.97 m | Side  |             2.00 m | +0.03 m |
-| LD-C-009 |        1.97 m | Rear  |             1.85 m | -0.12 m |
-| LD-C-010 |        2.18 m | Front |             2.15 m | -0.03 m |
-| LD-C-011 |        2.18 m | Side  |             2.10 m | -0.08 m |
-| LD-C-012 |        2.18 m | Rear  |             1.90 m | -0.28 m |
-
-The corrected sweep improved aggregate distance error, but it did not remove pose sensitivity.
-
----
-
-## 6. Aggregate Results
-
-| Metric                 | Session A baseline | Session B repeat baseline | Session C corrected |
-| ---------------------- | -----------------: | ------------------------: | ------------------: |
-| Mean absolute error    |           0.1275 m |                  0.1267 m |        **0.1058 m** |
-| Mean signed error      |          +0.0325 m |                 -0.0417 m |           +0.0175 m |
-| RMSE                   |           0.1552 m |                  0.1567 m |        **0.1394 m** |
-| Median absolute error  |           0.1000 m |                  0.1200 m |        **0.0750 m** |
-| Maximum absolute error |           0.2800 m |                  0.3300 m |            0.2800 m |
-| Samples within 10 cm   |             8 / 12 |                    6 / 12 |              7 / 12 |
-| Samples within 5 cm    |             3 / 12 |                    4 / 12 |              5 / 12 |
-
-The corrected session shows a modest improvement in average error and median error. This suggests that the camera-model delta may have moved the input distribution closer to the model’s expectations.
-
-However, operationally, the corrected session remains outside the desired reliability envelope. Only 7 of 12 samples were within 10 cm, and the pose-dependent divergence remained substantial.
-
----
-
-## 7. Pose-Dependent Error Analysis
-
-### 7.1 Mean Error by Pose
-
-| Session | Front mean error | Side mean error | Rear mean error |
-| ------- | ---------------: | --------------: | --------------: |
-| A       |        +0.1475 m |       +0.0300 m |       -0.0800 m |
-| B       |        +0.0425 m |       -0.0275 m |       -0.1400 m |
-| C       |        +0.1400 m |       +0.0150 m |       -0.1025 m |
-
-Across all three sessions, front-facing views tended to over-predict distance, while rear-facing views tended to under-predict distance.
-
-This is the strongest repeated finding in the investigation.
-
----
-
-### 7.2 Pose Spread by Measured Mark
-
-Pose spread is the difference between the highest and lowest prediction at the same measured distance.
-
-| Session | 1.59 m spread | 1.77 m spread | 1.97 m spread | 2.18 m spread | Average spread |
-| ------- | ------------: | ------------: | ------------: | ------------: | -------------: |
-| A       |        0.13 m |        0.25 m |        0.35 m |        0.18 m |       0.2275 m |
-| B       |        0.20 m |        0.20 m |        0.18 m |        0.15 m |       0.1825 m |
-| C       |        0.24 m |        0.24 m |        0.24 m |        0.25 m |       0.2425 m |
-
-The corrected session produced the highest average pose spread. This is significant because the camera-model correction was expected to reduce image-space distortion effects. Instead, the main pose-dependent structure remained and became more uniform.
-
-The corrected sweep is especially structured:
+The current direct distance/yaw tri-stream family remains valuable as:
 
 ```text
-1.59 m spread: 0.24 m
-1.77 m spread: 0.24 m
-1.97 m spread: 0.24 m
-2.18 m spread: 0.25 m
+a baseline model family
+a live-runtime integration path
+a comparison point for future architectures
+a useful demonstration of iterative model improvement
 ```
 
-This suggests the remaining error is not random. The system appears to be applying a stable pose-dependent distance bias.
+It is not the preferred path for the next major improvement cycle.
+
+The incident provides sufficient evidence to shift primary model-development effort toward the new amodal keypoint topology defined in the separate topology document. This pivot is not a replacement for failure analysis; it is the result of it.
+
+The direct-regression family improved when moved from v0.4 to v0.5, but the persistence of pose-dependent bias indicates that further tuning is unlikely to provide the diagnostic visibility needed to resolve the deeper issue. The system now needs a representation that exposes the model’s inferred geometry, rather than only its final scalar estimate.
 
 ---
 
-## 8. Interpretation
+## 13. Development Direction
 
-The camera-model correction appears to have helped the aggregate distance regression slightly, but it did not resolve the central failure mode.
+The next model-development phase should focus on the already-defined keypoint-based topology. This incident report does not define that topology; it records why the project is moving in that direction.
 
-The evidence supports three conclusions:
-
-### 8.1 Camera-model mismatch is probably a contributing factor
-
-The corrected sweep improved mean absolute error, RMSE, and median absolute error. This suggests that the camera correction changed the input image in a useful direction.
-
-### 8.2 Camera-model mismatch is not the sole cause
-
-The strongest repeated failure remained after correction. Distance predictions continued to vary by vehicle pose at the same measured floor marking.
-
-If lens distortion or intrinsics mismatch were the primary cause, the corrected sweep would be expected to reduce the pose spread more clearly. It did not.
-
-### 8.3 The dominant remaining issue is likely representation-level pose sensitivity
-
-The model appears to be using pose-dependent visual or geometric cues as distance evidence.
-
-Likely contributors include:
+The goals of the next phase are:
 
 ```text
-- foreground bounding-box width and height changing by pose
-- area_norm changing by pose
-- aspect_ratio changing by pose
-- front/rear appearance differences in the real Defender
-- synthetic-to-real material or reflectance mismatch
-- insufficient disentanglement between yaw and distance in training
-- foreground extraction producing pose-dependent geometry
+retain the current direct-regression models as baselines
+implement the new topology as a separate model family
+compare it against TriStream v0.5 using the same live sweep protocol
+evaluate whether the new representation reduces pose-linked distance error
+use its intermediate outputs to diagnose remaining failures
 ```
 
-This does not imply that the model is behaving irrationally. It may be responding consistently to the features it receives. The next task is to determine whether the runtime representation is giving it pose-dependent geometry that correlates incorrectly with distance.
+The live inference stack should continue to support the current distance/yaw interface while the new topology is trained and evaluated. The existing runtime architecture already emphasises contract-driven model selection, compatibility checks, trace capture, and artifact-backed debugging, which are directly useful for this transition.
 
 ---
 
-## 9. Technical Significance
+## 14. Recommended Next Steps
 
-This incident narrows the problem.
+### 14.1 Preserve this incident as the pivot record
 
-Before this investigation, it was plausible that a camera-model mismatch could be the main cause of live distance error. After applying the correction, the evidence suggests a more specific diagnosis:
+Store the incident report and sweep data under the failure-analysis area of the repository.
 
-> Camera alignment helps slightly, but the live pipeline still produces pose-dependent distance evidence.
-
-That is a useful engineering result. It prevents time being spent on camera calibration alone when the stronger remaining problem is probably in representation, preprocessing, or training distribution.
-
-The investigation also demonstrates several important engineering practices:
+Recommended contents:
 
 ```text
-- isolating a plausible failure source
-- collecting repeat baseline measurements
-- applying a targeted upstream correction
-- comparing before/after behaviour using structured metrics
-- distinguishing aggregate metric improvement from structural failure-mode resolution
-- preserving measurement caveats without hiding useful signal
+incident report
+raw sweep tables
+summary metrics
+trace-backed v0.4 samples
+observational v0.5 samples
+excluded / exploratory lighting readings
+notes on measurement limitations
 ```
 
-The most important learning is that aggregate error metrics alone are insufficient. The corrected session improved MAE, but the pose-invariance failure remained. For this system, pose spread at fixed measured distance is a more diagnostic metric than average distance error alone.
+### 14.2 Use TriStream v0.5 as the direct-regression baseline
+
+TriStream v0.5 should be retained as the best current direct-regression comparator.
+
+Future reports should compare the new topology against v0.5 rather than against earlier weaker runs.
+
+### 14.2 Evaluate the new topology against the same failure mode
+
+The key question for the new topology is not only whether aggregate distance accuracy improves.
+
+It should be evaluated against the specific incident failure:
+
+```text
+Does predicted distance remain pose-sensitive at fixed measured floor positions?
+```
+
+If pose sensitivity remains, the new topology should at least expose more diagnostic information about why.
+
+### 14.3 Continue reporting measurement limitations clearly
+
+The live sweeps are practical engineering tests, not calibrated metrology. That should remain explicit.
+
+The important signal is the repeated pose-dependent structure, not millimetre-level distance precision.
 
 ---
 
-## 10. Limitations
+## 15. Conclusion
 
-This investigation should be read with the following constraints:
+This incident began as a camera-model alignment investigation and developed into a model-representation finding.
 
-```text
-- The measured distances are practical reference marks, not calibrated laboratory ground truth.
-- The Defender was manually positioned by hand.
-- The physical mark may not correspond exactly to the Unity object-position / centre-of-volume target.
-- Each session contains only 12 usable samples.
-- The mask was redrawn between some sessions.
-- The 2.39 m mark was excluded because the vehicle clipped at the top of frame.
-```
+Camera-model correction improved aggregate live distance error, but did not remove pose-dependent prediction bias. TriStream v0.5 substantially improved direct distance accuracy compared with TriStream v0.4, but retained the same structural pattern: front-facing views tended to predict farther away, rear-facing views tended to predict closer, and side-facing views were usually closest.
 
-These limitations do not invalidate the result. They do mean the data should be interpreted as diagnostic evidence rather than final validation.
+The evidence indicates that the current direct distance/yaw regression family can be improved, but is unlikely to provide the diagnostic visibility needed for the next stage of the project.
 
-The key finding is not a precise centimetre-level claim. The key finding is the repeated pose-linked prediction structure.
-
----
-
-## 11. Current Conclusion
-
-The live distance regression system shows a repeatable pose-dependent bias at fixed measured floor positions. Front-facing views generally predict farther away; rear-facing views generally predict closer; side-facing views tend to sit between them.
-
-Applying the AR0234-to-Unity camera-model delta before inference modestly improved aggregate distance error, reducing mean absolute error from approximately 12.7 cm in the two baseline sweeps to approximately 10.6 cm in the corrected sweep.
-
-However, the correction did not reduce the primary structural failure. The corrected sweep retained a consistent front/side/rear prediction spread of approximately 24–25 cm across all four usable measured distances.
-
-The current best interpretation is:
-
-> Camera-model mismatch contributes to the live distance error, but the dominant remaining failure is pose-dependent representation error.
-
-The next investigation should focus on comparing trace artifacts and geometry features across front, side, and rear poses at the same measured distance.
-
----
-
-## 12. Recommended Next Step
-
-The next analysis should inspect the actual model inputs, not just the predicted distances.
-
-For one or two measured marks, preferably `1.77 m` and `1.97 m`, capture front, side, and rear traces with the camera-model correction enabled.
-
-For each trace, compare:
-
-```text
-- accepted raw frame
-- corrected frame
-- locator bounding box
-- ROI crop
-- foreground mask
-- foreground bounding box
-- foreground area
-- x_geometry vector
-- x_distance_image
-- x_orientation_image
-- predicted distance
-- predicted yaw
-```
-
-The most important fields to compare are the geometry features:
-
-```text
-cx_px
-cy_px
-w_px
-h_px
-cx_norm
-cy_norm
-w_norm
-h_norm
-aspect_ratio
-area_norm
-```
-
-The next diagnostic question is:
-
-> At the same measured distance, do front, side, and rear poses produce geometry features that differ in a way that explains the distance prediction bias?
-
-If the answer is yes, the next remediation path should focus on representation design and training data, not further camera calibration.
+The outcome is an architectural pivot. The current family remains a useful baseline and runtime integration path. Primary model-development effort now moves to the separately specified amodal keypoint topology, with this incident providing the empirical justification for that direction.
