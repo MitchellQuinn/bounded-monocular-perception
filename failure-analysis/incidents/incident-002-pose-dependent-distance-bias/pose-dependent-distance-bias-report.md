@@ -4,13 +4,13 @@
 
 This incident investigated a repeatable live-camera distance regression error in Project Raccoon Ball, a bounded monocular perception system for estimating vehicle distance and yaw from a fixed camera view. The system is intentionally scoped around a known vehicle, constrained camera geometry, synthetic supervision, runtime preprocessing, live inference, trace capture, and failure analysis.
 
-The failure mode was identified during real-camera testing of the current tri-stream distance/yaw model family. At fixed measured floor positions, predicted distance varied systematically with vehicle pose. Front-facing views generally predicted farther away, rear-facing views generally predicted closer, and side-facing views were usually closest to the measured reference distance.
+The failure mode was identified during real-camera testing of the current tri-stream distance/yaw model family. At fixed measured floor positions, predicted distance varied systematically with vehicle pose. Front-facing views often predicted farther than side or rear views at the same floor mark, rear-facing views often predicted closer, and side-facing views were usually intermediate or closest to the measured reference distance.
 
 The initial investigation tested whether the issue was primarily caused by camera-model mismatch between Unity synthetic camera geometry and the real AR0234 camera. Applying an input-space camera-model correction modestly improved aggregate distance error, but did not resolve the pose-dependent bias.
 
-A later comparison between TriStream v0.4 and TriStream v0.5 showed that v0.5 substantially improved aggregate distance accuracy. Mean absolute error fell from approximately `0.1105 m` to `0.0673 m` in the available sweep data. However, the structural pose-dependence remained.
+A later trace-backed comparison between TriStream v0.4 and TriStream v0.5 showed that v0.5 did not cleanly solve the live failure mode. In the recorded rerun, mean absolute error changed only slightly, from `0.1105 m` for v0.4 to `0.1074 m` for v0.5. v0.5 improved the strict `5 cm` count from `1 / 12` to `3 / 12`, but RMSE, maximum error, and the `10 cm` count did not improve. The v0.5 rerun also shifted the overall signed error strongly negative.
 
-The incident outcome is an architectural pivot. The current direct distance/yaw tri-stream family remains useful as a baseline and live-runtime integration path, but it is no longer the primary route for improving the system. The next model-development direction is the already-defined amodal keypoint topology, which is documented separately. This report does not reproduce that topology; it records the incident evidence that motivates the pivot.
+The incident outcome remains an architectural pivot. The current direct distance/yaw tri-stream family remains useful as a baseline and live-runtime integration path, but it is no longer the primary route for improving the system. The next model-development direction is the already-defined amodal keypoint topology, which is documented separately. This report does not reproduce that topology; it records the incident evidence that motivates the pivot.
 
 ---
 
@@ -37,17 +37,16 @@ The live runtime includes model selection, compatibility checks, deterministic a
 The incident had three practical objectives:
 
 1. Determine whether live distance errors were primarily caused by camera-model mismatch between Unity and the real AR0234 camera.
-    
+
 2. Compare the current direct distance/yaw tri-stream model family across available model versions.
-    
+
 3. Decide whether further work should continue within the current direct-regression model family or move to a more inspectable representation.
-    
 
 The central diagnostic question was:
 
 > At the same measured floor position, does predicted distance remain stable across front, side, and rear vehicle poses?
 
-Distance should be broadly pose-invariant. The vehicle’s yaw changes, but its position relative to the camera does not.
+Distance should be broadly pose-invariant. The vehicle's yaw changes, but its position relative to the camera does not.
 
 ---
 
@@ -76,11 +75,20 @@ rear-facing
 
 The measured distances should be treated as practical reference distances, not calibrated ground truth. Manual placement, vehicle footprint, and the difference between physical floor marks and the Unity object-position target introduce tolerance. This limitation affects absolute precision, but it does not explain repeated pose-linked distance differences at the same floor mark.
 
+For the v0.5 trace-backed rerun, the trace artifacts themselves do not encode human mark and pose labels. The mark assignment follows chronological sweep order, and pose assignment was verified from the recorded ROI crops:
+
+```text
+1.59 m: front, side, rear
+1.77 m: front, side, rear
+1.97 m: front, side, rear
+2.18 m: front, side, rear
+```
+
 ---
 
 ## 4. Evaluation Criteria
 
-The project’s failure-analysis framework uses `10 cm` as the primary distance success boundary and `5 cm` as a stricter clean-success boundary. The same framework recommends reporting both continuous metrics and thresholded categories, rather than relying on one headline metric.
+The project's failure-analysis framework uses `10 cm` as the primary distance success boundary and `5 cm` as a stricter clean-success boundary. The same framework recommends reporting both continuous metrics and thresholded categories, rather than relying on one headline metric.
 
 For this incident, the most relevant metrics are:
 
@@ -105,18 +113,18 @@ At each measured mark, predicted distance should remain approximately stable acr
 Expected pattern:
 
 ```text
-front prediction ≈ side prediction ≈ rear prediction
+front prediction ~= side prediction ~= rear prediction
 ```
 
 Observed pattern:
 
 ```text
-front prediction tends high
-side prediction tends intermediate or closest
-rear prediction tends low
+predictions remain pose-dependent at fixed measured distance
+front-facing views are often highest
+rear-facing views are often lowest
 ```
 
-This repeated ordering is the core failure mode.
+The repeated pose-linked spread is the core failure mode.
 
 ---
 
@@ -202,91 +210,143 @@ The v0.4 trace-backed sweep showed usable but insufficient distance accuracy. Th
 
 ---
 
-## 8. TriStream v0.5 Observational Sweep
+## 8. TriStream v0.5 Trace-Backed Rerun
 
-A second sweep was run against TriStream v0.5 with camera intrinsics applied. Trace recording was accidentally disabled, so this sweep is treated as observational evidence rather than trace-backed repository evidence.
+The original report treated the v0.5 sweep as observational because trace recording had been accidentally disabled. That evidence is now superseded by a recorded v0.5 rerun.
 
-Several exploratory readings were taken while managing windscreen reflection. The table below contains the accepted sweep values only.
+The trace-backed v0.5 sweep is stored under:
 
-|Sample|Mark|Pose|Predicted distance|Error|
-|--:|--:|---|--:|--:|
-|V0.5-O-001|1.59 m|Front|1.624 m|+0.034 m|
-|V0.5-O-002|1.59 m|Side|1.563 m|-0.027 m|
-|V0.5-O-003|1.59 m|Rear|1.540 m|-0.050 m|
-|V0.5-O-004|1.77 m|Front|1.913 m|+0.143 m|
-|V0.5-O-005|1.77 m|Side|1.758 m|-0.012 m|
-|V0.5-O-006|1.77 m|Rear|1.729 m|-0.041 m|
-|V0.5-O-007|1.97 m|Front|2.083 m|+0.113 m|
-|V0.5-O-008|1.97 m|Side|1.935 m|-0.035 m|
-|V0.5-O-009|1.97 m|Rear|1.849 m|-0.121 m|
-|V0.5-O-010|2.18 m|Front|2.132 m|-0.048 m|
-|V0.5-O-011|2.18 m|Side|2.204 m|+0.024 m|
-|V0.5-O-012|2.18 m|Rear|2.021 m|-0.159 m|
+```text
+06_live-inference_v0.3/live_traces/
+```
 
-### 8.1 v0.5 Metrics
+The unarchived trace set contains 12 accepted trace directories captured on `2026-05-21` between `15:47:48Z` and `15:51:22Z`. All 12 traces use:
+
+|Field|Value|
+|---|---|
+|Distance/orientation model|`260521-1029_ts-2d-cnn`|
+|Topology variant|`tri_stream_yaw_v0_5`|
+|Checkpoint file|`models/distance-orientation/260521-1029_ts-2d-cnn/best.pt`|
+|Checkpoint SHA-256 prefix|`0696f50e1365`|
+|Model selection file|`06_live-inference_v0.3/models/selections/current.toml`|
+|Git commit recorded by manifest|`2f29d447134c70cfee7f76278445a9fab66fab73`|
+|Git dirty flag recorded by manifest|`null`|
+|Camera source|`opencv-v4l2`, `/dev/video0`, `1920x1200`, `YUYV`, `50 fps`|
+|ROI locator polarity|`inverted`|
+|Manual mask applied to ROI locator|`true`|
+|Manual mask applied to regressor preprocessing|`true`|
+
+### 8.1 v0.5 Trace-Backed Samples
+
+|Sample|Trace directory|Mark|Pose|Predicted distance|Error|
+|--:|---|--:|---|--:|--:|
+|V0.5-T-001|`20260521T154748Z__064d3f11...__a67c87cf`|1.59 m|Front|1.622 m|+0.032 m|
+|V0.5-T-002|`20260521T154810Z__9abf135d...__5bce6e7a`|1.59 m|Side|1.534 m|-0.056 m|
+|V0.5-T-003|`20260521T154827Z__066fb400...__316db59a`|1.59 m|Rear|1.537 m|-0.053 m|
+|V0.5-T-004|`20260521T154842Z__3408094c...__b4354b5e`|1.77 m|Front|1.723 m|-0.047 m|
+|V0.5-T-005|`20260521T154856Z__a7554386...__636ef929`|1.77 m|Side|1.704 m|-0.066 m|
+|V0.5-T-006|`20260521T154910Z__dd6e4a04...__b05164d8`|1.77 m|Rear|1.668 m|-0.102 m|
+|V0.5-T-007|`20260521T154932Z__f2180ea4...__032644ec`|1.97 m|Front|1.977 m|+0.007 m|
+|V0.5-T-008|`20260521T154958Z__7b68b180...__fc77d9ba`|1.97 m|Side|1.854 m|-0.116 m|
+|V0.5-T-009|`20260521T155016Z__e73d2f81...__06949045`|1.97 m|Rear|1.769 m|-0.201 m|
+|V0.5-T-010|`20260521T155043Z__868a6536...__47bd7384`|2.18 m|Front|1.891 m|-0.289 m|
+|V0.5-T-011|`20260521T155106Z__e5cd3ed9...__c99827b0`|2.18 m|Side|2.062 m|-0.118 m|
+|V0.5-T-012|`20260521T155122Z__dfe65dea...__53517f6c`|2.18 m|Rear|1.979 m|-0.201 m|
+
+Full trace directory names, in sample order:
+
+```text
+20260521T154748Z__064d3f11-f849-451e-a675-2707b67c4cd9__a67c87cf
+20260521T154810Z__9abf135d-b069-4885-84ce-d161a3fec966__5bce6e7a
+20260521T154827Z__066fb400-d3e7-4020-8792-08970c39951d__316db59a
+20260521T154842Z__3408094c-817d-48f1-9cbf-f2180937df0e__b4354b5e
+20260521T154856Z__a7554386-96ad-47ce-9e16-186c50ae5005__636ef929
+20260521T154910Z__dd6e4a04-8a21-4e0f-9cac-ec01d6ecc796__b05164d8
+20260521T154932Z__f2180ea4-d9de-432f-8b12-e31e55ff8016__032644ec
+20260521T154958Z__7b68b180-2d12-43b9-bdbc-c505aac0a975__fc77d9ba
+20260521T155016Z__e73d2f81-f07b-4fe3-bf71-5f79f36ac9f5__06949045
+20260521T155043Z__868a6536-128a-4ce6-af6c-a6b4a558557b__47bd7384
+20260521T155106Z__e5cd3ed9-e576-453a-b4db-edef3ceea761__c99827b0
+20260521T155122Z__dfe65dea-eb25-4685-9444-8df71b3054c7__53517f6c
+```
+
+### 8.2 v0.5 Metrics
 
 |Metric|Value|
 |---|--:|
-|Mean absolute error|0.0673 m|
-|RMSE|0.0834 m|
-|Mean signed error|-0.0149 m|
-|Median absolute error|0.0445 m|
-|Maximum absolute error|0.1590 m|
-|Samples within 10 cm|8 / 12|
-|Samples within 5 cm|8 / 12|
+|Mean absolute error|0.1074 m|
+|RMSE|0.1341 m|
+|Mean signed error|-0.1008 m|
+|Median absolute error|0.0837 m|
+|Maximum absolute error|0.2895 m|
+|Samples within 10 cm|6 / 12|
+|Samples within 5 cm|3 / 12|
 
-### 8.2 v0.5 Pose Spread
+### 8.3 v0.5 Pose Spread
 
 |Mark|Front|Side|Rear|Spread|
 |--:|--:|--:|--:|--:|
-|1.59 m|1.624 m|1.563 m|1.540 m|0.084 m|
-|1.77 m|1.913 m|1.758 m|1.729 m|0.184 m|
-|1.97 m|2.083 m|1.935 m|1.849 m|0.234 m|
-|2.18 m|2.132 m|2.204 m|2.021 m|0.183 m|
+|1.59 m|1.622 m|1.534 m|1.537 m|0.088 m|
+|1.77 m|1.723 m|1.704 m|1.668 m|0.054 m|
+|1.97 m|1.977 m|1.854 m|1.769 m|0.208 m|
+|2.18 m|1.891 m|2.062 m|1.979 m|0.171 m|
 
-TriStream v0.5 materially improved aggregate distance accuracy. However, it did not eliminate pose-dependent distance bias.
+The v0.5 trace-backed rerun confirms that the model remains pose-sensitive at fixed measured distances. The pattern is not identical to the earlier untraced observational sweep: the rerun shows a strong overall under-prediction bias, especially at the longer marks.
+
+The original front-high / rear-low signature is still visible in three of the four mark groups:
+
+```text
+1.59 m: front highest, side/rear lower
+1.77 m: front highest, rear lowest
+1.97 m: front highest, rear lowest
+```
+
+The `2.18 m / front` sample is the strongest v0.5 failure in this trace set, with a `-0.289 m` error. That sample prevents a simple "front always high" reading of the rerun, but it reinforces the main finding: the direct-regression output is not stable across pose at the same floor position.
 
 ---
 
 ## 9. Model Comparison
 
-|Metric|TriStream v0.4|TriStream v0.5|Change|
+|Metric|TriStream v0.4 trace-backed|TriStream v0.5 trace-backed|Change|
 |---|--:|--:|--:|
-|Mean absolute error|0.1105 m|**0.0673 m**|-0.0432 m|
-|RMSE|0.1317 m|**0.0834 m**|-0.0483 m|
-|Median absolute error|0.0825 m|**0.0445 m**|-0.0380 m|
-|Maximum absolute error|0.2680 m|**0.1590 m**|-0.1090 m|
-|Samples within 10 cm|7 / 12|**8 / 12**|+1|
-|Samples within 5 cm|1 / 12|**8 / 12**|+7|
+|Mean absolute error|0.1105 m|**0.1074 m**|-0.0031 m|
+|RMSE|**0.1317 m**|0.1341 m|+0.0024 m|
+|Mean signed error|+0.0198 m|-0.1008 m|-0.1206 m|
+|Median absolute error|**0.0825 m**|0.0837 m|+0.0012 m|
+|Maximum absolute error|**0.2680 m**|0.2895 m|+0.0215 m|
+|Samples within 10 cm|**7 / 12**|6 / 12|-1|
+|Samples within 5 cm|1 / 12|**3 / 12**|+2|
+|Average pose spread|0.1380 m|**0.1304 m**|-0.0076 m|
 
-TriStream v0.5 is a clear improvement over v0.4 on scalar distance accuracy.
+The trace-backed v0.5 rerun is not the clean scalar improvement suggested by the earlier untraced observations. It is marginally better on MAE, stricter `5 cm` count, and average pose spread, but worse on RMSE, maximum error, and `10 cm` count.
 
-However, the pose mean error remains structured:
+Most importantly, both versions retain pose-linked errors at fixed measured floor positions.
+
+The pose mean error comparison is:
 
 |Pose|v0.4 mean error|v0.5 mean error|
 |---|--:|--:|
-|Front|+0.0885 m|+0.0605 m|
-|Side|+0.0162 m|-0.0125 m|
-|Rear|-0.0453 m|-0.0928 m|
+|Front|+0.0885 m|-0.0744 m|
+|Side|+0.0162 m|-0.0891 m|
+|Rear|-0.0453 m|-0.1391 m|
 
-v0.5 reduced front-facing over-prediction but increased rear-facing under-prediction. The overall model improved, but the underlying pose-linked structure survived.
+The v0.5 trace-backed rerun shifted the overall bias negative. Rear-facing views remain the most under-predicted on average, and front-facing views are still not stable across marks.
 
 ---
 
 ## 10. Brightness and Specular Sensitivity
 
-During the v0.5 sweep, front-facing readings appeared sensitive to windscreen reflection.
+The earlier untraced v0.5 sweep included exploratory readings suggesting that windscreen reflection could move front-facing distance predictions by several centimetres. Those readings are not used in the updated trace-backed metrics.
 
-Exploratory readings included:
+The recorded v0.5 traces still show visible windscreen reflection in some front-facing ROI crops, especially at the longer marks. However, the accepted trace set does not contain a controlled trace-backed A/B pair where only reflection changes while pose and placement remain fixed.
 
-|Mark|Pose|Condition|Prediction|
-|--:|---|---|--:|
-|1.97 m|Front|visible windscreen shine|2.142 m|
-|1.97 m|Front|reduced shine / cleaner view|2.083 m|
-|2.18 m|Front|visible windscreen shine|2.232 m|
-|2.18 m|Front|reduced shine / slight off-centre adjustment|2.132 m|
+The conservative conclusion is therefore:
 
-These exploratory values were excluded from the main metrics, but they are diagnostically important. They suggest that specular highlights can shift predicted distance by several centimetres. Against a `10 cm` operational threshold and `5 cm` clean threshold, that is large enough to matter.
+```text
+specular sensitivity remains plausible
+the trace-backed rerun does not quantify it independently
+the main evidenced failure remains pose-linked distance instability
+```
 
 This supports the broader finding that the remaining error is not explained by camera geometry alone. Pose, appearance, foreground representation, and lighting all appear relevant.
 
@@ -298,18 +358,22 @@ This supports the broader finding that the remaining error is not explained by c
 
 The camera-model correction improved aggregate distance metrics, indicating that real/synthetic camera mismatch had some effect. It did not resolve the pose-dependent structure.
 
-### 11.2 TriStream v0.5 improved the current direct-regression family
+### 11.2 TriStream v0.5 did not resolve the live failure mode
 
-TriStream v0.5 substantially improved scalar distance accuracy compared with v0.4. The improvement from `1 / 12` to `8 / 12` samples within `5 cm` is especially notable.
+The trace-backed v0.5 rerun replaces the earlier untraced observational v0.5 sweep as repository evidence.
+
+Against v0.4, v0.5 is only marginally better on mean absolute error and strict `5 cm` count, while being worse on RMSE, maximum error, and `10 cm` count. It also introduces a strong negative signed bias in this live sweep.
 
 ### 11.3 Pose-dependent distance bias remains unresolved
 
-Across sweeps and model versions, the same pattern persisted:
+Across sweeps and model versions, predicted distance remains sensitive to vehicle pose at fixed measured floor positions.
+
+The exact ordering varies by mark and run, but the structural failure remains:
 
 ```text
-front-facing views tend to predict farther
-rear-facing views tend to predict closer
-side-facing views tend to be closest or intermediate
+pose changes produce distance changes that are too large
+rear-facing views tend to be under-predicted
+front-facing behaviour is unstable across marks
 ```
 
 This is a structural failure mode rather than a random measurement issue.
@@ -337,7 +401,7 @@ It is not the preferred path for the next major improvement cycle.
 
 The incident provides sufficient evidence to shift primary model-development effort toward the new amodal keypoint topology defined in the separate topology document. This pivot is not a replacement for failure analysis; it is the result of it.
 
-The direct-regression family improved when moved from v0.4 to v0.5, but the persistence of pose-dependent bias indicates that further tuning is unlikely to provide the diagnostic visibility needed to resolve the deeper issue. The system now needs a representation that exposes the model’s inferred geometry, rather than only its final scalar estimate.
+The direct-regression family remains useful, but the persistence of pose-dependent bias indicates that further tuning is unlikely to provide the diagnostic visibility needed to resolve the deeper issue. The system now needs a representation that exposes the model's inferred geometry, rather than only its final scalar estimate.
 
 ---
 
@@ -372,18 +436,18 @@ incident report
 raw sweep tables
 summary metrics
 trace-backed v0.4 samples
-observational v0.5 samples
-excluded / exploratory lighting readings
+trace-backed v0.5 samples
+excluded / exploratory lighting notes
 notes on measurement limitations
 ```
 
-### 14.2 Use TriStream v0.5 as the direct-regression baseline
+### 14.2 Use TriStream v0.5 as the current direct-regression baseline
 
-TriStream v0.5 should be retained as the best current direct-regression comparator.
+TriStream v0.5 should still be retained as the current direct-regression comparator because it is the selected current model and the latest trace-backed direct-regression run.
 
-Future reports should compare the new topology against v0.5 rather than against earlier weaker runs.
+Future reports should compare the new topology against the trace-backed v0.5 sweep, not the superseded untraced v0.5 observations.
 
-### 14.2 Evaluate the new topology against the same failure mode
+### 14.3 Evaluate the new topology against the same failure mode
 
 The key question for the new topology is not only whether aggregate distance accuracy improves.
 
@@ -395,7 +459,7 @@ Does predicted distance remain pose-sensitive at fixed measured floor positions?
 
 If pose sensitivity remains, the new topology should at least expose more diagnostic information about why.
 
-### 14.3 Continue reporting measurement limitations clearly
+### 14.4 Continue reporting measurement limitations clearly
 
 The live sweeps are practical engineering tests, not calibrated metrology. That should remain explicit.
 
@@ -407,8 +471,10 @@ The important signal is the repeated pose-dependent structure, not millimetre-le
 
 This incident began as a camera-model alignment investigation and developed into a model-representation finding.
 
-Camera-model correction improved aggregate live distance error, but did not remove pose-dependent prediction bias. TriStream v0.5 substantially improved direct distance accuracy compared with TriStream v0.4, but retained the same structural pattern: front-facing views tended to predict farther away, rear-facing views tended to predict closer, and side-facing views were usually closest.
+Camera-model correction improved aggregate live distance error, but did not remove pose-dependent prediction bias. The trace-backed v0.5 rerun supersedes the earlier untraced v0.5 observations and shows that the current direct-regression model still produces pose-linked distance errors at fixed floor positions.
 
-The evidence indicates that the current direct distance/yaw regression family can be improved, but is unlikely to provide the diagnostic visibility needed for the next stage of the project.
+The updated trace-backed comparison is more conservative than the earlier observational one: v0.5 marginally improves MAE and the `5 cm` count over v0.4, but does not improve RMSE, maximum error, or the `10 cm` count, and it introduces a stronger negative signed bias in this sweep.
+
+The evidence indicates that the current direct distance/yaw regression family can be useful, but is unlikely to provide the diagnostic visibility needed for the next stage of the project.
 
 The outcome is an architectural pivot. The current family remains a useful baseline and runtime integration path. Primary model-development effort now moves to the separately specified amodal keypoint topology, with this incident providing the empirical justification for that direction.
