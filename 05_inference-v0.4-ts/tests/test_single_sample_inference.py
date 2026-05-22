@@ -41,6 +41,17 @@ from src.task_runtime import batch_to_model_inputs
 
 
 class SingleSampleInferenceTests(unittest.TestCase):
+    def _discover_model_runs_or_skip(self, *, family: str | None = None):
+        models_root = PROJECT_ROOT / "models"
+        try:
+            models = discover_model_runs(models_root, family=family)
+        except FileNotFoundError:
+            self.skipTest(f"Optional local model artifacts not available: {models_root}")
+        if not models:
+            label = family or "any family"
+            self.skipTest(f"No local model artifacts available for {label}: {models_root}")
+        return models
+
     def _select_raw_corpus(self):
         corpora = discover_raw_corpora()
         if not corpora:
@@ -48,13 +59,13 @@ class SingleSampleInferenceTests(unittest.TestCase):
         return corpora[0]
 
     def test_discover_model_runs_includes_both_runtime_families(self) -> None:
-        models = discover_model_runs(PROJECT_ROOT / "models")
+        models = self._discover_model_runs_or_skip()
         families = {artifact.model_family for artifact in models}
 
         self.assertIn("distance-orientation", families)
         self.assertIn("roi-fcn", families)
-        self.assertTrue(discover_model_runs(PROJECT_ROOT / "models", family="distance"))
-        self.assertTrue(discover_model_runs(PROJECT_ROOT / "models", family="roi"))
+        self.assertTrue(self._discover_model_runs_or_skip(family="distance"))
+        self.assertTrue(self._discover_model_runs_or_skip(family="roi"))
 
     def test_default_raw_corpus_roots_use_local_inference_input_only(self) -> None:
         self.assertEqual(default_raw_corpus_roots(), [(PROJECT_ROOT / "input").resolve()])
@@ -434,8 +445,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
             self.assertTrue(all(result.saved_json_path == json_path for result in second_batch))
 
     def test_distance_model_loading_requires_cuda(self) -> None:
-        distance_model = discover_model_runs(
-            PROJECT_ROOT / "models",
+        distance_model = self._discover_model_runs_or_skip(
             family="distance-orientation",
         )[0]
 
@@ -444,8 +454,7 @@ class SingleSampleInferenceTests(unittest.TestCase):
                 load_model_context(distance_model.run_dir)
 
     def test_roi_fcn_model_loading_rejects_cpu_override(self) -> None:
-        roi_model = discover_model_runs(
-            PROJECT_ROOT / "models",
+        roi_model = self._discover_model_runs_or_skip(
             family="roi-fcn",
         )[-1]
 
@@ -531,12 +540,10 @@ class SingleSampleInferenceTests(unittest.TestCase):
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA required for inference smoke tests.")
     def test_single_sample_inference_runs_end_to_end(self) -> None:
-        distance_model = discover_model_runs(
-            PROJECT_ROOT / "models",
+        distance_model = self._discover_model_runs_or_skip(
             family="distance-orientation",
         )[0]
-        roi_model = discover_model_runs(
-            PROJECT_ROOT / "models",
+        roi_model = self._discover_model_runs_or_skip(
             family="roi-fcn",
         )[-1]
         corpus = self._select_raw_corpus()
@@ -610,12 +617,10 @@ class SingleSampleInferenceTests(unittest.TestCase):
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA required for inference smoke tests.")
     def test_multi_sample_inference_runs_requested_slice(self) -> None:
-        distance_model = discover_model_runs(
-            PROJECT_ROOT / "models",
+        distance_model = self._discover_model_runs_or_skip(
             family="distance-orientation",
         )[0]
-        roi_model = discover_model_runs(
-            PROJECT_ROOT / "models",
+        roi_model = self._discover_model_runs_or_skip(
             family="roi-fcn",
         )[-1]
         corpus = self._select_raw_corpus()

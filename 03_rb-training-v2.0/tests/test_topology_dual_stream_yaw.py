@@ -57,6 +57,8 @@ class DualStreamYawTests(unittest.TestCase):
     def test_smoketest_schema_matches_dual_stream_yaw_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
         corpus_dir = repo_root / "datasets" / "training-data" / "26-04-11_v020-train-shuffled-images-smoketest"
+        if not corpus_dir.is_dir():
+            self.skipTest(f"Optional local smoketest corpus not available: {corpus_dir}")
         with TemporaryDirectory() as tmp:
             temp_root = Path(tmp)
             (temp_root / corpus_dir.name).symlink_to(corpus_dir, target_is_directory=True)
