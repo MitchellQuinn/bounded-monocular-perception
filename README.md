@@ -10,9 +10,9 @@ contracts, raw-image inference paths, a live local runtime, calibration support,
 trace capture, and failure analysis.
 
 It should be read as evidence of applied ML engineering, computer vision,
-runtime integration, and experimental discipline. It is not a claim of open-world
- object detection, multi-object
-tracking, or unconstrained real-world scene understanding.
+runtime integration, and experimental discipline. It is not a claim of open-world 
+object detection, multi-object tracking, or unconstrained real-world 
+scene understanding.
 
 ## Quick Reviewer Path
 
