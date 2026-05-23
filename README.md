@@ -23,34 +23,52 @@ a fixed-camera system can estimate useful vehicle state under controlled
 conditions, and for making the offline-to-runtime failure modes inspectable.
 
 - Synthetic training and validation remain the strongest evidence base.
-- The live-local runtime works, but real-camera accuracy is still under investigation.
-- The current direct scalar distance/yaw model shows pose-linked distance bias in live testing.
-- Camera calibration improves part of the runtime alignment problem but does not, by itself, solve pose-dependent error.
-- The current next architectural direction is a more inspectable keypoint/topology-based representation.
+- The live-local runtime works, but real-camera accuracy is still under
+  investigation.
+- The current direct scalar distance/yaw model shows pose-linked distance bias
+  in live testing.
+- Camera calibration improves part of the runtime alignment problem but does
+  not, by itself, solve pose-dependent error.
+- The current next architectural direction is a more inspectable
+  keypoint/topology-based representation.
 
 ## Quick Reviewer Path
 
 For a fast technical review, start here:
 
-1. [`documents/bounded-monocular-perception-technical-writeup-v0.8.md`](documents/bounded-monocular-perception-technical-writeup-v0.8.md) - current technical overview, architecture, results, caveats, and engineering learnings.
-2. [`documents/document-index.md`](documents/document-index.md) - document routing layer for current and historical technical material.
-3. [`06_live-inference_v0.3/RUNTIME_NOTES.md`](06_live-inference_v0.3/RUNTIME_NOTES.md) - current live-local runtime notes and diagnostic flow.
+1. [`documents/bounded-monocular-perception-technical-writeup-v0.8.md`](documents/bounded-monocular-perception-technical-writeup-v0.8.md) - current technical overview, architecture, results, caveats,
+   and engineering learnings.
+2. [`documents/document-index.md`](documents/document-index.md) - document routing layer for current and historical technical
+   material.
+3. [`06_live-inference_v0.3/RUNTIME_NOTES.md`](06_live-inference_v0.3/RUNTIME_NOTES.md) - current live-local runtime notes and diagnostic
+   flow.
 4. [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md) - failure-analysis index.
-5. [`failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md`](failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md) - remediated live preprocessing failure with trace-backed regression coverage.
-6. [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md) - live pose-linked distance-bias investigation and architectural pivot.
-7. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md) - proposed next model direction using amodal semantic keypoints.
+5. [`failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md`](failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md) - remediated live preprocessing failure with
+   trace-backed regression coverage.
+6. [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md) - live pose-linked distance-bias investigation and
+   architectural pivot.
+7. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md) - proposed next model direction using amodal semantic
+   keypoints.
 
 ## What This Repository Demonstrates
 
-- Unity/C# synthetic data generation with run manifests and traceable sample metadata.
+- Unity/C# synthetic data generation with run manifests and traceable sample
+  metadata.
 - OpenCV/NumPy preprocessing pipelines with explicit representation contracts.
-- PyTorch training code for distance, distance-plus-yaw, dual-stream, tri-stream, and ROI-localisation model families.
+- PyTorch training code for distance, distance-plus-yaw, dual-stream,
+  tri-stream, and ROI-localisation model families.
 - Circular yaw regression through `sin/cos` targets.
-- Learned ROI-FCN crop-centre localisation and deterministic live localisation alternatives.
-- Raw-image inference paths that compose localisation, preprocessing, model loading, and JSON/image artifacts.
-- A PySide6 live-local inference runtime with camera workers, GUI controls, background capture, manual masks, trace recording, and model compatibility checks.
-- ChArUco camera calibration tooling and calibration-backed live camera intrinsics transforms.
-- Failure analysis that distinguishes offline synthetic validation, composed raw-image inference, and live-camera behaviour.
+- Learned ROI-FCN crop-centre localisation and deterministic live localisation
+  alternatives.
+- Raw-image inference paths that compose localisation, preprocessing, model
+  loading, and JSON/image artifacts.
+- A PySide6 live-local inference runtime with camera workers, GUI controls,
+  background capture, manual masks, trace recording, and model compatibility
+  checks.
+- ChArUco camera calibration tooling and calibration-backed live camera
+  intrinsics transforms.
+- Failure analysis that distinguishes offline synthetic validation, composed
+  raw-image inference, and live-camera behaviour.
 
 ## Current Status
 
@@ -71,18 +89,34 @@ implemented registered training topology in this repository snapshot.
 
 ## Repository Layout
 
-- [`01_rb_synthetic-data_3`](01_rb_synthetic-data_3): Unity/C# synthetic full-frame image generation.
-- [`02_synthetic-data-processing-v4.0`](02_synthetic-data-processing-v4.0): v4 preprocessing, detection metadata, silhouette/foreground handling, dual-stream and tri-stream packing.
-- [`03_rb-training-v2.0`](03_rb-training-v2.0): PyTorch training, topology registry, evaluation, resume support, and model reporting.
-- [`04_ROI-FCN`](04_ROI-FCN): ROI-FCN preprocessing and training for crop-centre heatmap localisation.
-- [`05_inference-v0.3-ds`](05_inference-v0.3-ds): raw-image ROI-FCN plus dual-stream distance/yaw inference.
-- [`05_inference-v0.4-ts`](05_inference-v0.4-ts): tri-stream-facing raw-image inference and brightness-analysis tooling.
-- [`06_live-inference_v0.1`](06_live-inference_v0.1), [`06_live-inference_v0.2`](06_live-inference_v0.2), [`06_live-inference_v0.3`](06_live-inference_v0.3): live-local runtime iterations; v0.3 is the current path.
-- [`charuco-calibration`](charuco-calibration): PySide6/OpenCV ChArUco calibration capture, solve, and artifact export tooling.
-- [`failure-analysis`](failure-analysis): failure-analysis framework, model-evaluation reports, incident investigations, and supporting evidence.
-- [`documents`](documents): technical writeups, topology proposals, implementation notes, and specifications; start with [`documents/document-index.md`](documents/document-index.md).
-- [`examples/defender-images`](examples/defender-images): scaffold for a bounded example-image corpus and its notices.
-- [`scripts/run-tests.sh`](scripts/run-tests.sh): repo-level focused test runner for the checked-in subprojects.
+- [`01_rb_synthetic-data_3`](01_rb_synthetic-data_3): Unity/C# synthetic
+  full-frame image generation.
+- [`02_synthetic-data-processing-v4.0`](02_synthetic-data-processing-v4.0): v4
+  preprocessing, detection metadata, silhouette/foreground handling,
+  dual-stream and tri-stream packing.
+- [`03_rb-training-v2.0`](03_rb-training-v2.0): PyTorch training, topology
+  registry, evaluation, resume support, and model reporting.
+- [`04_ROI-FCN`](04_ROI-FCN): ROI-FCN preprocessing and training for
+  crop-centre heatmap localisation.
+- [`05_inference-v0.3-ds`](05_inference-v0.3-ds): raw-image ROI-FCN plus
+  dual-stream distance/yaw inference.
+- [`05_inference-v0.4-ts`](05_inference-v0.4-ts): tri-stream-facing raw-image
+  inference and brightness-analysis tooling.
+- [`06_live-inference_v0.1`](06_live-inference_v0.1),
+  [`06_live-inference_v0.2`](06_live-inference_v0.2),
+  [`06_live-inference_v0.3`](06_live-inference_v0.3): live-local runtime
+  iterations; v0.3 is the current path.
+- [`charuco-calibration`](charuco-calibration): PySide6/OpenCV ChArUco
+  calibration capture, solve, and artifact export tooling.
+- [`failure-analysis`](failure-analysis): failure-analysis framework,
+  model-evaluation reports, incident investigations, and supporting evidence.
+- [`documents`](documents): technical writeups, topology proposals,
+  implementation notes, and specifications; start with
+  [`documents/document-index.md`](documents/document-index.md).
+- [`examples/defender-images`](examples/defender-images): scaffold for a
+  bounded example-image corpus and its notices.
+- [`scripts/run-tests.sh`](scripts/run-tests.sh): repo-level focused test
+  runner for the checked-in subprojects.
 
 ## Representative Evidence
 
@@ -134,4 +168,5 @@ See:
 
 - [`COPYRIGHT.md`](COPYRIGHT.md) for repo-authored material.
 - [`THIRD_PARTY.md`](THIRD_PARTY.md) for third-party asset provenance.
-- [`examples/defender-images/NOTICE.md`](examples/defender-images/NOTICE.md) for the bounded example-image corpus notice when that corpus is populated.
+- [`examples/defender-images/NOTICE.md`](examples/defender-images/NOTICE.md) for
+  the bounded example-image corpus notice when that corpus is populated.
