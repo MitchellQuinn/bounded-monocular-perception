@@ -6,21 +6,23 @@ This repository is a bounded computer-vision and applied-machine-learning
 workspace for estimating vehicle distance and yaw from a fixed monocular camera
 view under controlled conditions.
 
-The system is deliberately scoped. It is not intended to solve general
-autonomous driving, open-world object detection, multi-object tracking, or
-unconstrained real-world scene understanding. The engineering question is
-narrower:
+The system is deliberately scoped around one known vehicle family, fixed camera
+geometry, a constrained movement plane, synthetic supervision, controlled
+full-frame captures, and live-local runtime testing under controlled physical
+conditions. The engineering question is narrow:
 
 > Can a fixed-camera system observing a known vehicle in a constrained scene
 > estimate useful vehicle state from image-based geometric cues, and what breaks
 > when the system moves from offline synthetic validation into composed live
 > inference?
 
-That framing is central to the repository. The value is not a claim of broad
-deployment readiness. The value is the engineering record: synthetic data
-generation, preprocessing contracts, PyTorch model training, learned and
-deterministic ROI localisation, live runtime integration, calibration support,
-trace capture, and failure analysis.
+That framing is central to the repository. It should be read as a bounded
+research-engineering workspace rather than a packaged product or broad
+general-purpose vision model. The value is the engineering record: applied ML
+engineering, computer-vision system construction, synthetic-data generation,
+preprocessing contracts, runtime composition, trace capture, calibration
+support, failure analysis, and measuring degradation between offline validation
+and composed live inference.
 
 ## 2. Problem Scope
 
@@ -38,7 +40,7 @@ The current system assumes:
 * one fixed camera geometry
 * one constrained movement plane
 * synthetic training and validation data
-* controlled full-frame captures rather than arbitrary real-world scenes
+* controlled full-frame captures
 
 These assumptions keep the problem falsifiable. They also make it possible to
 separate model performance from failures introduced by localisation,
@@ -83,7 +85,7 @@ contracts, and incident-analysis material.
 
 The Unity generator creates full-frame synthetic images with structured run
 metadata and sample manifests. It is designed to produce controlled labelled
-data for the fixed-camera perception task rather than arbitrary visual variety.
+data with controlled coverage for the fixed-camera perception task.
 
 Key generator components include:
 
@@ -743,33 +745,41 @@ ML systems:
 * device policy management for CPU and CUDA execution paths.
 * artifact-backed incident analysis and regression tests.
 
-## 19. Limitations and Caveats
+## 19. Scope and Current Limits
+
+This repository is not presented as a packaged product or broad general-purpose
+vision model. It is a bounded research-engineering workspace for testing whether
+a fixed-camera system can estimate useful vehicle state under controlled
+conditions, and for making the offline-to-runtime failure modes inspectable.
 
 The current evidence should be read with the following constraints in mind:
 
-* All recorded model training and validation evidence is synthetic.
-* The task is limited to one known vehicle family, one camera setup, and a
-  constrained operating geometry.
-* The system is not a general detector, tracker, or scene-understanding model.
-* The strongest offline result and the raw-image runtime results are materially
-  different.
-* The current live selected model artifact has strong offline synthetic
-  validation metrics, but live trace-backed testing shows unresolved
-  pose-dependent distance bias.
+* The task is limited to one known vehicle family, fixed camera geometry, a
+  constrained movement plane, controlled full-frame captures, and synthetic
+  training and validation data.
+* Synthetic training and validation remain the strongest evidence base.
+* Offline synthetic validation metrics are not real-camera accuracy;
+  preprocessed validation, raw-image composed inference, and live-local
+  inference are separate evidence types.
+* The live-local runtime works, but real-camera accuracy is still under
+  investigation.
+* The current direct scalar distance/yaw model shows pose-linked distance bias
+  in live testing.
+* Camera calibration improves part of the runtime alignment problem but does
+  not, by itself, solve pose-dependent error.
 * The live sweeps use practical measured floor marks, not calibrated metrology
   ground truth.
-* Camera intrinsics correction improves aggregate live error but does not remove
-  the pose-linked failure mode.
-* `background_edge_v1` is deterministic and inspectable, but it is not a
-  general object detector.
+* `background_edge_v1` is deterministic and inspectable, and is designed for
+  the controlled fixed-camera live-local path.
 * ROI-FCN targets are bootstrapped from an existing crop heuristic, so the
   localiser initially learns that crop-centre definition rather than
   independently curated ground truth.
+* The current next architectural direction is a more inspectable
+  keypoint/topology-based representation.
 * The proposed keypoint topology is documented, but not yet implemented as a
   registered training topology.
 * The codebase is a research workspace with versioned subprojects,
-  compatibility shims, and evolving runtime paths, not a polished packaged
-  product.
+  compatibility shims, and evolving runtime paths.
 
 These caveats are part of the technical value of the project. They keep the
 claims bounded and make the results easier to evaluate honestly.

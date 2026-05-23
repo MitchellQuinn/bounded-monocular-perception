@@ -4,15 +4,29 @@ This repository is a bounded computer-vision and applied-machine-learning
 workspace for estimating vehicle distance and yaw from a fixed monocular camera
 view under controlled conditions.
 
-The project is deliberately narrow: one known vehicle family, fixed or
-controlled camera geometry, synthetic supervision, explicit preprocessing
-contracts, raw-image inference paths, a live local runtime, calibration support,
-trace capture, and failure analysis.
+The project is deliberately narrow: one known vehicle family, fixed monocular
+camera geometry, a constrained movement plane, controlled full-frame captures,
+synthetic training and validation data, live-local runtime testing under
+controlled physical conditions, explicit preprocessing contracts, raw-image
+inference paths, calibration support, trace capture, and failure analysis.
 
-It should be read as evidence of applied ML engineering, computer vision,
-runtime integration, and experimental discipline. It is not a claim of open-world 
-object detection, multi-object tracking, or unconstrained real-world 
-scene understanding.
+It should be read as evidence of applied ML engineering, computer-vision system
+construction, synthetic-data generation, preprocessing contracts, runtime
+composition, trace capture, calibration support, failure analysis, and measuring
+degradation between offline validation and composed live inference.
+
+## Scope and Current Limits
+
+This repository is not presented as a packaged product or broad general-purpose
+vision model. It is a bounded research-engineering workspace for testing whether
+a fixed-camera system can estimate useful vehicle state under controlled
+conditions, and for making the offline-to-runtime failure modes inspectable.
+
+- Synthetic training and validation remain the strongest evidence base.
+- The live-local runtime works, but real-camera accuracy is still under investigation.
+- The current direct scalar distance/yaw model shows pose-linked distance bias in live testing.
+- Camera calibration improves part of the runtime alignment problem but does not, by itself, solve pose-dependent error.
+- The current next architectural direction is a more inspectable keypoint/topology-based representation.
 
 ## Quick Reviewer Path
 
