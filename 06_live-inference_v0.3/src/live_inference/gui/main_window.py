@@ -34,6 +34,7 @@ from live_inference.preprocessing import (
     SUPPORTED_CAMERA_INTRINSICS_MODES,
     CameraIntrinsicsFrameTransformer,
     CameraIntrinsicsTransformState,
+    StageTransformPolicyState,
     normalize_camera_intrinsics_mode,
 )
 
@@ -63,6 +64,7 @@ class LiveInferenceMainWindow(QMainWindow):
         mask_state: FrameMaskState | None = None,
         locator_parameter_state: object | None = None,
         foreground_extraction_policy_state: object | None = None,
+        stage_policy_state: StageTransformPolicyState | None = None,
         camera_intrinsics_state: CameraIntrinsicsTransformState | None = None,
         camera_intrinsics_frame_transformer: CameraIntrinsicsFrameTransformer | None = None,
         locator_kind: contracts.LocatorKind | str = contracts.LocatorKind.BACKGROUND_EDGE_V1,
@@ -79,6 +81,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.mask_state = mask_state or FrameMaskState()
         self.locator_parameter_state = locator_parameter_state
         self.foreground_extraction_policy_state = foreground_extraction_policy_state
+        self.stage_policy_state = stage_policy_state or StageTransformPolicyState()
         self.camera_intrinsics_state = camera_intrinsics_state or CameraIntrinsicsTransformState()
         self.camera_intrinsics_frame_transformer = (
             camera_intrinsics_frame_transformer
@@ -108,6 +111,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._connect_worker_signals()
         self._sync_camera_intrinsics_widgets()
         self._sync_parameter_widgets()
+        self._sync_background_widgets()
         self._sync_preprocessing_widgets()
         self._sync_mask_widgets()
         self._append_log("INFO", f"Locator: {self.locator_kind.value}")
@@ -134,6 +138,15 @@ class LiveInferenceMainWindow(QMainWindow):
         self.stop_camera_button = self._require(QPushButton, "stopCameraButton")
         self.capture_background_button = self._require(QPushButton, "captureBackgroundButton")
         self.clear_background_button = self._require(QPushButton, "clearBackgroundButton")
+        self.enable_background_removal_checkbox = self._require(QCheckBox, "enableBackgroundRemovalCheckBox")
+        self.apply_background_removal_to_locator_checkbox = self._require(
+            QCheckBox,
+            "applyBackgroundRemovalToLocatorCheckBox",
+        )
+        self.apply_background_removal_to_model_preprocessing_checkbox = self._require(
+            QCheckBox,
+            "applyBackgroundRemovalToModelPreprocessingCheckBox",
+        )
         self.capture_frame_button = self._require(QPushButton, "captureFrameButton")
         self.run_locator_button = self._require(QPushButton, "runLocatorButton")
         self.run_single_inference_button = self._require(QPushButton, "runSingleInferenceButton")
@@ -170,6 +183,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.locator_status_value = self._require(QLabel, "locatorStatusValue")
         self.roi_status_value = self._require(QLabel, "roiStatusValue")
         self.mask_status_value = self._require(QLabel, "maskStatusValue")
+        self.background_removal_status_value = self._require(QLabel, "backgroundRemovalStatusValue")
         self.frame_hash_value = self._require(QLabel, "frameHashValue")
         self.trace_path_value = self._require(QLabel, "tracePathValue")
         self.warnings_text = self._require(QPlainTextEdit, "warningsText")
@@ -181,6 +195,15 @@ class LiveInferenceMainWindow(QMainWindow):
         self.stop_camera_button.clicked.connect(self.stop_camera)
         self.capture_background_button.clicked.connect(self.capture_background)
         self.clear_background_button.clicked.connect(self.clear_background)
+        self.enable_background_removal_checkbox.toggled.connect(
+            self._on_background_enabled_toggled
+        )
+        self.apply_background_removal_to_locator_checkbox.toggled.connect(
+            self._on_apply_background_removal_to_locator_toggled
+        )
+        self.apply_background_removal_to_model_preprocessing_checkbox.toggled.connect(
+            self._on_apply_background_removal_to_model_preprocessing_toggled
+        )
         self.capture_frame_button.clicked.connect(self.capture_frame)
         self.run_locator_button.clicked.connect(self.run_locator)
         self.run_single_inference_button.clicked.connect(self.run_single_inference)
@@ -208,8 +231,10 @@ class LiveInferenceMainWindow(QMainWindow):
             self.show_chosen_contour_checkbox,
         ):
             checkbox.toggled.connect(self._refresh_visual_surface)
+        self.background_threshold_spinbox.valueChanged.connect(
+            self._on_background_threshold_changed
+        )
         for spinbox in (
-            self.background_threshold_spinbox,
             self.min_foreground_area_spinbox,
             self.canny_low_spinbox,
             self.canny_high_spinbox,
@@ -279,6 +304,10 @@ class LiveInferenceMainWindow(QMainWindow):
         self.stop_continuous_inference()
         self.stop_camera()
 
+    def _inference_is_running(self) -> bool:
+        is_running = getattr(self.inference_controller, "is_running", None)
+        return bool(is_running()) if callable(is_running) else False
+
     def capture_frame(self) -> None:
         latest_frame = self._latest_frame()
         if latest_frame is None:
@@ -302,6 +331,10 @@ class LiveInferenceMainWindow(QMainWindow):
         self._append_log("INFO", f"Captured frame {frame_hash.value}")
 
     def capture_background(self) -> None:
+        if self._inference_is_running():
+            self._append_log("WARNING", "Stop inference before capturing background.")
+            self._sync_background_widgets()
+            return
         image_bytes = (
             self._captured_single_frame.image_bytes
             if self._captured_single_frame is not None
@@ -309,14 +342,22 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         if image_bytes is None:
             self._append_log("WARNING", "Capture Background requires a frame.")
+            self._sync_background_widgets()
             return
         gray = self._preview_grayscale_from_bytes(image_bytes)
         revision = self.background_state.capture_background(gray)
-        self.background_state.set_enabled(True)
-        self._append_log("INFO", f"Background captured; revision={revision}")
+        snapshot = self.background_state.get_snapshot()
+        self._sync_background_widgets(snapshot)
+        self._append_log(
+            "INFO",
+            "Background captured; "
+            f"revision={revision}; size={snapshot.width_px}x{snapshot.height_px}; "
+            "enable removal before starting inference.",
+        )
 
     def clear_background(self) -> None:
         revision = self.background_state.clear()
+        self._sync_background_widgets()
         self._append_log("INFO", f"Background cleared; revision={revision}")
 
     def start_draw_mask(self) -> None:
@@ -592,7 +633,44 @@ class LiveInferenceMainWindow(QMainWindow):
             canny_high_threshold=self.canny_high_spinbox.value(),
         )
         self.background_state.set_threshold(config.background_threshold)
+        self._sync_background_widgets()
         self._append_log("DEBUG", f"Locator parameters revision={revision}")
+
+    def _on_background_threshold_changed(self, value: int) -> None:
+        self.background_state.set_threshold(int(value))
+        self._on_locator_parameters_changed(value)
+        self._sync_background_widgets()
+
+    def _on_background_enabled_toggled(self, checked: bool) -> None:
+        revision = self.background_state.set_enabled(bool(checked))
+        self._sync_background_widgets()
+        state = "enabled" if bool(checked) else "disabled"
+        self._append_log("INFO", f"Background removal {state}; revision={revision}")
+
+    def _on_apply_background_removal_to_locator_toggled(self, checked: bool) -> None:
+        snapshot = self.stage_policy_state.update(
+            apply_background_removal_to_roi_locator=bool(checked)
+        )
+        self._sync_background_widgets()
+        self._append_log(
+            "INFO",
+            "Background removal locator application "
+            f"{'enabled' if bool(checked) else 'disabled'}; revision={snapshot.revision}",
+        )
+
+    def _on_apply_background_removal_to_model_preprocessing_toggled(
+        self,
+        checked: bool,
+    ) -> None:
+        snapshot = self.stage_policy_state.update(
+            apply_background_removal_to_regressor_preprocessing=bool(checked)
+        )
+        self._sync_background_widgets()
+        self._append_log(
+            "INFO",
+            "Background removal model preprocessing application "
+            f"{'enabled' if bool(checked) else 'disabled'}; revision={snapshot.revision}",
+        )
 
     def _sync_parameter_widgets(self) -> None:
         state = self.locator_parameter_state
@@ -600,10 +678,59 @@ class LiveInferenceMainWindow(QMainWindow):
         if not callable(snapshot):
             return
         config, _revision = snapshot()
-        self.background_threshold_spinbox.setValue(int(config.background_threshold))
-        self.min_foreground_area_spinbox.setValue(int(config.min_foreground_area_px))
-        self.canny_low_spinbox.setValue(int(config.canny_low_threshold))
-        self.canny_high_spinbox.setValue(int(config.canny_high_threshold))
+        for spinbox in (
+            self.background_threshold_spinbox,
+            self.min_foreground_area_spinbox,
+            self.canny_low_spinbox,
+            self.canny_high_spinbox,
+        ):
+            spinbox.blockSignals(True)
+        try:
+            self.background_threshold_spinbox.setValue(int(config.background_threshold))
+            self.min_foreground_area_spinbox.setValue(int(config.min_foreground_area_px))
+            self.canny_low_spinbox.setValue(int(config.canny_low_threshold))
+            self.canny_high_spinbox.setValue(int(config.canny_high_threshold))
+        finally:
+            for spinbox in (
+                self.background_threshold_spinbox,
+                self.min_foreground_area_spinbox,
+                self.canny_low_spinbox,
+                self.canny_high_spinbox,
+            ):
+                spinbox.blockSignals(False)
+        self.background_state.set_threshold(int(config.background_threshold))
+
+    def _sync_background_widgets(self, snapshot: object | None = None) -> None:
+        background_snapshot = (
+            snapshot
+            if snapshot is not None
+            else self.background_state.get_snapshot()
+        )
+        stage_snapshot = self.stage_policy_state.get_snapshot()
+        self.enable_background_removal_checkbox.blockSignals(True)
+        self.apply_background_removal_to_locator_checkbox.blockSignals(True)
+        self.apply_background_removal_to_model_preprocessing_checkbox.blockSignals(True)
+        self.background_threshold_spinbox.blockSignals(True)
+        try:
+            self.enable_background_removal_checkbox.setChecked(
+                bool(background_snapshot.enabled)
+            )
+            self.apply_background_removal_to_locator_checkbox.setChecked(
+                bool(stage_snapshot.apply_background_removal_to_roi_locator)
+            )
+            self.apply_background_removal_to_model_preprocessing_checkbox.setChecked(
+                bool(stage_snapshot.apply_background_removal_to_regressor_preprocessing)
+            )
+            self.background_threshold_spinbox.setValue(int(background_snapshot.threshold))
+        finally:
+            self.enable_background_removal_checkbox.blockSignals(False)
+            self.apply_background_removal_to_locator_checkbox.blockSignals(False)
+            self.apply_background_removal_to_model_preprocessing_checkbox.blockSignals(False)
+            self.background_threshold_spinbox.blockSignals(False)
+        self.main_preview_widget.set_background_snapshot(background_snapshot)
+        self.background_removal_status_value.setText(
+            _background_status_text(background_snapshot, stage_snapshot)
+        )
 
     def _sync_preprocessing_widgets(self) -> None:
         state = self.foreground_extraction_policy_state
@@ -673,6 +800,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.background_state.clear()
         self.mask_state.clear()
         self.main_preview_widget.clear_masks()
+        self._sync_background_widgets()
         self._debug_paths = {}
         self._last_overlay = None
         self.main_preview_widget.set_overlay(None)
@@ -730,6 +858,7 @@ class LiveInferenceMainWindow(QMainWindow):
     def _sync_preview_mask_snapshot(self) -> None:
         self.main_preview_widget.set_mask_fill_value(self._current_mask_fill_value())
         self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self.main_preview_widget.set_background_snapshot(self.background_state.get_snapshot())
         self._update_mask_status()
 
     def _prepare_preview_for_mask_edit(self) -> None:
@@ -891,6 +1020,30 @@ class LiveInferenceMainWindow(QMainWindow):
     def _append_log(self, severity: str, message: str) -> None:
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         self.log_output.appendPlainText(f"[{timestamp}] {severity}: {message}")
+
+
+def _background_status_text(snapshot: object, stage_snapshot: object) -> str:
+    captured = bool(_payload_value(snapshot, "captured"))
+    enabled = bool(_payload_value(snapshot, "enabled"))
+    revision = _payload_value(snapshot, "revision")
+    threshold = _payload_value(snapshot, "threshold")
+    if captured:
+        size = f"{_payload_value(snapshot, 'width_px')}x{_payload_value(snapshot, 'height_px')}"
+        base = f"background: captured {size}; revision {revision}; threshold {threshold}"
+    else:
+        base = f"background: not captured; revision {revision}; threshold {threshold}"
+    base += "; enabled" if enabled else "; disabled"
+    locator = bool(
+        _payload_value(stage_snapshot, "apply_background_removal_to_roi_locator")
+    )
+    model = bool(
+        _payload_value(
+            stage_snapshot,
+            "apply_background_removal_to_regressor_preprocessing",
+        )
+    )
+    base += f"; locator {'on' if locator else 'off'}; model {'on' if model else 'off'}"
+    return base
 
 
 def _decode_grayscale(image_bytes: bytes) -> np.ndarray:

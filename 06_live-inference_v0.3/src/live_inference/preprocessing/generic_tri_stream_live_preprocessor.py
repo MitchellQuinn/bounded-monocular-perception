@@ -30,6 +30,8 @@ from live_inference.model_registry.model_manifest import (
 
 from .debug_artifacts import (
     ARTIFACT_ACCEPTED_RAW_FRAME,
+    ARTIFACT_BACKGROUND_REMOVAL_MASK,
+    ARTIFACT_BACKGROUND_SNAPSHOT,
     ARTIFACT_DISTANCE_IMAGE,
     ARTIFACT_FOREGROUND_MASK,
     ARTIFACT_GRAYSCALE_FRAME,
@@ -46,6 +48,10 @@ from .locators import FixedCenterRoiLocator, LocatorRuntimeParameterState
 from .foreground_policy import (
     ForegroundExtractionPolicySnapshot,
     ForegroundExtractionPolicyState,
+)
+from .stage_policy import (
+    StageTransformPolicySnapshot,
+    StageTransformPolicyState,
 )
 from .camera_intrinsics import (
     CameraIntrinsicsFrameTransformer,
@@ -146,6 +152,8 @@ class TriStreamLivePreprocessor:
         mask_state: FrameMaskState | None = None,
         locator_parameter_state: LocatorRuntimeParameterState | None = None,
         foreground_extraction_policy_state: ForegroundExtractionPolicyState | None = None,
+        stage_policy_state: StageTransformPolicyState | None = None,
+        stage_policy: StageTransformPolicySnapshot | None = None,
         camera_intrinsics_state: CameraIntrinsicsTransformState | None = None,
         camera_intrinsics_transformer: CameraIntrinsicsFrameTransformer | None = None,
         **_legacy_kwargs: Any,
@@ -168,6 +176,9 @@ class TriStreamLivePreprocessor:
         self._foreground_extraction_policy_state = (
             foreground_extraction_policy_state or ForegroundExtractionPolicyState()
         )
+        self._stage_policy_state = stage_policy_state or StageTransformPolicyState(
+            stage_policy
+        )
         self._camera_intrinsics_transformer = (
             camera_intrinsics_transformer
             if camera_intrinsics_transformer is not None
@@ -189,6 +200,10 @@ class TriStreamLivePreprocessor:
     @property
     def foreground_extraction_policy_state(self) -> ForegroundExtractionPolicyState:
         return self._foreground_extraction_policy_state
+
+    @property
+    def stage_policy_state(self) -> StageTransformPolicyState:
+        return self._stage_policy_state
 
     def preview_locator_input(
         self,
@@ -214,8 +229,14 @@ class TriStreamLivePreprocessor:
         """Run only the configured locator and ROI guard for an exact frame."""
         prepared_source = self._prepare_source_frame(image_bytes)
         source_gray = prepared_source.source_gray
+        source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
         input_image_hash = _accepted_input_image_hash(request, image_bytes)
         runtime_revision = self._runtime_parameter_revision()
+        stage_policy = self._stage_policy_state.get_snapshot()
+        background_snapshot, background_warning = self._background_snapshot_and_warning(
+            source_w,
+            source_h,
+        )
         mask_preparation = self._prepare_frame_mask(
             source_gray,
             apply_to_locator=True,
@@ -223,12 +244,17 @@ class TriStreamLivePreprocessor:
         )
         warnings = _hash_warnings(request, image_bytes)
         warnings.extend(mask_preparation.warnings)
+        if background_warning and bool(stage_policy.apply_background_removal_to_roi_locator):
+            warnings.append(background_warning)
         locator_result = self._locate(
             request,
             prepared_source.locator_image_bytes,
-            source_wh=(int(source_gray.shape[1]), int(source_gray.shape[0])),
+            source_wh=(source_w, source_h),
             runtime_revision=runtime_revision,
             mask_preparation=mask_preparation,
+            apply_background_removal_to_locator=bool(
+                stage_policy.apply_background_removal_to_roi_locator
+            ),
         )
         metadata = self._base_metadata(
             request=request,
@@ -240,6 +266,23 @@ class TriStreamLivePreprocessor:
             regressor_reached=False,
         )
         metadata.update(mask_preparation.metadata)
+        metadata.update(stage_policy.to_metadata())
+        metadata.update(
+            self._background_metadata(
+                snapshot=background_snapshot,
+                source_wh=(source_w, source_h),
+                warning=background_warning
+                if bool(stage_policy.apply_background_removal_to_roi_locator)
+                else None,
+            )
+        )
+        metadata.update(
+            _background_application_metadata(
+                stage_policy=stage_policy,
+                locator_result=locator_result,
+                roi_background_metadata={},
+            )
+        )
         metadata.update(prepared_source.metadata)
         roi_crop = None
         if locator_result.center_xy_px is not None:
@@ -263,6 +306,8 @@ class TriStreamLivePreprocessor:
             orientation_image=None,
             metadata=metadata,
             locator_result=locator_result,
+            background_snapshot=background_snapshot,
+            background_removal_mask=None,
         )
         if debug_paths:
             metadata = {**metadata, contracts.PREPROCESSING_METADATA_DEBUG_PATHS: _path_map(debug_paths)}
@@ -288,6 +333,11 @@ class TriStreamLivePreprocessor:
         source_h, source_w = int(source_gray.shape[0]), int(source_gray.shape[1])
         input_image_hash = _accepted_input_image_hash(request, image_bytes)
         runtime_revision = self._runtime_parameter_revision()
+        stage_policy = self._stage_policy_state.get_snapshot()
+        background_snapshot, background_warning = self._background_snapshot_and_warning(
+            source_w,
+            source_h,
+        )
         warnings = _hash_warnings(request, image_bytes)
         mask_preparation = self._prepare_frame_mask(
             source_gray,
@@ -295,12 +345,20 @@ class TriStreamLivePreprocessor:
             apply_to_regressor=True,
         )
         warnings.extend(mask_preparation.warnings)
+        if background_warning and (
+            bool(stage_policy.apply_background_removal_to_roi_locator)
+            or bool(stage_policy.apply_background_removal_to_regressor_preprocessing)
+        ):
+            warnings.append(background_warning)
         locator_result = self._locate(
             request,
             prepared_source.locator_image_bytes,
             source_wh=(source_w, source_h),
             runtime_revision=runtime_revision,
             mask_preparation=mask_preparation,
+            apply_background_removal_to_locator=bool(
+                stage_policy.apply_background_removal_to_roi_locator
+            ),
         )
         warnings.extend(str(warning) for warning in locator_result.warnings)
 
@@ -315,6 +373,28 @@ class TriStreamLivePreprocessor:
                 regressor_reached=False,
             )
             metadata.update(mask_preparation.metadata)
+            metadata.update(stage_policy.to_metadata())
+            metadata.update(
+                self._background_metadata(
+                    snapshot=background_snapshot,
+                    source_wh=(source_w, source_h),
+                    warning=background_warning
+                    if (
+                        bool(stage_policy.apply_background_removal_to_roi_locator)
+                        or bool(
+                            stage_policy.apply_background_removal_to_regressor_preprocessing
+                        )
+                    )
+                    else None,
+                )
+            )
+            metadata.update(
+                _background_application_metadata(
+                    stage_policy=stage_policy,
+                    locator_result=locator_result,
+                    roi_background_metadata={},
+                )
+            )
             metadata.update(prepared_source.metadata)
             debug_paths = self._write_debug_artifacts(
                 request=request,
@@ -329,6 +409,8 @@ class TriStreamLivePreprocessor:
                 orientation_image=None,
                 metadata=metadata,
                 locator_result=locator_result,
+                background_snapshot=background_snapshot,
+                background_removal_mask=None,
             )
             if debug_paths:
                 metadata = {**metadata, contracts.PREPROCESSING_METADATA_DEBUG_PATHS: _path_map(debug_paths)}
@@ -353,12 +435,16 @@ class TriStreamLivePreprocessor:
             canvas_width_px=self._roi_canvas_size()[0],
             canvas_height_px=self._roi_canvas_size()[1],
         )
-        background_snapshot, background_warning = self._usable_background(source_w, source_h)
-        if background_warning:
-            warnings.append(background_warning)
+        regressor_background_snapshot = _background_for_stage(
+            background_snapshot,
+            warning=background_warning,
+            apply_to_stage=bool(
+                stage_policy.apply_background_removal_to_regressor_preprocessing
+            ),
+        )
         roi_background = _apply_background_to_roi_canvas(
             roi_gray,
-            background_snapshot=background_snapshot,
+            background_snapshot=regressor_background_snapshot,
             source_bounds=source_bounds,
             roi_bounds=roi_bounds,
         )
@@ -373,15 +459,28 @@ class TriStreamLivePreprocessor:
             self._foreground_extraction_policy_state.snapshot()
         )
         mask_metadata = dict(mask_preparation.metadata)
+        mask_metadata.update(stage_policy.to_metadata())
         mask_metadata.update(foreground_extraction_policy.to_metadata())
         mask_metadata.update(
             self._background_metadata(
                 snapshot=background_snapshot,
                 source_wh=(source_w, source_h),
-                warning=background_warning,
+                warning=background_warning
+                if (
+                    bool(stage_policy.apply_background_removal_to_roi_locator)
+                    or bool(stage_policy.apply_background_removal_to_regressor_preprocessing)
+                )
+                else None,
             )
         )
         mask_metadata.update(roi_background.metadata)
+        mask_metadata.update(
+            _background_application_metadata(
+                stage_policy=stage_policy,
+                locator_result=locator_result,
+                roi_background_metadata=roi_background.metadata,
+            )
+        )
         try:
             foreground_extraction_result = self._extract_foreground(
                 roi_gray=roi_background.preview_gray,
@@ -491,6 +590,8 @@ class TriStreamLivePreprocessor:
                 orientation_image=orientation_image_2d,
                 metadata=metadata,
                 locator_result=locator_result,
+                background_snapshot=background_snapshot,
+                background_removal_mask=roi_background.removal_mask,
             )
             if debug_paths:
                 metadata = {**metadata, contracts.PREPROCESSING_METADATA_DEBUG_PATHS: _path_map(debug_paths)}
@@ -585,6 +686,8 @@ class TriStreamLivePreprocessor:
             orientation_image=orientation_image_2d,
             metadata=metadata,
             locator_result=locator_result,
+            background_snapshot=background_snapshot,
+            background_removal_mask=roi_background.removal_mask,
         )
         if debug_paths:
             metadata = {**metadata, contracts.PREPROCESSING_METADATA_DEBUG_PATHS: _path_map(debug_paths)}
@@ -616,6 +719,7 @@ class TriStreamLivePreprocessor:
         source_wh: tuple[int, int],
         runtime_revision: int | None,
         mask_preparation: _FrameMaskPreparation | None = None,
+        apply_background_removal_to_locator: bool = False,
     ) -> contracts.LocatorResult:
         snapshot = self._background_state.get_snapshot() if self._background_state is not None else None
         locator_kind = getattr(self._locator, "locator_kind", contracts.LocatorKind.BACKGROUND_EDGE_V1)
@@ -625,6 +729,9 @@ class TriStreamLivePreprocessor:
                 "roi_width_px": self._roi_canvas_size()[0],
                 "roi_height_px": self._roi_canvas_size()[1],
             },
+            contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR: bool(
+                apply_background_removal_to_locator
+            ),
         }
         if mask_preparation is not None and mask_preparation.locator_ignore_mask is not None:
             extras.update(
@@ -813,7 +920,7 @@ class TriStreamLivePreprocessor:
             "background_source_wh_px": source_wh,
         }
 
-    def _usable_background(
+    def _background_snapshot_and_warning(
         self,
         source_w: int,
         source_h: int,
@@ -822,11 +929,11 @@ class TriStreamLivePreprocessor:
             return None, None
         snapshot = self._background_state.get_snapshot()
         if snapshot is None or not snapshot.captured or not snapshot.enabled:
-            return None, None
+            return snapshot, None
         if snapshot.dimensions_match(source_w, source_h):
             return snapshot, None
-        return None, (
-            "background removal skipped for ROI crop: background size "
+        return snapshot, (
+            "background removal skipped: background size "
             f"{(snapshot.width_px, snapshot.height_px)} does not match source image "
             f"size {(source_w, source_h)}."
         )
@@ -1150,6 +1257,8 @@ class TriStreamLivePreprocessor:
         orientation_image: np.ndarray | None,
         metadata: Mapping[str, Any],
         locator_result: contracts.LocatorResult,
+        background_snapshot: BackgroundSnapshot | None = None,
+        background_removal_mask: np.ndarray | None = None,
     ) -> dict[str, Path]:
         debug_paths = {str(key): Path(value) for key, value in locator_result.debug_artifacts.paths.items()}
         if not bool(request.save_debug_images):
@@ -1170,6 +1279,12 @@ class TriStreamLivePreprocessor:
                 ARTIFACT_PREPROCESSOR_SOURCE_BEFORE_REGRESSOR_MASKS: source_gray,
                 ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS: preprocessor_source_gray,
                 ARTIFACT_MANUAL_MASK: manual_mask,
+                ARTIFACT_BACKGROUND_SNAPSHOT: (
+                    background_snapshot.grayscale_background
+                    if background_snapshot is not None and background_snapshot.captured
+                    else None
+                ),
+                ARTIFACT_BACKGROUND_REMOVAL_MASK: background_removal_mask,
                 ARTIFACT_ROI_CROP: roi_crop,
                 ARTIFACT_FOREGROUND_MASK: foreground_mask,
                 ARTIFACT_DISTANCE_IMAGE: distance_image,
@@ -1411,6 +1526,68 @@ def _validate_foreground_locator_consistency(
         f"locator=({locator_w:.1f}x{locator_h:.1f}), "
         f"area_ratio={area_ratio:.4f}"
     )
+
+
+def _background_for_stage(
+    snapshot: BackgroundSnapshot | None,
+    *,
+    warning: str | None,
+    apply_to_stage: bool,
+) -> BackgroundSnapshot | None:
+    if not bool(apply_to_stage) or warning is not None:
+        return None
+    if snapshot is None or not snapshot.captured or not snapshot.enabled:
+        return None
+    return snapshot
+
+
+def _background_application_metadata(
+    *,
+    stage_policy: StageTransformPolicySnapshot,
+    locator_result: contracts.LocatorResult,
+    roi_background_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    locator_applied = bool(
+        stage_policy.apply_background_removal_to_roi_locator
+        and locator_result.extras.get("background_revision") is not None
+    )
+    regressor_applied = bool(
+        roi_background_metadata.get(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED
+        )
+    )
+    regressor_count = int(
+        roi_background_metadata.get(
+            contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_REMOVE_PIXEL_COUNT
+        )
+        or 0
+    )
+    spaces: list[str] = []
+    if locator_applied:
+        spaces.append("roi_locator_input")
+    if regressor_applied:
+        spaces.append("regressor_preprocessing_input")
+    return {
+        contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR: bool(
+            stage_policy.apply_background_removal_to_roi_locator
+        ),
+        contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_REGRESSOR_PREPROCESSING: bool(
+            stage_policy.apply_background_removal_to_regressor_preprocessing
+        ),
+        contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_ROI_LOCATOR: locator_applied,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_REGRESSOR_PREPROCESSING: regressor_applied,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED: bool(
+            locator_applied or regressor_applied
+        ),
+        contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVE_PIXEL_COUNT: regressor_count,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_APPLIED: regressor_applied,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_CROP_REMOVE_PIXEL_COUNT: regressor_count,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_FCN_APPLIED: False,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_ROI_FCN_REMOVE_PIXEL_COUNT: 0,
+        contracts.PREPROCESSING_METADATA_BACKGROUND_APPLICATION_SPACE: (
+            "+".join(spaces) if spaces else None
+        ),
+    }
 
 
 def _path_map(paths: Mapping[str, Path]) -> dict[str, str]:

@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import sys
+from types import SimpleNamespace
 import unittest
 
+import cv2  # noqa: E402
 import numpy as np
 
 
@@ -25,6 +27,7 @@ from live_inference.preprocessing import (  # noqa: E402
     CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP,
     CameraIntrinsicsTransformState,
     ForegroundExtractionPolicyState,
+    StageTransformPolicyState,
 )
 
 
@@ -65,10 +68,58 @@ class GuiUiAndAppTests(unittest.TestCase):
         self.assertFalse(window.use_silhouette_preprocessing_checkbox.isChecked())
         self.assertEqual(window.camera_intrinsics_mode_combo.currentData(), "disabled")
         self.assertIn("mask:", window.mask_status_value.text())
+        self.assertEqual(window.capture_background_button.text(), "Capture Background")
+        self.assertEqual(window.clear_background_button.text(), "Clear Background")
+        self.assertEqual(
+            window.enable_background_removal_checkbox.text(),
+            "Enable Background Removal",
+        )
+        self.assertEqual(
+            window.apply_background_removal_to_locator_checkbox.text(),
+            "Apply to locator",
+        )
+        self.assertEqual(
+            window.apply_background_removal_to_model_preprocessing_checkbox.text(),
+            "Apply to model preprocessing",
+        )
+        self.assertIn("background:", window.background_removal_status_value.text())
+        self.assertEqual(
+            window.capture_background_button.parent().objectName(),
+            "backgroundRemovalGroup",
+        )
         self.assertIsInstance(window.top_workspace_splitter, QSplitter)
         self.assertEqual(window.top_workspace_splitter.count(), 4)
         self.assertIsNotNone(window.findChild(QGroupBox, "additionalControlsGroup"))
         self.assertEqual(window.show_roi_checkbox.parent().objectName(), "overlayDebugGroup")
+
+    def test_background_controls_capture_enable_and_update_stage_policy(self) -> None:
+        stage_policy_state = StageTransformPolicyState()
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+            stage_policy_state=stage_policy_state,
+        )
+        image = np.full((24, 32), 255, dtype=np.uint8)
+        ok, encoded = cv2.imencode(".png", image)
+        self.assertTrue(ok)
+        window._captured_single_frame = SimpleNamespace(image_bytes=encoded.tobytes())
+
+        window.capture_background()
+
+        snapshot = window.background_state.get_snapshot()
+        self.assertTrue(snapshot.captured)
+        self.assertFalse(snapshot.enabled)
+        self.assertFalse(window.enable_background_removal_checkbox.isChecked())
+        self.assertIn("captured 32x24", window.background_removal_status_value.text())
+
+        window.enable_background_removal_checkbox.setChecked(True)
+        self.assertTrue(window.background_state.get_snapshot().enabled)
+        window.apply_background_removal_to_locator_checkbox.setChecked(True)
+        window.apply_background_removal_to_model_preprocessing_checkbox.setChecked(True)
+
+        policy = stage_policy_state.get_snapshot()
+        self.assertTrue(policy.apply_background_removal_to_roi_locator)
+        self.assertTrue(policy.apply_background_removal_to_regressor_preprocessing)
 
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
         policy_state = ForegroundExtractionPolicyState()
@@ -152,6 +203,12 @@ class GuiUiAndAppTests(unittest.TestCase):
             self.assertEqual(
                 context.camera_intrinsics_state.snapshot().camera_intrinsics_mode,
                 "disabled",
+            )
+            self.assertFalse(
+                context.stage_policy_state.get_snapshot().apply_background_removal_to_roi_locator
+            )
+            self.assertFalse(
+                context.stage_policy_state.get_snapshot().apply_background_removal_to_regressor_preprocessing
             )
         finally:
             context.camera_controller.request_stop()

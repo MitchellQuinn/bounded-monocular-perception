@@ -24,7 +24,7 @@ from interfaces import (  # noqa: E402
 )
 from live_inference.frame_handoff import compute_frame_hash  # noqa: E402
 from live_inference.inspection import InferenceTraceRecorder, SingleFrameInferenceRunner  # noqa: E402
-from live_inference.masking import FrameMaskState  # noqa: E402
+from live_inference.masking import BackgroundState, FrameMaskState  # noqa: E402
 from live_inference.model_registry import load_live_model_manifest  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     BackgroundEdgeLocator,
@@ -38,6 +38,7 @@ from live_inference.preprocessing import (  # noqa: E402
     FixedCenterRoiLocator,
     ForegroundExtractionPolicyState,
     ManualFixedRoiLocator,
+    StageTransformPolicyState,
     TriStreamLivePreprocessor,
 )
 
@@ -104,6 +105,119 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         self.assertEqual(
             prepared.preprocessing_metadata[contracts.PREPROCESSING_METADATA_LOCATOR_KIND],
             contracts.LocatorKind.FIXED_CENTER_ROI.value,
+        )
+
+    def test_background_removal_requires_explicit_model_stage_policy(self) -> None:
+        background = np.full((600, 960), 255, dtype=np.uint8)
+        frame = background.copy()
+        cv2.rectangle(frame, (430, 270), (530, 330), 80, thickness=-1)
+        ok, encoded = cv2.imencode(".png", frame)
+        self.assertTrue(ok)
+        image_bytes = encoded.tobytes()
+        background_state = BackgroundState(threshold=20)
+        background_state.capture_background(background)
+        background_state.set_enabled(True)
+
+        default_prepared = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=FixedCenterRoiLocator(roi_wh_px=(320, 320)),
+            background_state=background_state,
+        ).prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        default_metadata = default_prepared.preprocessing_metadata
+        self.assertTrue(
+            default_metadata[contracts.PREPROCESSING_METADATA_BACKGROUND_CAPTURED]
+        )
+        self.assertTrue(
+            default_metadata[
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_ENABLED
+            ]
+        )
+        self.assertFalse(
+            default_metadata[
+                contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_REGRESSOR_PREPROCESSING
+            ]
+        )
+        self.assertFalse(
+            default_metadata[contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED]
+        )
+
+        stage_policy_state = StageTransformPolicyState()
+        stage_policy_state.update(
+            apply_background_removal_to_regressor_preprocessing=True
+        )
+        debug_dir = Path(tempfile.mkdtemp())
+        prepared = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=FixedCenterRoiLocator(roi_wh_px=(320, 320)),
+            background_state=background_state,
+            stage_policy_state=stage_policy_state,
+        ).prepare_model_inputs(
+            _request(image_bytes, save_debug=True, debug_output_dir=debug_dir),
+            image_bytes,
+        )
+
+        metadata = prepared.preprocessing_metadata
+        self.assertTrue(
+            metadata[
+                contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_REGRESSOR_PREPROCESSING
+            ]
+        )
+        self.assertTrue(
+            metadata[
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_REGRESSOR_PREPROCESSING
+            ]
+        )
+        self.assertTrue(metadata[contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED])
+        self.assertGreater(
+            metadata[contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVE_PIXEL_COUNT],
+            0,
+        )
+        debug_paths = metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS]
+        self.assertIn("background_snapshot", debug_paths)
+        self.assertIn("background_removal_mask", debug_paths)
+
+    def test_background_removal_requires_explicit_locator_stage_policy(self) -> None:
+        background = np.full((600, 960), 255, dtype=np.uint8)
+        frame = background.copy()
+        cv2.rectangle(frame, (430, 270), (530, 330), 80, thickness=-1)
+        ok, encoded = cv2.imencode(".png", frame)
+        self.assertTrue(ok)
+        image_bytes = encoded.tobytes()
+        background_state = BackgroundState(threshold=20)
+        background_state.capture_background(background)
+        background_state.set_enabled(True)
+
+        default_diagnostic = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=BackgroundEdgeLocator(background_state=background_state),
+            background_state=background_state,
+        ).run_locator_only(_request(image_bytes), image_bytes)
+        self.assertIsNotNone(default_diagnostic.locator_result)
+        assert default_diagnostic.locator_result is not None
+        self.assertIsNone(default_diagnostic.locator_result.extras["background_revision"])
+        self.assertFalse(
+            default_diagnostic.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_ROI_LOCATOR
+            ]
+        )
+
+        stage_policy_state = StageTransformPolicyState()
+        stage_policy_state.update(apply_background_removal_to_roi_locator=True)
+        diagnostic = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=BackgroundEdgeLocator(background_state=background_state),
+            background_state=background_state,
+            stage_policy_state=stage_policy_state,
+        ).run_locator_only(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(diagnostic.locator_result)
+        assert diagnostic.locator_result is not None
+        self.assertIsNotNone(diagnostic.locator_result.extras["background_revision"])
+        self.assertTrue(
+            diagnostic.preprocessing_metadata[
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_ROI_LOCATOR
+            ]
         )
 
     def test_frame_mask_is_applied_to_model_preprocessing(self) -> None:

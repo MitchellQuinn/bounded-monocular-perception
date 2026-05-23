@@ -131,7 +131,8 @@ class BackgroundEdgeLocator:
         source_h, source_w = int(gray.shape[0]), int(gray.shape[1])
         warnings: list[str] = []
         rejection_reasons: list[str] = []
-        background = self._background_snapshot(config, source_w, source_h, warnings)
+        background = self._background_snapshot(config, source_w, source_h, warnings, request)
+        background_applied = bool(background is not None and background.captured and background.enabled)
         manual_ignore_mask = _manual_ignore_mask_from_request(
             request,
             source_w=source_w,
@@ -230,6 +231,10 @@ class BackgroundEdgeLocator:
                     "candidate_count": len(candidates),
                     "accepted_candidate_count": len(accepted_candidates),
                     "roi_content_fraction": float(content_fraction),
+                    contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR: (
+                        _apply_background_removal_to_locator(request)
+                    ),
+                    contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_ROI_LOCATOR: background_applied,
                     "manual_ignore_mask_applied": manual_ignore_mask is not None,
                     "manual_ignore_mask_pixel_count": (
                         int(np.count_nonzero(manual_ignore_mask))
@@ -250,6 +255,10 @@ class BackgroundEdgeLocator:
                 "candidate_count": len(candidates),
                 "accepted_candidate_count": len(accepted_candidates),
                 "roi_content_fraction": float(content_fraction),
+                contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR: (
+                    _apply_background_removal_to_locator(request)
+                ),
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_ROI_LOCATOR: background_applied,
                 "manual_ignore_mask_applied": manual_ignore_mask is not None,
                 "manual_ignore_mask_pixel_count": (
                     int(np.count_nonzero(manual_ignore_mask))
@@ -283,6 +292,10 @@ class BackgroundEdgeLocator:
                 "locator_parameters": config.to_dict(),
                 "runtime_parameter_revision": int(revision),
                 "background_revision": _snapshot_revision(background),
+                contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR: (
+                    _apply_background_removal_to_locator(request)
+                ),
+                contracts.PREPROCESSING_METADATA_BACKGROUND_REMOVAL_APPLIED_TO_ROI_LOCATOR: background_applied,
                 "roi_content_fraction": float(content_fraction),
                 "manual_ignore_mask_applied": manual_ignore_mask is not None,
                 "manual_ignore_mask_pixel_count": (
@@ -303,7 +316,10 @@ class BackgroundEdgeLocator:
         source_w: int,
         source_h: int,
         warnings: list[str],
+        request: contracts.LocatorRequest,
     ) -> BackgroundSnapshot | None:
+        if not _apply_background_removal_to_locator(request):
+            return None
         if self._background_state is None:
             return None
         snapshot = self._background_state.get_snapshot()
@@ -489,6 +505,15 @@ def build_locator(
     if kind == contracts.LocatorKind.ROI_FCN_LEGACY and legacy_locator is not None:
         return RoiFcnLegacyLocatorAdapter(legacy_locator)
     raise ValueError(f"Cannot build locator kind {kind.value!r}.")
+
+
+def _apply_background_removal_to_locator(request: contracts.LocatorRequest) -> bool:
+    return bool(
+        request.extras.get(
+            contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR,
+            True,
+        )
+    )
 
 
 def _config_from_request(

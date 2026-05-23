@@ -100,27 +100,13 @@
             </widget>
            </item>
            <item row="1" column="0">
-            <widget class="QPushButton" name="captureBackgroundButton">
-             <property name="text">
-              <string>Capture Background</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1">
-            <widget class="QPushButton" name="clearBackgroundButton">
-             <property name="text">
-              <string>Clear Background</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0">
             <widget class="QPushButton" name="captureFrameButton">
              <property name="text">
               <string>Capture Frame</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="1">
+           <item row="1" column="1">
             <widget class="QPushButton" name="runLocatorButton">
              <property name="text">
               <string>Run Locator</string>
@@ -308,30 +294,13 @@
             <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
            </property>
            <item row="0" column="0">
-            <widget class="QLabel" name="backgroundThresholdLabel">
-             <property name="text">
-              <string>Background</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QSpinBox" name="backgroundThresholdSpinBox">
-             <property name="maximum">
-              <number>255</number>
-             </property>
-             <property name="value">
-              <number>25</number>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
             <widget class="QLabel" name="minAreaLabel">
              <property name="text">
               <string>Min area</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="1">
+           <item row="0" column="1">
             <widget class="QSpinBox" name="minForegroundAreaSpinBox">
              <property name="maximum">
               <number>1000000</number>
@@ -341,14 +310,14 @@
              </property>
             </widget>
            </item>
-           <item row="2" column="0">
+           <item row="1" column="0">
             <widget class="QLabel" name="cannyLowLabel">
              <property name="text">
               <string>Canny low</string>
              </property>
             </widget>
            </item>
-           <item row="2" column="1">
+           <item row="1" column="1">
             <widget class="QSpinBox" name="cannyLowSpinBox">
              <property name="maximum">
               <number>255</number>
@@ -358,14 +327,14 @@
              </property>
             </widget>
            </item>
-           <item row="3" column="0">
+           <item row="2" column="0">
             <widget class="QLabel" name="cannyHighLabel">
              <property name="text">
               <string>Canny high</string>
              </property>
             </widget>
            </item>
-           <item row="3" column="1">
+           <item row="2" column="1">
             <widget class="QSpinBox" name="cannyHighSpinBox">
              <property name="maximum">
               <number>255</number>
@@ -448,66 +417,78 @@
             <number>8</number>
            </property>
            <item>
-            <widget class="QFrame" name="additionalControlsPlaceholder">
-             <property name="frameShape">
-              <enum>QFrame::StyledPanel</enum>
+            <widget class="QGroupBox" name="backgroundRemovalGroup">
+             <property name="title">
+              <string>Background Removal</string>
              </property>
-             <property name="styleSheet">
-              <string notr="true">QFrame#additionalControlsPlaceholder { border: 1px dashed palette(mid); border-radius: 4px; background: palette(base); }</string>
-             </property>
-             <layout class="QVBoxLayout" name="additionalControlsPlaceholderLayout">
-              <property name="leftMargin">
-               <number>18</number>
+             <layout class="QGridLayout" name="backgroundRemovalLayout">
+              <property name="horizontalSpacing">
+               <number>6</number>
               </property>
-              <property name="topMargin">
-               <number>18</number>
+              <property name="verticalSpacing">
+               <number>6</number>
               </property>
-              <property name="rightMargin">
-               <number>18</number>
-              </property>
-              <property name="bottomMargin">
-               <number>18</number>
-              </property>
-              <item>
-               <widget class="QLabel" name="additionalControlsTitleLabel">
-                <property name="alignment">
-                 <set>Qt::AlignCenter</set>
-                </property>
+              <item row="0" column="0">
+               <widget class="QPushButton" name="captureBackgroundButton">
                 <property name="text">
-                 <string>Reserved Controls Panel</string>
+                 <string>Capture Background</string>
                 </property>
                </widget>
               </item>
-              <item>
-               <widget class="QLabel" name="additionalControlsDescriptionLabel">
+              <item row="0" column="1">
+               <widget class="QPushButton" name="clearBackgroundButton">
+                <property name="text">
+                 <string>Clear Background</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0" colspan="2">
+               <widget class="QCheckBox" name="enableBackgroundRemovalCheckBox">
+                <property name="text">
+                 <string>Enable Background Removal</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="0" colspan="2">
+               <widget class="QCheckBox" name="applyBackgroundRemovalToLocatorCheckBox">
+                <property name="text">
+                 <string>Apply to locator</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="0" colspan="2">
+               <widget class="QCheckBox" name="applyBackgroundRemovalToModelPreprocessingCheckBox">
+                <property name="text">
+                 <string>Apply to model preprocessing</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="backgroundThresholdLabel">
+                <property name="text">
+                 <string>Difference threshold</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QSpinBox" name="backgroundThresholdSpinBox">
+                <property name="maximum">
+                 <number>255</number>
+                </property>
+                <property name="value">
+                 <number>25</number>
+                </property>
+               </widget>
+              </item>
+              <item row="5" column="0" colspan="2">
+               <widget class="QLabel" name="backgroundRemovalStatusValue">
+                <property name="text">
+                 <string>background: not captured</string>
+                </property>
                 <property name="wordWrap">
                  <bool>true</bool>
                 </property>
-                <property name="text">
-                 <string>This panel is reserved for future controls such as:
-
-- Model / inference settings
-- Calibration / alignment
-- Advanced locator controls
-- Analysis / export tools
-- Runtime diagnostics
-
-Initially empty / placeholder.</string>
-                </property>
                </widget>
-              </item>
-              <item>
-               <spacer name="additionalControlsPlaceholderSpacer">
-                <property name="orientation">
-                 <enum>Qt::Vertical</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>20</width>
-                  <height>40</height>
-                 </size>
-                </property>
-               </spacer>
               </item>
              </layout>
             </widget>

@@ -133,13 +133,13 @@ class StageTransformPolicySnapshot:
             "apply_manual_mask_to_roi_locator": bool(
                 self.apply_manual_mask_to_roi_locator
             ),
-            "apply_background_removal_to_roi_locator": bool(
+            contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR: bool(
                 self.apply_background_removal_to_roi_locator
             ),
             "apply_manual_mask_to_regressor_preprocessing": bool(
                 self.apply_manual_mask_to_regressor_preprocessing
             ),
-            "apply_background_removal_to_regressor_preprocessing": bool(
+            contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_REGRESSOR_PREPROCESSING: bool(
                 self.apply_background_removal_to_regressor_preprocessing
             ),
             "roi_min_confidence": float(self.roi_min_confidence),

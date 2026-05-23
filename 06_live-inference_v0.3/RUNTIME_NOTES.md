@@ -51,13 +51,15 @@ leaves the preview pixels unchanged.
 
 ## Background Handling
 
-`Capture Background` stores a grayscale background and enables background removal.
-`Clear Background` removes it. The locator and ROI preprocessing require the background
-dimensions to match the source frame; mismatches are skipped and recorded as warnings.
+Background removal is explicit. In `Additional Controls`, capture a background
+while the Defender is absent, enable background removal, then choose whether to apply
+it to the locator, model preprocessing, or both. `Clear Background` removes the
+captured frame. The locator and ROI preprocessing require the background dimensions
+to match the source frame; mismatches are skipped and recorded as warnings.
 
-The visible locator parameters are intentionally small:
+The visible background-removal parameter is the grayscale difference threshold. The
+locator still exposes a small tuning surface separately:
 
-- background threshold
 - minimum foreground area
 - Canny low threshold
 - Canny high threshold
