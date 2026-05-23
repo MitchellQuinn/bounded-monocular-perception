@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QSpinBox,
     QWidget,
 )
@@ -101,6 +102,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.setWindowTitle("Live Defender Inference v0.3")
         self._load_ui()
         self._bind_widgets()
+        self._configure_layout()
         self._populate_camera_intrinsics_mode_combo()
         self._connect_ui()
         self._connect_worker_signals()
@@ -126,6 +128,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.setCentralWidget(root)
 
     def _bind_widgets(self) -> None:
+        self.top_workspace_splitter = self._require(QSplitter, "topWorkspaceSplitter")
         self.main_preview_widget = self._require(FramePreviewWidget, "mainPreviewWidget")
         self.start_camera_button = self._require(QPushButton, "startCameraButton")
         self.stop_camera_button = self._require(QPushButton, "stopCameraButton")
@@ -247,6 +250,12 @@ class LiveInferenceMainWindow(QMainWindow):
         if widget is None:
             raise RuntimeError(f"UI file is missing {object_name!r}.")
         return widget
+
+    def _configure_layout(self) -> None:
+        self.top_workspace_splitter.setChildrenCollapsible(False)
+        for index, stretch in enumerate((0, 0, 1, 0)):
+            self.top_workspace_splitter.setStretchFactor(index, stretch)
+        self.top_workspace_splitter.setSizes([390, 250, 500, 285])
 
     def start_camera(self) -> None:
         start = getattr(self.camera_controller, "start", None)

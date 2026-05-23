@@ -16,7 +16,7 @@ if str(SRC_ROOT) not in sys.path:
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QImage  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QGroupBox, QSplitter  # noqa: E402
 
 import interfaces.contracts as contracts  # noqa: E402
 from live_inference.gui.app import build_live_inference_gui_context  # noqa: E402
@@ -65,6 +65,10 @@ class GuiUiAndAppTests(unittest.TestCase):
         self.assertFalse(window.use_silhouette_preprocessing_checkbox.isChecked())
         self.assertEqual(window.camera_intrinsics_mode_combo.currentData(), "disabled")
         self.assertIn("mask:", window.mask_status_value.text())
+        self.assertIsInstance(window.top_workspace_splitter, QSplitter)
+        self.assertEqual(window.top_workspace_splitter.count(), 4)
+        self.assertIsNotNone(window.findChild(QGroupBox, "additionalControlsGroup"))
+        self.assertEqual(window.show_roi_checkbox.parent().objectName(), "overlayDebugGroup")
 
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
         policy_state = ForegroundExtractionPolicyState()

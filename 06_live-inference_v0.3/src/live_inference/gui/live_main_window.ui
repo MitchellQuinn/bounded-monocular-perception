@@ -7,7 +7,7 @@
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
    <property name="spacing">
-    <number>6</number>
+    <number>8</number>
    </property>
    <property name="leftMargin">
     <number>8</number>
@@ -22,120 +22,184 @@
     <number>8</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" name="mainLayout">
-     <property name="spacing">
-      <number>8</number>
+    <widget class="QSplitter" name="topWorkspaceSplitter">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
      </property>
-     <item>
+     <property name="childrenCollapsible">
+      <bool>false</bool>
+     </property>
+     <widget class="QScrollArea" name="controlsScrollArea">
+      <property name="minimumSize">
+       <size>
+        <width>390</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>480</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
+      <property name="widgetResizable">
+       <bool>true</bool>
+      </property>
       <widget class="QWidget" name="controlColumn">
-       <property name="minimumSize">
-        <size>
-         <width>190</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>230</width>
-         <height>16777215</height>
-        </size>
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>0</y>
+         <width>410</width>
+         <height>620</height>
+        </rect>
        </property>
        <layout class="QVBoxLayout" name="controlLayout">
         <property name="spacing">
          <number>6</number>
         </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
         <item>
-         <widget class="QPushButton" name="startCameraButton">
-          <property name="text">
-           <string>Start Camera</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="stopCameraButton">
-          <property name="text">
-           <string>Stop Camera</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="captureBackgroundButton">
-          <property name="text">
-           <string>Capture Background</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="clearBackgroundButton">
-          <property name="text">
-           <string>Clear Background</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="captureFrameButton">
-          <property name="text">
-           <string>Capture Frame</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="runLocatorButton">
-          <property name="text">
-           <string>Run Locator</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="runSingleInferenceButton">
-          <property name="text">
-           <string>Run Single Inference</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="startContinuousButton">
-          <property name="text">
-           <string>Start Continuous Inference</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="stopContinuousButton">
-          <property name="text">
-           <string>Stop Continuous Inference</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QCheckBox" name="recordTraceCheckBox">
-          <property name="text">
-           <string>Record Trace</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QCheckBox" name="useSilhouettePreprocessingCheckBox">
-          <property name="text">
-           <string>Use silhouette preprocessing</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="cameraIntrinsicsGroup">
+         <widget class="QGroupBox" name="cameraControlGroup">
           <property name="title">
-           <string>Camera Intrinsics</string>
+           <string>Camera Control</string>
           </property>
-          <layout class="QFormLayout" name="cameraIntrinsicsLayout">
+          <layout class="QGridLayout" name="cameraControlLayout">
+           <property name="horizontalSpacing">
+            <number>6</number>
+           </property>
+           <property name="verticalSpacing">
+            <number>6</number>
+           </property>
            <item row="0" column="0">
-            <widget class="QLabel" name="cameraIntrinsicsModeLabel">
+            <widget class="QPushButton" name="startCameraButton">
              <property name="text">
-              <string>Mode</string>
+              <string>Start Camera</string>
              </property>
             </widget>
            </item>
            <item row="0" column="1">
-            <widget class="QComboBox" name="cameraIntrinsicsModeComboBox"/>
+            <widget class="QPushButton" name="stopCameraButton">
+             <property name="text">
+              <string>Stop Camera</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QPushButton" name="captureBackgroundButton">
+             <property name="text">
+              <string>Capture Background</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QPushButton" name="clearBackgroundButton">
+             <property name="text">
+              <string>Clear Background</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QPushButton" name="captureFrameButton">
+             <property name="text">
+              <string>Capture Frame</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QPushButton" name="runLocatorButton">
+             <property name="text">
+              <string>Run Locator</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="inferenceControlGroup">
+          <property name="title">
+           <string>Inference Control</string>
+          </property>
+          <layout class="QVBoxLayout" name="inferenceControlLayout">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <item>
+            <layout class="QGridLayout" name="inferenceButtonLayout">
+             <property name="horizontalSpacing">
+              <number>6</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>6</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QPushButton" name="runSingleInferenceButton">
+               <property name="text">
+                <string>Run Single Inference</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QPushButton" name="startContinuousButton">
+               <property name="text">
+                <string>Start Continuous Inference</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QPushButton" name="stopContinuousButton">
+               <property name="text">
+                <string>Stop Continuous Inference</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="recordTraceCheckBox">
+             <property name="text">
+              <string>Record Trace</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="useSilhouettePreprocessingCheckBox">
+             <property name="text">
+              <string>Use silhouette preprocessing</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QFormLayout" name="cameraIntrinsicsLayout">
+             <property name="fieldGrowthPolicy">
+              <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+             </property>
+             <item row="0" column="0">
+              <widget class="QLabel" name="cameraIntrinsicsModeLabel">
+               <property name="text">
+                <string>Camera Intrinsics</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QComboBox" name="cameraIntrinsicsModeComboBox"/>
+             </item>
+            </layout>
            </item>
           </layout>
          </widget>
@@ -143,7 +207,7 @@
         <item>
          <widget class="QGroupBox" name="drawMaskGroup">
           <property name="title">
-           <string>Draw Mask</string>
+           <string>Mask Drawing</string>
           </property>
           <layout class="QVBoxLayout" name="drawMaskLayout">
            <property name="spacing">
@@ -151,6 +215,12 @@
            </property>
            <item>
             <layout class="QGridLayout" name="drawMaskButtonLayout">
+             <property name="horizontalSpacing">
+              <number>6</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>6</number>
+             </property>
              <item row="0" column="0">
               <widget class="QPushButton" name="drawMaskButton">
                <property name="text">
@@ -165,21 +235,21 @@
                </property>
               </widget>
              </item>
-             <item row="1" column="0">
+             <item row="0" column="2">
               <widget class="QPushButton" name="applyMaskButton">
                <property name="text">
                 <string>Apply</string>
                </property>
               </widget>
              </item>
-             <item row="1" column="1">
+             <item row="0" column="3">
               <widget class="QPushButton" name="cancelMaskButton">
                <property name="text">
                 <string>Cancel</string>
                </property>
               </widget>
              </item>
-             <item row="2" column="0" colspan="2">
+             <item row="1" column="0" colspan="4">
               <widget class="QPushButton" name="clearMaskButton">
                <property name="text">
                 <string>Clear Mask</string>
@@ -190,6 +260,9 @@
            </item>
            <item>
             <layout class="QFormLayout" name="drawMaskOptionsLayout">
+             <property name="fieldGrowthPolicy">
+              <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+             </property>
              <item row="0" column="0">
               <widget class="QLabel" name="maskBrushSizeLabel">
                <property name="text">
@@ -228,9 +301,12 @@
         <item>
          <widget class="QGroupBox" name="locatorParamsGroup">
           <property name="title">
-           <string>Locator Params</string>
+           <string>Locator Parameters</string>
           </property>
           <layout class="QFormLayout" name="locatorParamsLayout">
+           <property name="fieldGrowthPolicy">
+            <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+           </property>
            <item row="0" column="0">
             <widget class="QLabel" name="backgroundThresholdLabel">
              <property name="text">
@@ -317,234 +393,475 @@
         </item>
        </layout>
       </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="visualColumn">
-       <layout class="QVBoxLayout" name="visualLayout">
+     </widget>
+     <widget class="QScrollArea" name="intermediateControlsScrollArea">
+      <property name="minimumSize">
+       <size>
+        <width>220</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>340</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
+      <property name="widgetResizable">
+       <bool>true</bool>
+      </property>
+      <widget class="QWidget" name="intermediateControlsColumn">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>0</y>
+         <width>260</width>
+         <height>620</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="intermediateControlsLayout">
         <property name="spacing">
          <number>6</number>
         </property>
-        <item>
-         <widget class="FramePreviewWidget" name="mainPreviewWidget">
-          <property name="minimumSize">
-           <size>
-            <width>520</width>
-            <height>390</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="overlayToggleLayout">
-          <item>
-           <widget class="QCheckBox" name="showRoiCheckBox">
-            <property name="text">
-             <string>ROI</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="showBboxCheckBox">
-            <property name="text">
-             <string>bbox</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="showForegroundMaskCheckBox">
-            <property name="text">
-             <string>foreground mask</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="showEdgesCheckBox">
-            <property name="text">
-             <string>edges</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="showCandidateContoursCheckBox">
-            <property name="text">
-             <string>candidate contours</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="showChosenContourCheckBox">
-            <property name="text">
-             <string>chosen contour</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="overlayToggleSpacer">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-         </layout>
-        </item>
-       </layout>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="statusColumn">
-       <property name="minimumSize">
-        <size>
-         <width>240</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>310</width>
-         <height>16777215</height>
-        </size>
-       </property>
-       <layout class="QVBoxLayout" name="statusLayout">
-        <property name="spacing">
-         <number>6</number>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
         </property>
         <item>
-         <widget class="QLabel" name="distanceValue">
-          <property name="text">
-           <string>distance: n/a</string>
+         <widget class="QGroupBox" name="additionalControlsGroup">
+          <property name="title">
+           <string>Additional Controls</string>
           </property>
+          <layout class="QVBoxLayout" name="additionalControlsLayout">
+           <property name="spacing">
+            <number>8</number>
+           </property>
+           <item>
+            <widget class="QFrame" name="additionalControlsPlaceholder">
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QFrame#additionalControlsPlaceholder { border: 1px dashed palette(mid); border-radius: 4px; background: palette(base); }</string>
+             </property>
+             <layout class="QVBoxLayout" name="additionalControlsPlaceholderLayout">
+              <property name="leftMargin">
+               <number>18</number>
+              </property>
+              <property name="topMargin">
+               <number>18</number>
+              </property>
+              <property name="rightMargin">
+               <number>18</number>
+              </property>
+              <property name="bottomMargin">
+               <number>18</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="additionalControlsTitleLabel">
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
+                <property name="text">
+                 <string>Reserved Controls Panel</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="additionalControlsDescriptionLabel">
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="text">
+                 <string>This panel is reserved for future controls such as:
+
+- Model / inference settings
+- Calibration / alignment
+- Advanced locator controls
+- Analysis / export tools
+- Runtime diagnostics
+
+Initially empty / placeholder.</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="additionalControlsPlaceholderSpacer">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
          </widget>
         </item>
         <item>
-         <widget class="QLabel" name="yawValue">
-          <property name="text">
-           <string>yaw: n/a</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="locatorStatusValue">
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>locator: n/a</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="roiStatusValue">
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>ROI: n/a</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="maskStatusValue">
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>mask: none</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="frameHashValue">
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>frame hash: n/a</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="tracePathValue">
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>trace: n/a</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPlainTextEdit" name="warningsText">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>110</height>
-           </size>
-          </property>
-          <property name="readOnly">
-           <bool>true</bool>
-          </property>
-          <property name="plainText">
-           <string/>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="artifactSummaryValue">
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>artifacts: n/a</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="statusSpacer">
+         <spacer name="intermediateControlsSpacer">
           <property name="orientation">
            <enum>Qt::Vertical</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
             <width>20</width>
-            <height>40</height>
+            <height>20</height>
            </size>
           </property>
          </spacer>
         </item>
        </layout>
       </widget>
-     </item>
-    </layout>
+     </widget>
+     <widget class="QWidget" name="visualColumn">
+      <property name="minimumSize">
+       <size>
+        <width>390</width>
+        <height>0</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="visualLayout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="cameraOutputGroup">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>1</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>Camera / Output Workspace</string>
+         </property>
+         <layout class="QVBoxLayout" name="cameraOutputLayout">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="livePreviewTitleLabel">
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+            <property name="text">
+             <string>Live Camera Preview</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="FramePreviewWidget" name="mainPreviewWidget">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>1</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>360</width>
+              <height>270</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="statusColumn">
+      <property name="minimumSize">
+       <size>
+        <width>240</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>340</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="statusOuterLayout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="statusDetailsGroup">
+         <property name="title">
+          <string>Status / Details</string>
+         </property>
+         <layout class="QVBoxLayout" name="statusLayout">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="distanceValue">
+            <property name="text">
+             <string>distance: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="yawValue">
+            <property name="text">
+             <string>yaw: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="locatorStatusValue">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>locator: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="roiStatusValue">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>ROI: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="maskStatusValue">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>mask: none</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="frameHashValue">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>frame hash: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="tracePathValue">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>trace: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="warningsText">
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>120</height>
+             </size>
+            </property>
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+            <property name="plainText">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="artifactSummaryValue">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>artifacts: n/a</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="statusSpacer">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </item>
    <item>
-    <widget class="QPlainTextEdit" name="logOutput">
-     <property name="minimumSize">
-      <size>
-       <width>0</width>
-       <height>110</height>
-      </size>
-     </property>
+    <widget class="QGroupBox" name="overlayDebugGroup">
      <property name="maximumSize">
       <size>
        <width>16777215</width>
-       <height>150</height>
+       <height>75</height>
       </size>
      </property>
-     <property name="readOnly">
-      <bool>true</bool>
+     <property name="title">
+      <string>Overlay / Debug Display</string>
      </property>
+     <layout class="QHBoxLayout" name="overlayToggleLayout">
+      <property name="spacing">
+       <number>18</number>
+      </property>
+      <item>
+       <widget class="QCheckBox" name="showRoiCheckBox">
+        <property name="text">
+         <string>ROI</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showBboxCheckBox">
+        <property name="text">
+         <string>bbox</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showForegroundMaskCheckBox">
+        <property name="text">
+         <string>foreground mask</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showEdgesCheckBox">
+        <property name="text">
+         <string>edges</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showCandidateContoursCheckBox">
+        <property name="text">
+         <string>candidate contours</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showChosenContourCheckBox">
+        <property name="text">
+         <string>chosen contour</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="overlayToggleSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="debugLogGroup">
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>190</height>
+      </size>
+     </property>
+     <property name="title">
+      <string>Debug / Log Output</string>
+     </property>
+     <layout class="QVBoxLayout" name="debugLogLayout">
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QPlainTextEdit" name="logOutput">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>100</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>150</height>
+         </size>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
   </layout>

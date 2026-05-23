@@ -379,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
             locator_kind=context.locator_kind,
         )
         app.aboutToQuit.connect(window.stop_all)
-        window.resize(1180, 720)
+        window.resize(1440, 800)
         window.show()
         if args.auto_start_camera:
             QTimer.singleShot(0, window.start_camera)
