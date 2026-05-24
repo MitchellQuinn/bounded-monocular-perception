@@ -52,6 +52,7 @@ class LiveInferenceGuiContext:
     stage_policy_state: object
     camera_intrinsics_state: object
     locator_kind: contracts.LocatorKind
+    output_smoother: object
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ class _RuntimeDependencies:
     latest_frame_handoff_reader_cls: type
     inference_frame_selector_cls: type
     inference_processing_core_cls: type
+    moving_average_distance_yaw_smoother_cls: type
+    swappable_inference_result_smoother_cls: type
     load_live_model_manifest: Callable[..., object]
     load_model_selection: Callable[[Path], object]
     roi_fcn_locator_cls: type
@@ -269,7 +272,17 @@ def build_live_inference_gui_context(
         model_manifest=manifest,
         device=distance_orientation_device,
     )
-    core = deps.inference_processing_core_cls(selector, preprocessor, engine)
+    output_smoother = deps.swappable_inference_result_smoother_cls(
+        deps.moving_average_distance_yaw_smoother_cls(
+            window_seconds=contracts.DEFAULT_OUTPUT_SMOOTHING_WINDOW_SECONDS
+        )
+    )
+    core = deps.inference_processing_core_cls(
+        selector,
+        preprocessor,
+        engine,
+        result_smoother=output_smoother,
+    )
     trace_output_dir = default_trace_output_dir()
     trace_recorder = InferenceTraceRecorder(
         output_dir=trace_output_dir,
@@ -324,6 +337,7 @@ def build_live_inference_gui_context(
         stage_policy_state=stage_policy_state,
         camera_intrinsics_state=camera_intrinsics_state,
         locator_kind=kind,
+        output_smoother=output_smoother,
     )
 
 
@@ -473,6 +487,10 @@ def _load_runtime_dependencies() -> _RuntimeDependencies:
     from live_inference.frame_selection import InferenceFrameSelector  # noqa: PLC0415
     from live_inference.gui.qt_worker_bridge import WorkerThreadController  # noqa: PLC0415
     from live_inference.inference_core import InferenceProcessingCore  # noqa: PLC0415
+    from live_inference.output_smoothing import (  # noqa: PLC0415
+        MovingAverageDistanceYawSmoother,
+        SwappableInferenceResultSmoother,
+    )
     from live_inference.model_registry import (  # noqa: PLC0415
         load_live_model_manifest,
         load_model_selection,
@@ -503,6 +521,8 @@ def _load_runtime_dependencies() -> _RuntimeDependencies:
         latest_frame_handoff_reader_cls=LatestFrameHandoffReader,
         inference_frame_selector_cls=InferenceFrameSelector,
         inference_processing_core_cls=InferenceProcessingCore,
+        moving_average_distance_yaw_smoother_cls=MovingAverageDistanceYawSmoother,
+        swappable_inference_result_smoother_cls=SwappableInferenceResultSmoother,
         load_live_model_manifest=load_live_model_manifest,
         load_model_selection=load_model_selection,
         roi_fcn_locator_cls=RoiFcnLocator,

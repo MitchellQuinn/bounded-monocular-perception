@@ -92,6 +92,23 @@ class ContractsV03Tests(unittest.TestCase):
         self.assertEqual(payload["locator_kind"], "background_edge_v1")
         self.assertEqual(payload["chosen_candidate"]["candidate_id"], "c0")
 
+    def test_live_performance_metrics_are_contract_values(self) -> None:
+        metrics = contracts.LivePerformanceMetrics(
+            camera_raw_fps=79.5,
+            inference_fps=12.25,
+            live_inference_running=True,
+            camera_frame_sample_count=80,
+            inference_sample_count=12,
+        )
+
+        payload = metrics.to_dict()
+
+        self.assertEqual(contracts.PERFORMANCE_METRIC_CAMERA_RAW_FPS, "camera_raw_fps")
+        self.assertEqual(contracts.PERFORMANCE_METRIC_INFERENCE_FPS, "inference_fps")
+        self.assertEqual(payload["camera_raw_fps"], 79.5)
+        self.assertEqual(payload["inference_fps"], 12.25)
+        self.assertTrue(payload["live_inference_running"])
+
     def test_contracts_module_stays_dependency_light(self) -> None:
         tree = ast.parse(
             (SRC_ROOT / "live_inference/interfaces/contracts.py").read_text(

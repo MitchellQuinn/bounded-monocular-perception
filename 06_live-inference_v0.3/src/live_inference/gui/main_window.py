@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,7 +12,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QFile, Qt
+from PySide6.QtCore import QFile, Qt, QTimer
 from PySide6.QtGui import QImage
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
@@ -39,6 +40,9 @@ from live_inference.preprocessing import (
 )
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
+
+
+_FPS_LABEL_PRECISION = 1
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,13 @@ class LiveInferenceMainWindow(QMainWindow):
         self._last_camera_intrinsics_preview_warning: str | None = None
         self._last_preview_update_seconds = 0.0
         self._preview_update_interval_seconds = 1.0 / 15.0
+        self._fps_window_seconds = contracts.DEFAULT_PERFORMANCE_METRIC_WINDOW_SECONDS
+        self._camera_frame_timestamps: deque[float] = deque()
+        self._inference_result_timestamps: deque[float] = deque()
+        self._camera_worker_state_known = False
+        self._camera_worker_running = False
+        self._inference_worker_state_known = False
+        self._inference_worker_running = False
 
         self.setWindowTitle("Live Defender Inference v0.3")
         self._load_ui()
@@ -114,6 +125,8 @@ class LiveInferenceMainWindow(QMainWindow):
         self._sync_background_widgets()
         self._sync_preprocessing_widgets()
         self._sync_mask_widgets()
+        self._configure_performance_metric_timer()
+        self._refresh_performance_metrics()
         self._append_log("INFO", f"Locator: {self.locator_kind.value}")
 
     def _load_ui(self) -> None:
@@ -184,6 +197,8 @@ class LiveInferenceMainWindow(QMainWindow):
         self.roi_status_value = self._require(QLabel, "roiStatusValue")
         self.mask_status_value = self._require(QLabel, "maskStatusValue")
         self.background_removal_status_value = self._require(QLabel, "backgroundRemovalStatusValue")
+        self.camera_fps_value = self._require(QLabel, "cameraFpsValue")
+        self.inference_fps_value = self._require(QLabel, "inferenceFpsValue")
         self.frame_hash_value = self._require(QLabel, "frameHashValue")
         self.trace_path_value = self._require(QLabel, "tracePathValue")
         self.warnings_text = self._require(QPlainTextEdit, "warningsText")
@@ -282,6 +297,12 @@ class LiveInferenceMainWindow(QMainWindow):
             self.top_workspace_splitter.setStretchFactor(index, stretch)
         self.top_workspace_splitter.setSizes([390, 250, 500, 285])
 
+    def _configure_performance_metric_timer(self) -> None:
+        self._performance_metric_timer = QTimer(self)
+        self._performance_metric_timer.setInterval(500)
+        self._performance_metric_timer.timeout.connect(self._refresh_performance_metrics)
+        self._performance_metric_timer.start()
+
     def start_camera(self) -> None:
         start = getattr(self.camera_controller, "start", None)
         if callable(start):
@@ -290,6 +311,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def stop_camera(self) -> None:
         self._stop_controller(self.camera_controller, "camera")
+        self._set_worker_running_state(contracts.WorkerName.CAMERA.value, False)
 
     def start_continuous_inference(self) -> None:
         start = getattr(self.inference_controller, "start", None)
@@ -299,14 +321,14 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def stop_continuous_inference(self) -> None:
         self._stop_controller(self.inference_controller, "inference")
+        self._set_worker_running_state(contracts.WorkerName.INFERENCE.value, False)
 
     def stop_all(self) -> None:
         self.stop_continuous_inference()
         self.stop_camera()
 
     def _inference_is_running(self) -> bool:
-        is_running = getattr(self.inference_controller, "is_running", None)
-        return bool(is_running()) if callable(is_running) else False
+        return self._live_inference_is_running()
 
     def capture_frame(self) -> None:
         latest_frame = self._latest_frame()
@@ -475,6 +497,7 @@ class LiveInferenceMainWindow(QMainWindow):
             self._on_error_occurred(error)
 
     def _on_inference_result_ready(self, result: object) -> None:
+        self._record_inference_result()
         self.distance_value.setText(
             f"distance: {_format_value(_payload_value(result, 'predicted_distance_m'), 'm', 3)}"
         )
@@ -494,6 +517,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._refresh_visual_surface()
 
     def _on_frame_written(self, frame: object) -> None:
+        self._record_camera_frame()
         if self._captured_single_frame is not None:
             return
         if self.main_preview_widget.is_mask_editing():
@@ -510,6 +534,7 @@ class LiveInferenceMainWindow(QMainWindow):
         worker = _enum_text(_payload_value(status, "worker_name")) or "worker"
         state = _enum_text(_payload_value(status, "state")) or "state"
         message = _text(_payload_value(status, "message"), default="")
+        self._update_worker_running_from_status(worker, state)
         self._append_log("DEBUG", f"{worker}: {state} {message}".strip())
 
     def _on_lifecycle_event(self, event: object) -> None:
@@ -533,6 +558,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._append_log("ERROR", _issue_text(error))
 
     def _on_frame_skipped(self, skipped: object) -> None:
+        self._refresh_performance_metrics()
         reason = _enum_text(_payload_value(skipped, "reason")) or "unknown"
         if reason != "duplicate_hash":
             self._append_log("DEBUG", f"Frame skipped: {reason}")
@@ -543,6 +569,106 @@ class LiveInferenceMainWindow(QMainWindow):
         if path is not None:
             self._debug_paths[kind] = path
             self._refresh_artifact_summary()
+
+    def _record_camera_frame(self) -> None:
+        now = monotonic()
+        if not self._camera_worker_state_known:
+            self._camera_worker_state_known = True
+            self._camera_worker_running = True
+        self._camera_frame_timestamps.append(now)
+        self._refresh_performance_metrics(now=now)
+
+    def _record_inference_result(self) -> None:
+        now = monotonic()
+        if self._live_inference_is_running():
+            self._inference_result_timestamps.append(now)
+        self._refresh_performance_metrics(now=now)
+
+    def _update_worker_running_from_status(self, worker: str, state: str) -> None:
+        normalized_state = state.upper()
+        if normalized_state not in {state.value for state in contracts.WorkerState}:
+            return
+        self._set_worker_running_state(
+            worker,
+            normalized_state == contracts.WorkerState.RUNNING.value,
+        )
+
+    def _set_worker_running_state(self, worker: str, running: bool) -> None:
+        if worker == contracts.WorkerName.CAMERA.value:
+            self._camera_worker_state_known = True
+            self._camera_worker_running = bool(running)
+            if not running:
+                self._camera_frame_timestamps.clear()
+        elif worker == contracts.WorkerName.INFERENCE.value:
+            self._inference_worker_state_known = True
+            self._inference_worker_running = bool(running)
+            if not running:
+                self._inference_result_timestamps.clear()
+        self._refresh_performance_metrics()
+
+    def _camera_is_running(self) -> bool:
+        if self._camera_worker_state_known:
+            return self._camera_worker_running
+        return _controller_is_running(self.camera_controller)
+
+    def _live_inference_is_running(self) -> bool:
+        if self._inference_worker_state_known:
+            return self._inference_worker_running
+        return _controller_is_running(self.inference_controller)
+
+    def _current_performance_metrics(
+        self,
+        *,
+        now: float,
+    ) -> contracts.LivePerformanceMetrics:
+        camera_running = self._camera_is_running()
+        inference_running = self._live_inference_is_running()
+        camera_fps = (
+            _recent_events_per_second(
+                self._camera_frame_timestamps,
+                now=now,
+                window_seconds=self._fps_window_seconds,
+            )
+            if camera_running
+            else None
+        )
+        inference_fps = (
+            _recent_events_per_second(
+                self._inference_result_timestamps,
+                now=now,
+                window_seconds=self._fps_window_seconds,
+            )
+            if inference_running
+            else None
+        )
+        if not camera_running:
+            self._camera_frame_timestamps.clear()
+        if not inference_running:
+            self._inference_result_timestamps.clear()
+        timestamp_utc = (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+        return contracts.LivePerformanceMetrics(
+            camera_raw_fps=camera_fps,
+            inference_fps=inference_fps,
+            live_inference_running=inference_running,
+            metric_window_seconds=self._fps_window_seconds,
+            camera_frame_sample_count=len(self._camera_frame_timestamps),
+            inference_sample_count=len(self._inference_result_timestamps),
+            timestamp_utc=timestamp_utc,
+        )
+
+    def _refresh_performance_metrics(self, *, now: float | None = None) -> None:
+        timestamp = monotonic() if now is None else float(now)
+        metrics = self._current_performance_metrics(now=timestamp)
+        self.camera_fps_value.setText(
+            _fps_metric_label("raw frame FPS", metrics.camera_raw_fps)
+        )
+        self.inference_fps_value.setText(
+            _fps_metric_label("inference FPS", metrics.inference_fps)
+        )
 
     def _refresh_visual_surface(self) -> None:
         artifact_key = self._selected_artifact_key()
@@ -727,7 +853,9 @@ class LiveInferenceMainWindow(QMainWindow):
             self.apply_background_removal_to_locator_checkbox.blockSignals(False)
             self.apply_background_removal_to_model_preprocessing_checkbox.blockSignals(False)
             self.background_threshold_spinbox.blockSignals(False)
-        self.main_preview_widget.set_background_snapshot(background_snapshot)
+        # The live preview is intentionally raw. Background removal is CPU-heavy
+        # and belongs in the selected-frame preprocessing path only.
+        self.main_preview_widget.set_background_snapshot(None)
         self.background_removal_status_value.setText(
             _background_status_text(background_snapshot, stage_snapshot)
         )
@@ -858,7 +986,7 @@ class LiveInferenceMainWindow(QMainWindow):
     def _sync_preview_mask_snapshot(self) -> None:
         self.main_preview_widget.set_mask_fill_value(self._current_mask_fill_value())
         self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
-        self.main_preview_widget.set_background_snapshot(self.background_state.get_snapshot())
+        self.main_preview_widget.set_background_snapshot(None)
         self._update_mask_status()
 
     def _prepare_preview_for_mask_edit(self) -> None:
@@ -1029,10 +1157,9 @@ def _background_status_text(snapshot: object, stage_snapshot: object) -> str:
     threshold = _payload_value(snapshot, "threshold")
     if captured:
         size = f"{_payload_value(snapshot, 'width_px')}x{_payload_value(snapshot, 'height_px')}"
-        base = f"background: captured {size}; revision {revision}; threshold {threshold}"
+        background_line = f"background: captured {size}"
     else:
-        base = f"background: not captured; revision {revision}; threshold {threshold}"
-    base += "; enabled" if enabled else "; disabled"
+        background_line = "background: not captured"
     locator = bool(
         _payload_value(stage_snapshot, "apply_background_removal_to_roi_locator")
     )
@@ -1042,8 +1169,48 @@ def _background_status_text(snapshot: object, stage_snapshot: object) -> str:
             "apply_background_removal_to_regressor_preprocessing",
         )
     )
-    base += f"; locator {'on' if locator else 'off'}; model {'on' if model else 'off'}"
-    return base
+    return "\n".join(
+        [
+            background_line,
+            f"revision {revision}; threshold {threshold}",
+            "enabled" if enabled else "disabled",
+            f"locator {'on' if locator else 'off'}; model {'on' if model else 'off'}",
+        ]
+    )
+
+
+def _recent_events_per_second(
+    timestamps: deque[float],
+    *,
+    now: float,
+    window_seconds: float,
+) -> float:
+    cutoff = now - max(0.0, float(window_seconds))
+    while timestamps and timestamps[0] < cutoff:
+        timestamps.popleft()
+    if len(timestamps) < 2:
+        return 0.0
+    elapsed_seconds = timestamps[-1] - timestamps[0]
+    if elapsed_seconds <= 0:
+        return 0.0
+    return max(0.0, float(len(timestamps) - 1) / elapsed_seconds)
+
+
+def _fps_metric_label(label: str, fps: float | None) -> str:
+    if fps is None:
+        return f"{label}: n/a"
+    try:
+        value = float(fps)
+    except (TypeError, ValueError):
+        return f"{label}: n/a"
+    if not np.isfinite(value):
+        return f"{label}: n/a"
+    return f"{label}: {value:.{_FPS_LABEL_PRECISION}f}"
+
+
+def _controller_is_running(controller: object) -> bool:
+    is_running = getattr(controller, "is_running", None)
+    return bool(is_running()) if callable(is_running) else False
 
 
 def _decode_grayscale(image_bytes: bytes) -> np.ndarray:

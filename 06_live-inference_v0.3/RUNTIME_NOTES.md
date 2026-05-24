@@ -56,6 +56,9 @@ while the Defender is absent, enable background removal, then choose whether to 
 it to the locator, model preprocessing, or both. `Clear Background` removes the
 captured frame. The locator and ROI preprocessing require the background dimensions
 to match the source frame; mismatches are skipped and recorded as warnings.
+The live preview remains raw and does not run background removal for display frames;
+background removal is applied only when a frame is selected for locator/model
+preprocessing or for explicit single-frame diagnostics.
 
 The visible background-removal parameter is the grayscale difference threshold. The
 locator still exposes a small tuning surface separately:

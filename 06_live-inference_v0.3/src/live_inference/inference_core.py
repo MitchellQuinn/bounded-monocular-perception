@@ -54,12 +54,14 @@ class InferenceProcessingCore:
         engine: InferenceEngine,
         *,
         parameter_revision_getter: Callable[[], int | None] | None = None,
+        result_smoother: object | None = None,
         now_utc_fn: Callable[[], str] | None = None,
     ) -> None:
         self._selector = selector
         self._preprocessor = preprocessor
         self._engine = engine
         self._parameter_revision_getter = parameter_revision_getter
+        self._result_smoother = result_smoother
         self._now_utc_fn = now_utc_fn or _utc_now_iso
 
     def process_once(self) -> InferenceProcessingOutcome:
@@ -91,6 +93,7 @@ class InferenceProcessingCore:
             return InferenceProcessingOutcome(error=result)
 
         result = self._normalized_result(result, selected)
+        result = self._smooth_result(result)
         debug_images = self._debug_images_from_result(result)
         self._selector.mark_processed(selected.frame_hash)
         return InferenceProcessingOutcome(result=result, debug_images=debug_images)
@@ -141,6 +144,34 @@ class InferenceProcessingCore:
                 message=f"Inference failed for request {selected.request.request_id}: {exc}",
                 exception=exc,
             )
+
+    def _smooth_result(self, result: InferenceResult) -> InferenceResult:
+        smoother = self._result_smoother
+        if smoother is None:
+            return result
+
+        try:
+            smooth_result = getattr(smoother, "smooth_result", None)
+            if callable(smooth_result):
+                return smooth_result(result)
+            if callable(smoother):
+                return smoother(result)
+            raise TypeError(
+                "Inference result smoother must be callable or expose "
+                "smooth_result(result)."
+            )
+        except Exception as exc:
+            warnings = tuple(result.warnings) + (
+                "Output smoothing failed; emitted raw prediction: "
+                f"{type(exc).__name__}: {exc}",
+            )
+            debug = dict(result.debug)
+            debug["output_smoothing_error"] = {
+                "smoother": _result_smoother_name(smoother),
+                "exception_type": type(exc).__name__,
+                "message": str(exc),
+            }
+            return replace(result, warnings=warnings, debug=debug)
 
     def _normalized_result(
         self,
@@ -246,6 +277,11 @@ class InferenceProcessingCore:
 
 def _hash_value(frame_hash: FrameHash) -> str:
     return frame_hash.value
+
+
+def _result_smoother_name(smoother: object) -> str:
+    smoother_type = type(smoother)
+    return f"{smoother_type.__module__}.{smoother_type.__qualname__}"
 
 
 def _exception_error_type(exception: Exception, default: str) -> str:

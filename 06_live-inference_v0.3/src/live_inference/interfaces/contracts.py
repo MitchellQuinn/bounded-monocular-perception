@@ -127,6 +127,18 @@ LIVE_INFERENCE_OUTPUT_FIELDS = (
     PREDICTED_YAW_COS_FIELD,
     PREDICTED_YAW_DEG_FIELD,
 )
+DEFAULT_OUTPUT_SMOOTHING_WINDOW_SECONDS = 1.0
+OUTPUT_SMOOTHING_METADATA_KEY = "output_smoothing"
+OUTPUT_SMOOTHING_RAW_PREDICTION_KEY = "raw_prediction"
+OUTPUT_SMOOTHING_SAMPLE_COUNT_FIELD = "sample_count"
+OUTPUT_SMOOTHING_STRATEGY_FIELD = "strategy"
+OUTPUT_SMOOTHING_STRATEGY_MOVING_AVERAGE = "moving_average_window"
+OUTPUT_SMOOTHING_WINDOW_SECONDS_FIELD = "window_seconds"
+PERFORMANCE_METRIC_CAMERA_RAW_FPS = "camera_raw_fps"
+PERFORMANCE_METRIC_INFERENCE_FPS = "inference_fps"
+PERFORMANCE_METRIC_INFERENCE_RUNNING = "live_inference_running"
+PERFORMANCE_METRIC_WINDOW_SECONDS = "metric_window_seconds"
+DEFAULT_PERFORMANCE_METRIC_WINDOW_SECONDS = 5.0
 PREPROCESSING_METADATA_RUNTIME_PARAMETER_REVISION = "runtime_parameter_revision"
 PREPROCESSING_METADATA_INPUT_IMAGE_HASH = "input_image_hash"
 PREPROCESSING_METADATA_SOURCE_IMAGE_WH_PX = "source_image_wh_px"
@@ -1048,6 +1060,24 @@ class InferenceWorkerCounters:
 
 
 @dataclass(frozen=True)
+class LivePerformanceMetrics:
+    """GUI-facing rolling throughput metrics for live camera and inference."""
+
+    contract_version: str = LIVE_INFERENCE_CONTRACT_VERSION
+    camera_raw_fps: float | None = None
+    inference_fps: float | None = None
+    live_inference_running: bool = False
+    metric_window_seconds: float = DEFAULT_PERFORMANCE_METRIC_WINDOW_SECONDS
+    camera_frame_sample_count: int = 0
+    inference_sample_count: int = 0
+    timestamp_utc: str | None = None
+    extras: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain(asdict(self))
+
+
+@dataclass(frozen=True)
 class WorkerStatus:
     """Structured worker status message for GUI state indicators."""
 
@@ -1319,6 +1349,7 @@ __all__ = [
     "DEFAULT_FRAME_HASH_ALGORITHM",
     "DEFAULT_FRAME_HASH_DIGEST_SIZE_BYTES",
     "DEFAULT_LATEST_FRAME_FILENAME",
+    "DEFAULT_OUTPUT_SMOOTHING_WINDOW_SECONDS",
     "DEFAULT_TEMP_FRAME_FILENAME",
     "DISPLAY_ARTIFACT_ACCEPTED_RAW_FRAME",
     "DISPLAY_ARTIFACT_DISTANCE_IMAGE",
@@ -1336,10 +1367,21 @@ __all__ = [
     "GEOMETRY_SCHEMA_NAME",
     "LIVE_INFERENCE_CONTRACT_VERSION",
     "LIVE_INFERENCE_OUTPUT_FIELDS",
+    "DEFAULT_PERFORMANCE_METRIC_WINDOW_SECONDS",
     "MODEL_OUTPUT_DISTANCE_KEY",
     "MODEL_OUTPUT_YAW_SIN_COS_KEY",
     "MODEL_TOPOLOGY_CONTRACT_VERSION",
     "ORIENTATION_IMAGE_CONTRACT_NAME",
+    "OUTPUT_SMOOTHING_METADATA_KEY",
+    "OUTPUT_SMOOTHING_RAW_PREDICTION_KEY",
+    "OUTPUT_SMOOTHING_SAMPLE_COUNT_FIELD",
+    "OUTPUT_SMOOTHING_STRATEGY_FIELD",
+    "OUTPUT_SMOOTHING_STRATEGY_MOVING_AVERAGE",
+    "OUTPUT_SMOOTHING_WINDOW_SECONDS_FIELD",
+    "PERFORMANCE_METRIC_CAMERA_RAW_FPS",
+    "PERFORMANCE_METRIC_INFERENCE_FPS",
+    "PERFORMANCE_METRIC_INFERENCE_RUNNING",
+    "PERFORMANCE_METRIC_WINDOW_SECONDS",
     "PREDICTED_DISTANCE_FIELD",
     "PREDICTED_YAW_COS_FIELD",
     "PREDICTED_YAW_DEG_FIELD",
@@ -1474,6 +1516,7 @@ __all__ = [
     "InferenceWorkerEventSink",
     "InferenceWorkerProtocol",
     "IssueSeverity",
+    "LivePerformanceMetrics",
     "LiveInferenceConfig",
     "ModelContractReference",
     "PreparedInferenceInputs",

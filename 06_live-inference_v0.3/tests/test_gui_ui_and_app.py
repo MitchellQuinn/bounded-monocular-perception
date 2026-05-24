@@ -18,7 +18,13 @@ if str(SRC_ROOT) not in sys.path:
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QImage  # noqa: E402
-from PySide6.QtWidgets import QApplication, QGroupBox, QSplitter  # noqa: E402
+from PySide6.QtWidgets import (  # noqa: E402
+    QApplication,
+    QGridLayout,
+    QGroupBox,
+    QSplitter,
+    QVBoxLayout,
+)
 
 import interfaces.contracts as contracts  # noqa: E402
 from live_inference.gui.app import build_live_inference_gui_context  # noqa: E402
@@ -83,9 +89,50 @@ class GuiUiAndAppTests(unittest.TestCase):
             "Apply to model preprocessing",
         )
         self.assertIn("background:", window.background_removal_status_value.text())
+        self.assertTrue(window.background_removal_status_value.wordWrap())
+        self.assertEqual(window.camera_fps_value.text(), "raw frame FPS: n/a")
+        self.assertEqual(window.inference_fps_value.text(), "inference FPS: n/a")
+        status_layout = window.findChild(QVBoxLayout, "statusLayout")
+        self.assertIsNotNone(status_layout)
+        self.assertEqual(status_layout.itemAt(0).widget().objectName(), "cameraFpsValue")
+        self.assertEqual(
+            status_layout.itemAt(1).widget().objectName(),
+            "inferenceFpsValue",
+        )
         self.assertEqual(
             window.capture_background_button.parent().objectName(),
             "backgroundRemovalGroup",
+        )
+        inference_layout = window.findChild(QGridLayout, "inferenceButtonLayout")
+        self.assertIsNotNone(inference_layout)
+        self.assertEqual(
+            inference_layout.itemAtPosition(0, 0).widget().objectName(),
+            "runSingleInferenceButton",
+        )
+        self.assertEqual(
+            inference_layout.itemAtPosition(1, 0).widget().objectName(),
+            "startContinuousButton",
+        )
+        self.assertEqual(
+            inference_layout.itemAtPosition(2, 0).widget().objectName(),
+            "stopContinuousButton",
+        )
+        self.assertIsNone(inference_layout.itemAtPosition(0, 1))
+        draw_mask_layout = window.findChild(QGridLayout, "drawMaskButtonLayout")
+        self.assertIsNotNone(draw_mask_layout)
+        self.assertEqual(
+            draw_mask_layout.itemAtPosition(1, 1).widget().objectName(),
+            "cancelMaskButton",
+        )
+        background_layout = window.findChild(QGridLayout, "backgroundRemovalLayout")
+        self.assertIsNotNone(background_layout)
+        self.assertEqual(
+            background_layout.itemAtPosition(0, 0).widget().objectName(),
+            "captureBackgroundButton",
+        )
+        self.assertEqual(
+            background_layout.itemAtPosition(1, 0).widget().objectName(),
+            "clearBackgroundButton",
         )
         self.assertIsInstance(window.top_workspace_splitter, QSplitter)
         self.assertEqual(window.top_workspace_splitter.count(), 4)
@@ -111,15 +158,62 @@ class GuiUiAndAppTests(unittest.TestCase):
         self.assertFalse(snapshot.enabled)
         self.assertFalse(window.enable_background_removal_checkbox.isChecked())
         self.assertIn("captured 32x24", window.background_removal_status_value.text())
+        self.assertIn("\nrevision", window.background_removal_status_value.text())
+        self.assertIsNone(window.main_preview_widget.background_snapshot())
 
         window.enable_background_removal_checkbox.setChecked(True)
         self.assertTrue(window.background_state.get_snapshot().enabled)
+        self.assertIsNone(window.main_preview_widget.background_snapshot())
         window.apply_background_removal_to_locator_checkbox.setChecked(True)
         window.apply_background_removal_to_model_preprocessing_checkbox.setChecked(True)
 
         policy = stage_policy_state.get_snapshot()
         self.assertTrue(policy.apply_background_removal_to_roi_locator)
         self.assertTrue(policy.apply_background_removal_to_regressor_preprocessing)
+
+    def test_fps_metrics_update_from_camera_and_live_inference_events(self) -> None:
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+        )
+
+        window._on_status_changed(
+            contracts.WorkerStatus(
+                worker_name=contracts.WorkerName.CAMERA,
+                state=contracts.WorkerState.RUNNING,
+                message="Camera worker is running.",
+                timestamp_utc="2026-05-24T00:00:00Z",
+            )
+        )
+        window._camera_frame_timestamps.extend([10.0, 10.5, 11.0])
+        window._refresh_performance_metrics(now=11.0)
+
+        self.assertEqual(window.camera_fps_value.text(), "raw frame FPS: 2.0")
+        self.assertEqual(window.inference_fps_value.text(), "inference FPS: n/a")
+
+        window._on_status_changed(
+            contracts.WorkerStatus(
+                worker_name=contracts.WorkerName.INFERENCE,
+                state=contracts.WorkerState.RUNNING,
+                message="Inference worker is running.",
+                timestamp_utc="2026-05-24T00:00:01Z",
+            )
+        )
+        window._inference_result_timestamps.extend([20.0, 20.25, 20.5])
+        window._refresh_performance_metrics(now=20.5)
+
+        self.assertEqual(window.inference_fps_value.text(), "inference FPS: 4.0")
+
+        window._on_status_changed(
+            contracts.WorkerStatus(
+                worker_name=contracts.WorkerName.INFERENCE,
+                state=contracts.WorkerState.STOPPED,
+                message="Inference worker stopped.",
+                timestamp_utc="2026-05-24T00:00:02Z",
+            )
+        )
+
+        self.assertEqual(window.inference_fps_value.text(), "inference FPS: n/a")
 
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
         policy_state = ForegroundExtractionPolicyState()
