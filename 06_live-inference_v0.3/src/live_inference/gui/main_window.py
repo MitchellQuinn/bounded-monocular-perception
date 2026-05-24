@@ -499,10 +499,10 @@ class LiveInferenceMainWindow(QMainWindow):
     def _on_inference_result_ready(self, result: object) -> None:
         self._record_inference_result()
         self.distance_value.setText(
-            f"distance: {_format_value(_payload_value(result, 'predicted_distance_m'), 'm', 3)}"
+            f"distance: {_format_value(_payload_value(result, 'predicted_distance_m'), 'm', 2)}"
         )
         self.yaw_value.setText(
-            f"yaw: {_format_value(_payload_value(result, 'predicted_yaw_deg'), 'deg', 2)}"
+            f"yaw: {_format_value(_payload_value(result, 'predicted_yaw_deg'), 'deg', 0)}"
         )
         roi_metadata = _payload_value(result, "roi_metadata")
         extras = _mapping_payload(_payload_value(roi_metadata, "extras"))

@@ -215,6 +215,28 @@ class GuiUiAndAppTests(unittest.TestCase):
 
         self.assertEqual(window.inference_fps_value.text(), "inference FPS: n/a")
 
+    def test_inference_regression_labels_use_display_precision(self) -> None:
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+        )
+        result = contracts.InferenceResult(
+            request_id="request",
+            input_image_path=Path("frame.png"),
+            input_image_hash=contracts.FrameHash("hash"),
+            timestamp_utc="2026-05-24T00:00:00Z",
+            predicted_distance_m=1.234,
+            predicted_yaw_sin=0.0,
+            predicted_yaw_cos=1.0,
+            predicted_yaw_deg=12.6,
+            inference_time_ms=1.0,
+        )
+
+        window._on_inference_result_ready(result)
+
+        self.assertEqual(window.distance_value.text(), "distance: 1.23 m")
+        self.assertEqual(window.yaw_value.text(), "yaw: 13 deg")
+
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
         policy_state = ForegroundExtractionPolicyState()
         window = LiveInferenceMainWindow(
