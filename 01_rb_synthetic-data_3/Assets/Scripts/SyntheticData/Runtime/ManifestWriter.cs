@@ -14,7 +14,6 @@ namespace RaccoonBall.SyntheticData.Runtime
         private const int BufferSizeBytes = 64 * 1024;
         private const int DefenderKeypointCount = 10;
         private StreamWriter _writer;
-        private string _targetProfile = TargetProfileIds.DistanceYaw;
         private DefenderKeypointSchemaMetadata _defenderSchemaMetadata;
 
         public void Open(RunConfig config, bool append)
@@ -22,25 +21,18 @@ namespace RaccoonBall.SyntheticData.Runtime
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (config.Output == null) throw new ArgumentException("RunConfig.Output must not be null.");
 
-            _targetProfile = config.Targets == null
-                ? TargetProfileIds.DistanceYaw
-                : config.Targets.NormalizedTargetProfile();
-            _defenderSchemaMetadata = null;
-            if (_targetProfile == TargetProfileIds.DefenderAmodalKeypointPose)
+            TargetSettings targets = config.Targets ?? new TargetSettings();
+            if (targets.DefenderAmodalKeypointPose == null)
             {
-                if (config.Targets.DefenderAmodalKeypointPose == null)
-                {
-                    throw new ArgumentException(
-                        "Target profile defender_amodal_keypoint_pose requires DefenderAmodalKeypointPose target settings.");
-                }
-
-                _defenderSchemaMetadata = config.Targets.DefenderAmodalKeypointPose.Schema;
+                throw new ArgumentException(
+                    "Synthetic generation requires DefenderAmodalKeypointPose target settings.");
             }
+            _defenderSchemaMetadata = targets.DefenderAmodalKeypointPose.Schema;
 
             string runRoot = Path.Combine(config.Output.OutputRoot, config.RunId);
             string manifestDirectory = Path.Combine(runRoot, config.Output.ManifestFolderName);
             string manifestPath = Path.Combine(manifestDirectory, config.Output.ManifestFileName);
-            string expectedHeader = BuildHeader(_targetProfile);
+            string expectedHeader = BuildHeader();
 
             Directory.CreateDirectory(manifestDirectory);
             if (append)
@@ -66,7 +58,7 @@ namespace RaccoonBall.SyntheticData.Runtime
             if (_writer == null) throw new InvalidOperationException("ManifestWriter is not open.");
             if (row == null) throw new ArgumentNullException(nameof(row));
 
-            _writer.WriteLine(ToCsvLine(row, _targetProfile));
+            _writer.WriteLine(ToCsvLine(row));
         }
 
         public void Flush()
@@ -84,7 +76,7 @@ namespace RaccoonBall.SyntheticData.Runtime
             _writer = null;
         }
 
-        private static string BuildHeader(string targetProfile)
+        private static string BuildHeader()
         {
             var columns = new List<string>
             {
@@ -120,16 +112,13 @@ namespace RaccoonBall.SyntheticData.Runtime
                 "error_message",
             };
 
-            if (targetProfile == TargetProfileIds.DefenderAmodalKeypointPose)
-            {
-                AddDefenderSchemaMetadataColumns(columns);
-                AddDefenderTargetColumns(columns);
-            }
+            AddDefenderSchemaMetadataColumns(columns);
+            AddDefenderTargetColumns(columns);
 
             return string.Join(",", columns.ToArray());
         }
 
-        private string ToCsvLine(ManifestRow row, string targetProfile)
+        private string ToCsvLine(ManifestRow row)
         {
             var values = new List<string>
             {
@@ -165,11 +154,8 @@ namespace RaccoonBall.SyntheticData.Runtime
                 Escape(row.ErrorMessage),
             };
 
-            if (targetProfile == TargetProfileIds.DefenderAmodalKeypointPose)
-            {
-                AddDefenderSchemaMetadataValues(values);
-                AddDefenderTargetValues(row, values);
-            }
+            AddDefenderSchemaMetadataValues(values);
+            AddDefenderTargetValues(row, values);
 
             return string.Join(",", values.ToArray());
         }
@@ -211,7 +197,7 @@ namespace RaccoonBall.SyntheticData.Runtime
             if (schema == null)
             {
                 throw new InvalidOperationException(
-                    "Manifest target profile is defender_amodal_keypoint_pose, but no Defender keypoint schema metadata is configured.");
+                    "Synthetic manifest writer has no Defender keypoint schema metadata configured.");
             }
 
             values.Add(Escape(schema.SchemaVersion));
@@ -229,7 +215,7 @@ namespace RaccoonBall.SyntheticData.Runtime
             if (targets == null)
             {
                 throw new InvalidOperationException(
-                    "Manifest target profile is defender_amodal_keypoint_pose, but the row has no Defender amodal keypoint pose targets.");
+                    "Synthetic manifest row has no Defender amodal keypoint pose targets.");
             }
 
             if (targets.KeypointsCameraSpaceM == null || targets.KeypointsCameraSpaceM.Length != DefenderKeypointCount)
@@ -270,7 +256,7 @@ namespace RaccoonBall.SyntheticData.Runtime
                 if (!string.Equals(actualHeader, expectedHeader, StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
-                        "Cannot append to manifest because the existing header does not match the active target profile. " +
+                        "Cannot append to manifest because the existing header does not match the current synthetic label schema. " +
                         $"manifest_path='{manifestPath}'.");
                 }
             }

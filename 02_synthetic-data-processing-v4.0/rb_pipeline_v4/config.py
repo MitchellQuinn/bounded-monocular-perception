@@ -649,7 +649,8 @@ class PackTriStreamStageConfigV4:
         payload["canvas_width_px"] = self.normalized_canvas_width_px()
         payload["canvas_height_px"] = self.normalized_canvas_height_px()
         payload["orientation_context_scale"] = self.normalized_orientation_context_scale()
-        payload["target_profile"] = self.normalized_target_profile()
+        payload.pop("target_profile", None)
+        payload["target_selection"] = "auto_detected_from_manifest_columns"
         payload["foreground_enhancement"] = self.normalized_foreground_enhancement().to_log_dict()
         payload["brightness_normalization"] = self.normalized_brightness_normalization().to_log_dict()
         return payload

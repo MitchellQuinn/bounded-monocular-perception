@@ -12,7 +12,7 @@ namespace RaccoonBall.SyntheticData.Core
         public CaptureSettings Capture;
         public SweepSettings Sweep;
         public CoordinateConvention CoordinateConvention;
-        public TargetProfileSettings Targets;
+        public TargetSettings Targets;
         public CameraJitterPolicy CameraJitter;
         public VehicleJitterPolicy VehicleJitter;
 

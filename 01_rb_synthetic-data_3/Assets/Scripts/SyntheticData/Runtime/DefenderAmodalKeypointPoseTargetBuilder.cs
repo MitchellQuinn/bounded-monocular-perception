@@ -105,13 +105,6 @@ namespace RaccoonBall.SyntheticData.Runtime
             return new DefenderAmodalKeypointPoseTargets(centerCameraSpace, keypoints, visibility);
         }
 
-        public static bool UsesDefenderAmodalKeypointPoseTargets(RunConfig config)
-        {
-            if (config == null) throw new ArgumentNullException(nameof(config));
-            if (config.Targets == null) return false;
-            return config.Targets.NormalizedTargetProfile() == TargetProfileIds.DefenderAmodalKeypointPose;
-        }
-
         public static void ValidateSettingsForRun(
             DefenderAmodalKeypointPoseTargetSettings settings,
             Transform vehicleRoot)

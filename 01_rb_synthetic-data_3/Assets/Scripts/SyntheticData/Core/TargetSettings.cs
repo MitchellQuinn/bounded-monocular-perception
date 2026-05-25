@@ -3,38 +3,11 @@ using UnityEngine;
 
 namespace RaccoonBall.SyntheticData.Core
 {
-    public static class TargetProfileIds
-    {
-        public const string DistanceYaw = "distance_yaw";
-        public const string DefenderAmodalKeypointPose = "defender_amodal_keypoint_pose";
-
-        public static string Normalize(string value)
-        {
-            string normalized = string.IsNullOrWhiteSpace(value)
-                ? DistanceYaw
-                : value.Trim().ToLowerInvariant();
-
-            if (normalized == DistanceYaw || normalized == DefenderAmodalKeypointPose)
-            {
-                return normalized;
-            }
-
-            throw new ArgumentException(
-                $"Unsupported target profile '{value}'. Expected '{DistanceYaw}' or '{DefenderAmodalKeypointPose}'.");
-        }
-    }
-
     [Serializable]
-    public sealed class TargetProfileSettings
+    public sealed class TargetSettings
     {
-        public string TargetProfile = TargetProfileIds.DistanceYaw;
         public DefenderAmodalKeypointPoseTargetSettings DefenderAmodalKeypointPose =
             new DefenderAmodalKeypointPoseTargetSettings();
-
-        public string NormalizedTargetProfile()
-        {
-            return TargetProfileIds.Normalize(TargetProfile);
-        }
     }
 
     [Serializable]

@@ -41,18 +41,18 @@ it writes:
 - `manifests/run.json`
 - `manifests/samples.csv`
 
-## Target profiles
+## Target labels
 
-`RunConfig.Targets.TargetProfile` defaults to `distance_yaw`, preserving the legacy `samples.csv` header.
+Every generation writes the legacy distance/yaw columns plus the Defender keypoint-pose labels. There is no runtime label selector in the generator; downstream processing and training contracts choose the fields they consume.
 
-The optional `defender_amodal_keypoint_pose` profile appends the source-label columns consumed by `02_synthetic-data-processing-v4.0`:
+The generator appends these source-label columns consumed by `02_synthetic-data-processing-v4.0`:
 
 - `defender_keypoint_schema_version`, `defender_keypoint_schema_hash`, `defender_keypoint_schema_path`, `coordinate_space`, `num_keypoints`, `coordinate_width`, `flattening_order`
 - `defender_center_x_m`, `defender_center_y_m`, `defender_center_z_m`
 - `defender_keypoint_00_x_m` through `defender_keypoint_09_z_m` in keypoint-major XYZ order
 - `defender_keypoint_00_visible` through `defender_keypoint_09_visible`
 
-The Defender profile derives the ten simplified virtual hull datums from the placed Defender mesh bounds at runtime, after Unity importer scale and scene transforms are applied. The body-height and screen-top fractions are configurable on `RunConfig.Targets.DefenderAmodalKeypointPose`; they should be checked visually against the model before generating a production corpus.
+The generator derives the ten simplified virtual hull datums from the placed Defender mesh bounds at runtime, after Unity importer scale and scene transforms are applied. The body-height and screen-top fractions are configurable on `RunConfig.Targets.DefenderAmodalKeypointPose`; they should be checked visually against the model before generating a production corpus.
 
 ## Recommended setup
 

@@ -12,7 +12,7 @@ namespace RaccoonBall.SyntheticData.Core
         public CaptureSettings Capture = new CaptureSettings();
         public SweepSettings Sweep = new SweepSettings();
         public CoordinateConvention CoordinateConvention = new CoordinateConvention();
-        public TargetProfileSettings Targets = new TargetProfileSettings();
+        public TargetSettings Targets = new TargetSettings();
         public CameraJitterPolicy CameraJitter = new CameraJitterPolicy();
         [FormerlySerializedAs("JitterPolicy")] public VehicleJitterPolicy VehicleJitter = new VehicleJitterPolicy();
         public int RandomSeed = 123456789;

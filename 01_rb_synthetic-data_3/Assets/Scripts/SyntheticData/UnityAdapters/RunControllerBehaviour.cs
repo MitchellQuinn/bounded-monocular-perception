@@ -141,7 +141,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
                 AlignSceneToCoordinateConvention(config);
                 DefenderAmodalKeypointPoseTargetBuilder defenderTargetBuilder =
-                    BuildDefenderTargetBuilderIfNeeded(config, captureCamera, vehicleRoot);
+                    BuildDefenderTargetBuilder(config, captureCamera, vehicleRoot);
                 EnsureOutputDirectories(config);
 
                 string runRoot = Path.Combine(config.Output.OutputRoot, config.RunId);
@@ -432,9 +432,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                     float distanceM = distanceCalculator.CalculateDistanceM(
                         cameraTransform.position,
                         vehicleRoot.position);
-                    DefenderAmodalKeypointPoseTargets defenderTargets = defenderTargetBuilder == null
-                        ? null
-                        : defenderTargetBuilder.Build();
+                    DefenderAmodalKeypointPoseTargets defenderTargets = defenderTargetBuilder.Build();
 
                     ManifestRow row = manifestRowMapper.Map(
                         config,
@@ -565,7 +563,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             }
         }
 
-        private static DefenderAmodalKeypointPoseTargetBuilder BuildDefenderTargetBuilderIfNeeded(
+        private static DefenderAmodalKeypointPoseTargetBuilder BuildDefenderTargetBuilder(
             RunConfig config,
             Camera captureCamera,
             Transform vehicleRoot)
@@ -574,15 +572,10 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             if (captureCamera == null) throw new ArgumentNullException(nameof(captureCamera));
             if (vehicleRoot == null) throw new ArgumentNullException(nameof(vehicleRoot));
 
-            if (!DefenderAmodalKeypointPoseTargetBuilder.UsesDefenderAmodalKeypointPoseTargets(config))
-            {
-                return null;
-            }
-
             if (config.Targets == null || config.Targets.DefenderAmodalKeypointPose == null)
             {
                 throw new ArgumentException(
-                    "Target profile defender_amodal_keypoint_pose requires DefenderAmodalKeypointPose target settings.");
+                    "Synthetic generation requires DefenderAmodalKeypointPose target settings.");
             }
 
             return new DefenderAmodalKeypointPoseTargetBuilder(
@@ -701,15 +694,15 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
             _ = StratifiedPlacementPlanner.ResolveTargetSampleCount(config.Sweep);
 
-            if (config.Targets != null)
+            if (config.Targets == null)
             {
-                string targetProfile = config.Targets.NormalizedTargetProfile();
-                if (targetProfile == TargetProfileIds.DefenderAmodalKeypointPose &&
-                    config.Targets.DefenderAmodalKeypointPose == null)
-                {
-                    throw new ArgumentException(
-                        "Target profile defender_amodal_keypoint_pose requires DefenderAmodalKeypointPose target settings.");
-                }
+                config.Targets = new TargetSettings();
+            }
+
+            if (config.Targets.DefenderAmodalKeypointPose == null)
+            {
+                throw new ArgumentException(
+                    "Synthetic generation requires DefenderAmodalKeypointPose target settings.");
             }
 
             if (config.CoordinateConvention == null)
@@ -2028,7 +2021,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                     FixedObjectName = config.CoordinateConvention.FixedObjectName,
                     DistanceDefinition = config.CoordinateConvention.DistanceDefinition,
                 },
-                Targets = config.Targets ?? new TargetProfileSettings(),
+                Targets = config.Targets ?? new TargetSettings(),
                 CameraJitter = config.CameraJitter,
                 VehicleJitter = config.VehicleJitter,
                 RandomSeed = config.RandomSeed,

@@ -347,9 +347,17 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             contract = run_manifest["PreprocessingContract"]
             self.assertEqual(contract["ContractVersion"], "rb-preprocess-v4-tri-stream-orientation-v1")
             self.assertEqual(contract["CurrentStage"], "pack_tri_stream")
-            self.assertEqual(contract["Stages"]["pack_tri_stream"]["TargetProfile"], "distance_yaw")
+            self.assertEqual(contract["Stages"]["pack_tri_stream"]["TargetSet"], "distance_yaw")
+            self.assertEqual(
+                contract["Stages"]["pack_tri_stream"]["TargetSelection"],
+                "auto_detected_from_manifest_columns",
+            )
             self.assertEqual(contract["CurrentRepresentation"]["Kind"], "tri_stream_npz")
-            self.assertEqual(contract["CurrentRepresentation"]["TargetProfile"], "distance_yaw")
+            self.assertEqual(contract["CurrentRepresentation"]["TargetSet"], "distance_yaw")
+            self.assertEqual(
+                contract["CurrentRepresentation"]["TargetSelection"],
+                "auto_detected_from_manifest_columns",
+            )
             self.assertIn("x_distance_image", contract["CurrentRepresentation"]["ArrayKeys"])
             self.assertIn("x_orientation_image", contract["CurrentRepresentation"]["ArrayKeys"])
             self.assertIn("x_geometry", contract["CurrentRepresentation"]["ArrayKeys"])
@@ -386,7 +394,7 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 self.assertGreater(orientation_extent[2] - orientation_extent[0], distance_extent[2] - distance_extent[0])
                 self.assertGreater(orientation_extent[3] - orientation_extent[1], distance_extent[3] - distance_extent[1])
 
-    def test_pack_tri_stream_defender_profile_writes_pose_targets_and_schema(self) -> None:
+    def test_pack_tri_stream_defender_labels_write_pose_targets_and_schema(self) -> None:
         with TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             run_name = "run_v4_tri_defender_pose"
@@ -415,7 +423,6 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                     canvas_width_px=64,
                     canvas_height_px=64,
                     shard_size=1,
-                    target_profile=TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
                 ),
             )
 
@@ -436,12 +443,20 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             run_manifest = json.loads((output_root / "manifests" / "run.json").read_text(encoding="utf-8"))
             contract = run_manifest["PreprocessingContract"]
             self.assertEqual(
-                contract["Stages"]["pack_tri_stream"]["TargetProfile"],
+                contract["Stages"]["pack_tri_stream"]["TargetSet"],
                 TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
             )
             self.assertEqual(
-                contract["CurrentRepresentation"]["TargetProfile"],
+                contract["Stages"]["pack_tri_stream"]["TargetSelection"],
+                "auto_detected_from_manifest_columns",
+            )
+            self.assertEqual(
+                contract["CurrentRepresentation"]["TargetSet"],
                 TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+            )
+            self.assertEqual(
+                contract["CurrentRepresentation"]["TargetSelection"],
+                "auto_detected_from_manifest_columns",
             )
             self.assertIn("defender_center_3d", contract["CurrentRepresentation"]["TargetModes"])
             for key in DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS:
@@ -471,11 +486,15 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 for key, expected in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
                     self.assertEqual(str(np.asarray(payload[key]).item()), str(expected))
 
-    def test_pack_tri_stream_defender_profile_requires_keypoint_targets(self) -> None:
+    def test_pack_tri_stream_partial_defender_labels_fail_clearly(self) -> None:
         with TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
-            run_name = "run_v4_tri_defender_pose_missing"
+            run_name = "run_v4_tri_defender_pose_partial"
             self._make_fixture(project_root, run_name)
+            samples_path = samples_csv_path(project_root / "input-images" / run_name / "manifests")
+            samples_df = load_samples_csv(samples_path)
+            samples_df[DEFENDER_CENTER_3D_TARGET_COLUMNS[0]] = 0.0
+            samples_df.to_csv(samples_path, index=False)
 
             run_detect_stage_v4(
                 project_root,
@@ -493,7 +512,7 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 ),
             )
 
-            with self.assertRaisesRegex(PipelineValidationError, "defender_center_x_m"):
+            with self.assertRaisesRegex(PipelineValidationError, "partially present.*defender_center_y_m"):
                 run_pack_tri_stream_stage_v4(
                     project_root,
                     run_name,
@@ -501,7 +520,80 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                         canvas_width_px=64,
                         canvas_height_px=64,
                         shard_size=1,
-                        target_profile=TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+                    ),
+                )
+
+    def test_pack_tri_stream_schema_metadata_without_defender_labels_fails_clearly(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_defender_pose_metadata_only"
+            self._make_fixture(project_root, run_name)
+            samples_path = samples_csv_path(project_root / "input-images" / run_name / "manifests")
+            samples_df = load_samples_csv(samples_path)
+            for key, value in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
+                samples_df[key] = value
+            samples_df.to_csv(samples_path, index=False)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            with self.assertRaisesRegex(PipelineValidationError, "metadata columns are present.*defender_center_x_m"):
+                run_pack_tri_stream_stage_v4(
+                    project_root,
+                    run_name,
+                    PackTriStreamStageConfigV4(
+                        canvas_width_px=64,
+                        canvas_height_px=64,
+                        shard_size=1,
+                    ),
+                )
+
+    def test_pack_tri_stream_defender_labels_require_schema_metadata(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_defender_pose_missing_schema"
+            self._make_fixture(project_root, run_name, include_defender_targets=True)
+            samples_path = samples_csv_path(project_root / "input-images" / run_name / "manifests")
+            samples_df = load_samples_csv(samples_path).drop(columns=["defender_keypoint_schema_hash"])
+            samples_df.to_csv(samples_path, index=False)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            with self.assertRaisesRegex(PipelineValidationError, "schema metadata.*defender_keypoint_schema_hash"):
+                run_pack_tri_stream_stage_v4(
+                    project_root,
+                    run_name,
+                    PackTriStreamStageConfigV4(
+                        canvas_width_px=64,
+                        canvas_height_px=64,
+                        shard_size=1,
                     ),
                 )
 
@@ -870,6 +962,8 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 "final_rot_y_deg": 170.0 + float(idx) * 7.5,
             }
             if include_defender_targets:
+                for key, value in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
+                    row[key] = value
                 row.update(
                     {
                         DEFENDER_CENTER_3D_TARGET_COLUMNS[0]: 0.25 + float(idx),

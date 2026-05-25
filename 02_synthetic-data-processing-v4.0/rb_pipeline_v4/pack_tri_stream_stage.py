@@ -113,13 +113,11 @@ def run_pack_tri_stream_stage_v4(
     append_columns(samples_df, ORIENTATION_TARGET_COLUMNS)
     for column in ORIENTATION_TARGET_COLUMNS:
         samples_df[column] = samples_df[column].astype("object")
-    target_profile = config.normalized_target_profile()
-    defender_pose_targets_active = _uses_defender_amodal_keypoint_pose_targets(target_profile)
+    defender_pose_targets_active, defender_target_errors = _detect_defender_amodal_keypoint_pose_targets(samples_df)
+    validation_errors.extend(defender_target_errors)
     if defender_pose_targets_active:
-        append_columns(samples_df, list(DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS))
-        for column in DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS:
-            samples_df[column] = samples_df[column].astype("object")
-            samples_df[column] = DEFENDER_KEYPOINT_SCHEMA_METADATA[column]
+        validation_errors.extend(_validate_defender_keypoint_schema_metadata(samples_df))
+    target_set = _target_set_for_available_targets(defender_pose_targets_active)
     capture_mask = capture_success_mask(samples_df)
 
     selected_rows = selected_row_indices(
@@ -133,12 +131,6 @@ def run_pack_tri_stream_stage_v4(
     clip_policy = config.normalized_clip_policy()
     shard_size = config.normalized_shard_size()
     image_representation_mode = config.normalized_image_representation_mode()
-    target_profile = config.normalized_target_profile()
-    defender_pose_targets_active = _uses_defender_amodal_keypoint_pose_targets(target_profile)
-    if defender_pose_targets_active:
-        validation_errors.extend(
-            validate_required_columns(samples_df, list(DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS))
-        )
     foreground_config = config.normalized_foreground_enhancement()
     foreground_contract = foreground_config.to_contract_dict()
     foreground_method = foreground_config.normalized_method()
@@ -194,7 +186,8 @@ def run_pack_tri_stream_stage_v4(
         ),
         "OrientationExtentSource": "silhouette_foreground_mask",
         "OrientationContextScale": float(orientation_context_scale),
-        "TargetProfile": target_profile,
+        "TargetSet": target_set,
+        "TargetSelection": "auto_detected_from_manifest_columns",
         "IncludeV1CompatArrays": bool(config.include_v1_compat_arrays),
         "IncludeOptionalMetadataArrays": bool(config.include_optional_metadata_arrays),
         "UseIntermediateNpy": bool(config.use_intermediate_npy),
@@ -210,7 +203,8 @@ def run_pack_tri_stream_stage_v4(
         "StorageFormat": "npz",
         "ArrayKeys": list(array_keys),
         "TargetModes": list(target_modes),
-        "TargetProfile": target_profile,
+        "TargetSet": target_set,
+        "TargetSelection": "auto_detected_from_manifest_columns",
         "DistanceImageKey": TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
         "DistanceImageLayout": "N,C,H,W",
         "DistanceImageGeometry": "fixed_unscaled_roi_canvas",
@@ -527,7 +521,7 @@ def run_pack_tri_stream_stage_v4(
                 validate_tri_stream_npz_file(
                     npz_path,
                     require_v1_compat_arrays=bool(config.include_v1_compat_arrays),
-                    target_profile=target_profile,
+                    target_profile=target_set,
                 )
 
             written_npz_paths.append(npz_path)
@@ -826,8 +820,70 @@ def _orientation_content_contract_value(
     raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
 
 
-def _uses_defender_amodal_keypoint_pose_targets(target_profile: str) -> bool:
-    return str(target_profile).strip().lower() == TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE
+def _detect_defender_amodal_keypoint_pose_targets(samples_df: pd.DataFrame) -> tuple[bool, list[str]]:
+    required_columns = list(DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS)
+    present_columns = [column for column in required_columns if column in samples_df.columns]
+    if not present_columns:
+        metadata_columns = [column for column in DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS if column in samples_df.columns]
+        if metadata_columns:
+            return False, [
+                "Defender keypoint schema metadata columns are present, but Defender pose target columns are missing; "
+                f"missing required column(s): {', '.join(required_columns)}"
+            ]
+        return False, []
+
+    missing_columns = [column for column in required_columns if column not in samples_df.columns]
+    if missing_columns:
+        return False, [
+            "Defender amodal keypoint pose target columns are partially present; "
+            f"missing required column(s): {', '.join(missing_columns)}"
+        ]
+    return True, []
+
+
+def _target_set_for_available_targets(defender_pose_targets_active: bool) -> str:
+    if defender_pose_targets_active:
+        return TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE
+    return "distance_yaw"
+
+
+def _validate_defender_keypoint_schema_metadata(samples_df: pd.DataFrame) -> list[str]:
+    errors = validate_required_columns(samples_df, list(DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS))
+    if errors:
+        return [
+            "Defender keypoint schema metadata is required when Defender pose target columns are present: "
+            + "; ".join(errors)
+        ]
+
+    for key, expected in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
+        mismatched_rows: list[int] = []
+        for row_idx, actual in samples_df[key].items():
+            if not _metadata_value_matches_expected(actual, expected):
+                mismatched_rows.append(int(row_idx))
+                if len(mismatched_rows) >= 3:
+                    break
+        if mismatched_rows:
+            errors.append(
+                f"Defender keypoint schema metadata column {key!r} mismatch; "
+                f"expected {expected!r}; first_bad_row(s)={mismatched_rows}"
+            )
+    return errors
+
+
+def _metadata_value_matches_expected(actual: object, expected: object) -> bool:
+    if pd.isna(actual):
+        return False
+    if isinstance(expected, int) and not isinstance(expected, bool):
+        try:
+            return int(float(actual)) == int(expected)
+        except (TypeError, ValueError):
+            return False
+    if isinstance(expected, float):
+        try:
+            return abs(float(actual) - float(expected)) <= 1e-8
+        except (TypeError, ValueError):
+            return False
+    return str(actual).strip() == str(expected).strip()
 
 
 def _defender_schema_metadata_payload() -> dict[str, np.ndarray]:
@@ -911,15 +967,13 @@ def build_tri_stream_sample_preview(
     samples_df = load_samples_csv(samples_csv_path(source_paths.manifests_dir))
     if int(row_index) < 0 or int(row_index) >= len(samples_df):
         raise IndexError(f"row_index {row_index} is outside samples.csv rows 0..{len(samples_df) - 1}")
-    target_profile = config.normalized_target_profile()
-    defender_pose_targets_active = _uses_defender_amodal_keypoint_pose_targets(target_profile)
+    defender_pose_targets_active, defender_target_errors = _detect_defender_amodal_keypoint_pose_targets(samples_df)
+    if defender_target_errors:
+        raise ValueError("\n".join(defender_target_errors))
     if defender_pose_targets_active:
-        missing_columns = validate_required_columns(
-            samples_df,
-            list(DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS),
-        )
-        if missing_columns:
-            raise ValueError("\n".join(missing_columns))
+        schema_errors = _validate_defender_keypoint_schema_metadata(samples_df)
+        if schema_errors:
+            raise ValueError("\n".join(schema_errors))
     canvas_w = config.normalized_canvas_width_px()
     canvas_h = config.normalized_canvas_height_px()
     _require_tri_stream_canvas_matches_row(
