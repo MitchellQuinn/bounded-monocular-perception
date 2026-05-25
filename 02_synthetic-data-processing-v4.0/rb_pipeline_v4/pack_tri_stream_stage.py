@@ -15,6 +15,14 @@ from .config import PackTriStreamStageConfigV4, StageSummaryV4
 from .constants import (
     BBOX_FEATURE_SCHEMA,
     BRIGHTNESS_NORMALIZATION_COLUMNS,
+    DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS,
+    DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS,
+    DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_MODES,
+    DEFENDER_CENTER_3D_TARGET_COLUMNS,
+    DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS,
+    DEFENDER_KEYPOINT_SCHEMA_METADATA,
+    DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS,
+    DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS,
     DETECT_STAGE_COLUMNS,
     FOREGROUND_ENHANCEMENT_COLUMNS,
     ORIENTATION_TARGET_COLUMNS,
@@ -25,6 +33,7 @@ from .constants import (
     TRI_STREAM_GEOMETRY_ARRAY_KEY,
     TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
     TRI_STREAM_PACK_STAGE_COLUMNS,
+    TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
     UNITY_REQUIRED_COLUMNS,
 )
 from .foreground_enhancement import apply_foreground_enhancement_v4
@@ -104,6 +113,13 @@ def run_pack_tri_stream_stage_v4(
     append_columns(samples_df, ORIENTATION_TARGET_COLUMNS)
     for column in ORIENTATION_TARGET_COLUMNS:
         samples_df[column] = samples_df[column].astype("object")
+    target_profile = config.normalized_target_profile()
+    defender_pose_targets_active = _uses_defender_amodal_keypoint_pose_targets(target_profile)
+    if defender_pose_targets_active:
+        append_columns(samples_df, list(DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS))
+        for column in DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS:
+            samples_df[column] = samples_df[column].astype("object")
+            samples_df[column] = DEFENDER_KEYPOINT_SCHEMA_METADATA[column]
     capture_mask = capture_success_mask(samples_df)
 
     selected_rows = selected_row_indices(
@@ -117,6 +133,12 @@ def run_pack_tri_stream_stage_v4(
     clip_policy = config.normalized_clip_policy()
     shard_size = config.normalized_shard_size()
     image_representation_mode = config.normalized_image_representation_mode()
+    target_profile = config.normalized_target_profile()
+    defender_pose_targets_active = _uses_defender_amodal_keypoint_pose_targets(target_profile)
+    if defender_pose_targets_active:
+        validation_errors.extend(
+            validate_required_columns(samples_df, list(DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS))
+        )
     foreground_config = config.normalized_foreground_enhancement()
     foreground_contract = foreground_config.to_contract_dict()
     foreground_method = foreground_config.normalized_method()
@@ -138,6 +160,20 @@ def run_pack_tri_stream_stage_v4(
     brightness_method = brightness_config.normalized_method()
     brightness_active = brightness_config.normalized_enabled() and brightness_method != "none"
     orientation_context_scale = config.normalized_orientation_context_scale()
+    array_keys = [
+        TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
+        TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
+        TRI_STREAM_GEOMETRY_ARRAY_KEY,
+        "y_distance_m",
+        "y_yaw_deg",
+        "y_yaw_sin",
+        "y_yaw_cos",
+    ]
+    target_modes = ["scalar_distance", "orientation_yaw_deg_sincos"]
+    if defender_pose_targets_active:
+        array_keys.extend(DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS)
+        array_keys.extend(DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS)
+        target_modes.extend(DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_MODES)
     stage_via_intermediate_npy = bool(config.use_intermediate_npy and not config.dry_run)
     delete_source_npy_after_pack = bool(config.delete_source_npy_after_pack)
     stage_npy_dir = (output_paths.arrays_dir or (output_paths.root / "arrays")) / "__pack_tri_stream_stage_tmp"
@@ -158,6 +194,7 @@ def run_pack_tri_stream_stage_v4(
         ),
         "OrientationExtentSource": "silhouette_foreground_mask",
         "OrientationContextScale": float(orientation_context_scale),
+        "TargetProfile": target_profile,
         "IncludeV1CompatArrays": bool(config.include_v1_compat_arrays),
         "IncludeOptionalMetadataArrays": bool(config.include_optional_metadata_arrays),
         "UseIntermediateNpy": bool(config.use_intermediate_npy),
@@ -171,16 +208,9 @@ def run_pack_tri_stream_stage_v4(
     current_representation: dict[str, Any] = {
         "Kind": "tri_stream_npz",
         "StorageFormat": "npz",
-        "ArrayKeys": [
-            TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
-            TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
-            TRI_STREAM_GEOMETRY_ARRAY_KEY,
-            "y_distance_m",
-            "y_yaw_deg",
-            "y_yaw_sin",
-            "y_yaw_cos",
-        ],
-        "TargetModes": ["scalar_distance", "orientation_yaw_deg_sincos"],
+        "ArrayKeys": list(array_keys),
+        "TargetModes": list(target_modes),
+        "TargetProfile": target_profile,
         "DistanceImageKey": TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
         "DistanceImageLayout": "N,C,H,W",
         "DistanceImageGeometry": "fixed_unscaled_roi_canvas",
@@ -210,6 +240,14 @@ def run_pack_tri_stream_stage_v4(
         "ForegroundEnhancement": foreground_contract,
         "BrightnessNormalization": brightness_contract,
     }
+    if defender_pose_targets_active:
+        stage_parameters["DefenderKeypointSchemaMetadata"] = dict(DEFENDER_KEYPOINT_SCHEMA_METADATA)
+        current_representation["DefenderKeypointSchemaMetadata"] = dict(DEFENDER_KEYPOINT_SCHEMA_METADATA)
+        current_representation["DefenderTargetColumns"] = {
+            "center_3d": list(DEFENDER_CENTER_3D_TARGET_COLUMNS),
+            "keypoints_3d_flat": list(DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS),
+            "keypoints_visible": list(DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS),
+        }
     upsert_preprocessing_contract_v4_tri_stream(
         output_paths.manifests_dir,
         stage_name="pack_tri_stream",
@@ -293,6 +331,9 @@ def run_pack_tri_stream_stage_v4(
     y_yaw_deg_buffer: list[np.float32] = []
     y_yaw_sin_buffer: list[np.float32] = []
     y_yaw_cos_buffer: list[np.float32] = []
+    defender_center_3d_buffer: list[np.ndarray] = []
+    defender_keypoints_3d_flat_buffer: list[np.ndarray] = []
+    defender_keypoints_visible_buffer: list[np.ndarray] = []
     sample_id_buffer: list[str] = []
     image_filename_buffer: list[str] = []
     detect_bbox_buffer: list[np.ndarray] = []
@@ -343,6 +384,9 @@ def run_pack_tri_stream_stage_v4(
         y_yaw_deg_buffer.clear()
         y_yaw_sin_buffer.clear()
         y_yaw_cos_buffer.clear()
+        defender_center_3d_buffer.clear()
+        defender_keypoints_3d_flat_buffer.clear()
+        defender_keypoints_visible_buffer.clear()
         sample_id_buffer.clear()
         image_filename_buffer.clear()
         detect_bbox_buffer.clear()
@@ -413,6 +457,30 @@ def run_pack_tri_stream_stage_v4(
                 "x_geometry_schema": np.asarray(BBOX_FEATURE_SCHEMA, dtype=str),
             }
 
+            if defender_pose_targets_active:
+                n_rows = int(x_distance_image.shape[0])
+                defender_lengths = {
+                    "defender_center_3d_buffer": len(defender_center_3d_buffer),
+                    "defender_keypoints_3d_flat_buffer": len(defender_keypoints_3d_flat_buffer),
+                    "defender_keypoints_visible_buffer": len(defender_keypoints_visible_buffer),
+                }
+                bad_defender = {name: count for name, count in defender_lengths.items() if int(count) != n_rows}
+                if bad_defender:
+                    raise RuntimeError(
+                        "Defender target buffer length mismatch before shard flush: "
+                        f"{bad_defender}; expected all={n_rows}"
+                    )
+                payload["y_defender_center_3d"] = np.stack(defender_center_3d_buffer, axis=0).astype(np.float32)
+                payload["y_defender_keypoints_3d_flat"] = np.stack(
+                    defender_keypoints_3d_flat_buffer,
+                    axis=0,
+                ).astype(np.float32)
+                payload["y_defender_keypoints_visible"] = np.stack(
+                    defender_keypoints_visible_buffer,
+                    axis=0,
+                ).astype(np.float32)
+                payload.update(_defender_schema_metadata_payload())
+
             if config.include_optional_metadata_arrays:
                 n_rows = int(x_distance_image.shape[0])
                 optional_lengths = {
@@ -459,6 +527,7 @@ def run_pack_tri_stream_stage_v4(
                 validate_tri_stream_npz_file(
                     npz_path,
                     require_v1_compat_arrays=bool(config.include_v1_compat_arrays),
+                    target_profile=target_profile,
                 )
 
             written_npz_paths.append(npz_path)
@@ -599,6 +668,10 @@ def run_pack_tri_stream_stage_v4(
             samples_df.at[row_idx, "yaw_sin"] = float(yaw_sin)
             samples_df.at[row_idx, "yaw_cos"] = float(yaw_cos)
 
+            defender_targets = None
+            if defender_pose_targets_active:
+                defender_targets = _defender_amodal_keypoint_pose_targets_from_row(samples_df.loc[row_idx])
+
             if stage_via_intermediate_npy:
                 distance_npy_path = stage_npy_dir / f"row_{int(row_idx):08d}_distance.npy"
                 orientation_npy_path = stage_npy_dir / f"row_{int(row_idx):08d}_orientation.npy"
@@ -615,6 +688,10 @@ def run_pack_tri_stream_stage_v4(
             y_yaw_deg_buffer.append(yaw_deg)
             y_yaw_sin_buffer.append(yaw_sin)
             y_yaw_cos_buffer.append(yaw_cos)
+            if defender_targets is not None:
+                defender_center_3d_buffer.append(defender_targets["center_3d"])
+                defender_keypoints_3d_flat_buffer.append(defender_targets["keypoints_3d_flat"])
+                defender_keypoints_visible_buffer.append(defender_targets["keypoints_visible"])
             sample_id_buffer.append(str(samples_df.at[row_idx, "sample_id"]))
             image_filename_buffer.append(str(samples_df.at[row_idx, "image_filename"]))
             detect_bbox_buffer.append(row_payload["detect_bbox_xyxy"])
@@ -749,6 +826,79 @@ def _orientation_content_contract_value(
     raise ValueError(f"Unsupported image representation mode: {image_representation_mode}")
 
 
+def _uses_defender_amodal_keypoint_pose_targets(target_profile: str) -> bool:
+    return str(target_profile).strip().lower() == TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE
+
+
+def _defender_schema_metadata_payload() -> dict[str, np.ndarray]:
+    payload: dict[str, np.ndarray] = {}
+    for key, value in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
+        if isinstance(value, int):
+            payload[key] = np.asarray(value, dtype=np.int64)
+        elif isinstance(value, float):
+            payload[key] = np.asarray(value, dtype=np.float64)
+        else:
+            payload[key] = np.asarray(str(value), dtype=str)
+    return payload
+
+
+def _required_float32_values_from_row(
+    row: pd.Series,
+    columns: tuple[str, ...],
+    *,
+    label: str,
+) -> np.ndarray:
+    values: list[float] = []
+    for column in columns:
+        value = _safe_float(row.get(column))
+        if value is None:
+            raise ValueError(f"{label} column {column!r} must be finite numeric")
+        values.append(float(value))
+    return np.asarray(values, dtype=np.float32)
+
+
+def _required_visibility_values_from_row(row: pd.Series) -> np.ndarray:
+    values: list[float] = []
+    for column in DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS:
+        raw = row.get(column)
+        if isinstance(raw, bool):
+            values.append(1.0 if raw else 0.0)
+            continue
+        text = str(raw).strip().lower()
+        if text in {"true", "t", "yes", "y"}:
+            values.append(1.0)
+            continue
+        if text in {"false", "f", "no", "n"}:
+            values.append(0.0)
+            continue
+        value = _safe_float(raw)
+        if value is None or value not in {0.0, 1.0}:
+            raise ValueError(
+                f"visibility column {column!r} must be binary 0/1 or boolean-like; got {raw!r}"
+            )
+        values.append(float(value))
+    return np.asarray(values, dtype=np.float32)
+
+
+def _defender_amodal_keypoint_pose_targets_from_row(row: pd.Series) -> dict[str, np.ndarray]:
+    center_3d = _required_float32_values_from_row(
+        row,
+        DEFENDER_CENTER_3D_TARGET_COLUMNS,
+        label="defender center 3D target",
+    )
+    keypoints_3d_flat = _required_float32_values_from_row(
+        row,
+        DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS,
+        label="defender keypoint 3D target",
+    )
+    visibility = _required_visibility_values_from_row(row)
+    return {
+        "center_3d": center_3d,
+        "keypoints_3d_flat": keypoints_3d_flat,
+        "keypoints_visible": visibility,
+    }
+
+
 def build_tri_stream_sample_preview(
     project_root: Path,
     run_name: str,
@@ -761,6 +911,15 @@ def build_tri_stream_sample_preview(
     samples_df = load_samples_csv(samples_csv_path(source_paths.manifests_dir))
     if int(row_index) < 0 or int(row_index) >= len(samples_df):
         raise IndexError(f"row_index {row_index} is outside samples.csv rows 0..{len(samples_df) - 1}")
+    target_profile = config.normalized_target_profile()
+    defender_pose_targets_active = _uses_defender_amodal_keypoint_pose_targets(target_profile)
+    if defender_pose_targets_active:
+        missing_columns = validate_required_columns(
+            samples_df,
+            list(DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS),
+        )
+        if missing_columns:
+            raise ValueError("\n".join(missing_columns))
     canvas_w = config.normalized_canvas_width_px()
     canvas_h = config.normalized_canvas_height_px()
     _require_tri_stream_canvas_matches_row(
@@ -791,6 +950,19 @@ def build_tri_stream_sample_preview(
         brightness_config=brightness_config,
         include_v1_compat_arrays=False,
     )
+    expected_array_keys = [
+        TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
+        TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
+        TRI_STREAM_GEOMETRY_ARRAY_KEY,
+        "y_distance_m",
+        "y_yaw_deg",
+        "y_yaw_sin",
+        "y_yaw_cos",
+    ]
+    if defender_pose_targets_active:
+        expected_array_keys.extend(DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS)
+        expected_array_keys.extend(DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS)
+
     row = samples_df.iloc[int(row_index)].to_dict()
     return {
         "run_name": run_name,
@@ -809,15 +981,7 @@ def build_tri_stream_sample_preview(
         "orientation_crop_size_px": float(payload["orientation_crop_size_px"]),
         "distance_clipped": bool(payload["distance_clipped"]),
         "expected_output_root": str(tri_stream_training_run_paths(project_root, run_name).root),
-        "expected_array_keys": [
-            TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
-            TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
-            TRI_STREAM_GEOMETRY_ARRAY_KEY,
-            "y_distance_m",
-            "y_yaw_deg",
-            "y_yaw_sin",
-            "y_yaw_cos",
-        ],
+        "expected_array_keys": expected_array_keys,
     }
 
 

@@ -160,6 +160,55 @@ TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY = "x_distance_image"
 TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY = "x_orientation_image"
 TRI_STREAM_GEOMETRY_ARRAY_KEY = "x_geometry"
 
+TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW = "distance_yaw"
+TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE = "defender_amodal_keypoint_pose"
+TRI_STREAM_TARGET_PROFILES = (
+    TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW,
+    TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+)
+
+DEFENDER_KEYPOINT_SCHEMA_REPO_RELATIVE_PATH = "03_rb-training-v2.0/schemas/defender_keypoint_schema.json"
+DEFENDER_KEYPOINT_SCHEMA_METADATA = {
+    "defender_keypoint_schema_version": "0.1.0",
+    "defender_keypoint_schema_hash": "2cb343df75948fbc4fb6b872d5d889f9a95a8abd390dd5af3bdc10007aa6d940",
+    "defender_keypoint_schema_path": DEFENDER_KEYPOINT_SCHEMA_REPO_RELATIVE_PATH,
+    "coordinate_space": "camera_space_3d",
+    "num_keypoints": 10,
+    "coordinate_width": 3,
+    "flattening_order": "keypoint_major_xyz",
+}
+DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS = tuple(DEFENDER_KEYPOINT_SCHEMA_METADATA)
+
+DEFENDER_CENTER_3D_TARGET_COLUMNS = (
+    "defender_center_x_m",
+    "defender_center_y_m",
+    "defender_center_z_m",
+)
+DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS = tuple(
+    f"defender_keypoint_{index:02d}_{axis}_m"
+    for index in range(int(DEFENDER_KEYPOINT_SCHEMA_METADATA["num_keypoints"]))
+    for axis in ("x", "y", "z")
+)
+DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS = tuple(
+    f"defender_keypoint_{index:02d}_visible"
+    for index in range(int(DEFENDER_KEYPOINT_SCHEMA_METADATA["num_keypoints"]))
+)
+DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_COLUMNS = (
+    *DEFENDER_CENTER_3D_TARGET_COLUMNS,
+    *DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS,
+    *DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS,
+)
+DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS = (
+    "y_defender_center_3d",
+    "y_defender_keypoints_3d_flat",
+    "y_defender_keypoints_visible",
+)
+DEFENDER_AMODAL_KEYPOINT_POSE_TARGET_MODES = (
+    "defender_center_3d",
+    "defender_keypoints_3d",
+    "defender_keypoints_visible",
+)
+
 REQUIRED_DUAL_STREAM_NPZ_KEYS = {
     "silhouette_crop",
     "bbox_features",
@@ -185,4 +234,9 @@ REQUIRED_TRI_STREAM_NPZ_KEYS = {
     "sample_id",
     "image_filename",
     "npz_row_index",
+}
+
+REQUIRED_DEFENDER_AMODAL_KEYPOINT_POSE_NPZ_KEYS = {
+    *DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS,
+    *DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS,
 }

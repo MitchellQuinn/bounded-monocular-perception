@@ -24,6 +24,13 @@ Optional:
 
 - `shuffle` - packed corpus shuffling for train/val split workflows.
 
+Tri-stream packing supports target profiles. The default `distance_yaw` profile preserves the existing
+`x_distance_image`, `x_orientation_image`, `x_geometry`, distance, and yaw contract. The opt-in
+`defender_amodal_keypoint_pose` profile keeps those arrays and additionally requires explicit source
+manifest columns for Defender center, 30D amodal keypoints, and 10 visibility targets. It writes the
+matching Defender keypoint schema metadata into the shard and preprocessing contract. Missing profile
+labels fail during packing rather than producing partial training shards.
+
 ## Python API
 
 ```python

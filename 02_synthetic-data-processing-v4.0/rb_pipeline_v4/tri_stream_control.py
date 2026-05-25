@@ -133,6 +133,7 @@ def build_pack_tri_stream_config(
     sample_offset: int = 0,
     sample_limit: int = 0,
     image_representation_mode: str = "inverted_vehicle_on_white",
+    target_profile: str = "distance_yaw",
     foreground_enhancement: ForegroundEnhancementConfigV4 | Mapping[str, object] | None = None,
     brightness_normalization: BrightnessNormalizationConfigV4 | Mapping[str, object] | None = None,
 ) -> PackTriStreamStageConfigV4:
@@ -144,6 +145,7 @@ def build_pack_tri_stream_config(
         image_representation_mode=str(image_representation_mode),
         foreground_enhancement=foreground_enhancement,
         orientation_context_scale=float(orientation_context_scale),
+        target_profile=str(target_profile),
         shard_size=int(shard_size),
         overwrite=bool(overwrite),
         sample_offset=int(sample_offset),

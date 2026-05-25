@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from .config import ShuffleStageConfigV4, StageSummaryV4
+from .constants import DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS
 from .logging_utils import StageLogger
 from .manifest import load_samples_csv, samples_csv_path, write_samples_csv
 from .paths import training_run_paths
@@ -18,6 +19,12 @@ from .validation import PipelineValidationError, validate_run_structure
 
 
 _REQUIRED_SOURCE_COLUMNS = ["sample_id", "npz_filename", "npz_row_index"]
+_METADATA_ARRAY_KEYS = {
+    "bbox_features_schema",
+    "x_geometry_schema",
+    "roi_geometry_schema",
+    *DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS,
+}
 
 
 
@@ -190,10 +197,15 @@ def _select_rows_for_shuffle(samples_df: pd.DataFrame) -> pd.DataFrame:
 def _build_shuffled_payload(source_run_root: Path, shuffled_df: pd.DataFrame) -> dict[str, np.ndarray]:
     first_npz = source_run_root / str(shuffled_df.iloc[0]["npz_filename"])
     with np.load(first_npz, allow_pickle=False) as data:
-        keys = [key for key in data.files if key != "npz_row_index"]
+        first_arrays = {key: np.asarray(data[key]) for key in data.files}
 
-    cache: dict[str, dict[str, np.ndarray]] = {}
-    buckets: dict[str, list[np.ndarray]] = {key: [] for key in keys}
+    first_n = int(first_arrays["npz_row_index"].shape[0])
+    keys = [key for key in first_arrays if key != "npz_row_index"]
+    row_keys = [key for key in keys if _is_row_array_key(key, first_arrays[key], first_n)]
+    metadata_keys = [key for key in keys if key not in row_keys]
+
+    cache: dict[str, dict[str, np.ndarray]] = {first_npz.name: first_arrays}
+    buckets: dict[str, list[np.ndarray]] = {key: [] for key in row_keys}
 
     for _, row in shuffled_df.iterrows():
         npz_name = str(row["npz_filename"])
@@ -204,7 +216,7 @@ def _build_shuffled_payload(source_run_root: Path, shuffled_df: pd.DataFrame) ->
                 cache[npz_name] = {key: np.asarray(data[key]) for key in data.files}
 
         arrays = cache[npz_name]
-        for key in keys:
+        for key in row_keys:
             buckets[key].append(np.asarray(arrays[key][row_idx]))
 
     payload: dict[str, np.ndarray] = {}
@@ -218,8 +230,40 @@ def _build_shuffled_payload(source_run_root: Path, shuffled_df: pd.DataFrame) ->
         if payload[key].dtype.kind in {"U", "S", "O"}:
             payload[key] = np.asarray(payload[key], dtype=str)
 
+    for key in metadata_keys:
+        payload[key] = _copy_metadata_array(key, cache, source_run_root)
+
     payload["npz_row_index"] = np.arange(len(shuffled_df), dtype=np.int64)
     return payload
+
+
+def _is_row_array_key(key: str, array: np.ndarray, expected_rows: int) -> bool:
+    if key in _METADATA_ARRAY_KEYS:
+        return False
+    return array.ndim > 0 and int(array.shape[0]) == int(expected_rows)
+
+
+def _copy_metadata_array(
+    key: str,
+    cache: dict[str, dict[str, np.ndarray]],
+    source_run_root: Path,
+) -> np.ndarray:
+    first: np.ndarray | None = None
+    for npz_name, arrays in cache.items():
+        if key not in arrays:
+            with np.load(source_run_root / npz_name, allow_pickle=False) as data:
+                arrays[key] = np.asarray(data[key])
+        value = np.asarray(arrays[key])
+        if first is None:
+            first = value.copy()
+            continue
+        if first.shape != value.shape or not np.array_equal(first.astype(str), value.astype(str)):
+            raise PipelineValidationError(f"Metadata array {key!r} differs across source NPZ shards.")
+    if first is None:
+        raise PipelineValidationError(f"Metadata array {key!r} could not be read from source NPZ shards.")
+    if first.dtype.kind in {"U", "S", "O"}:
+        return np.asarray(first, dtype=str)
+    return first
 
 
 

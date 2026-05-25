@@ -9,11 +9,16 @@ import pandas as pd
 
 from .constants import (
     BBOX_FEATURE_SCHEMA,
+    DEFENDER_KEYPOINT_SCHEMA_METADATA,
+    REQUIRED_DEFENDER_AMODAL_KEYPOINT_POSE_NPZ_KEYS,
     REQUIRED_DUAL_STREAM_NPZ_KEYS,
     REQUIRED_TRI_STREAM_NPZ_KEYS,
     TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
     TRI_STREAM_GEOMETRY_ARRAY_KEY,
     TRI_STREAM_ORIENTATION_IMAGE_ARRAY_KEY,
+    TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+    TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW,
+    TRI_STREAM_TARGET_PROFILES,
 )
 from .paths import RunPathsV4, resolve_manifest_path
 
@@ -196,11 +201,20 @@ def validate_dual_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: b
                 raise ValueError("Compatibility arrays X/y do not align with primary arrays")
 
 
-def validate_tri_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: bool = False) -> None:
+def validate_tri_stream_npz_file(
+    npz_path: Path,
+    *,
+    require_v1_compat_arrays: bool = False,
+    target_profile: str = TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW,
+) -> None:
     """Validate semantic tri-stream distance/orientation/geometry NPZ shards."""
+    normalized_target_profile = _normalize_tri_stream_target_profile(target_profile)
     with np.load(npz_path, allow_pickle=False) as data:
         keys = set(data.files)
-        missing = sorted(REQUIRED_TRI_STREAM_NPZ_KEYS - keys)
+        required_keys = set(REQUIRED_TRI_STREAM_NPZ_KEYS)
+        if normalized_target_profile == TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE:
+            required_keys.update(REQUIRED_DEFENDER_AMODAL_KEYPOINT_POSE_NPZ_KEYS)
+        missing = sorted(required_keys - keys)
         if missing:
             raise ValueError(f"NPZ missing required key(s): {missing}")
 
@@ -308,6 +322,9 @@ def validate_tri_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: bo
         if not np.allclose(y_yaw_cos.astype(np.float64), expected_cos, atol=1e-5, rtol=1e-5):
             raise ValueError("y_yaw_cos is inconsistent with y_yaw_deg")
 
+        if normalized_target_profile == TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE:
+            _validate_defender_amodal_keypoint_pose_npz_payload(data, n=n)
+
         if require_v1_compat_arrays:
             if "X" not in data or "y" not in data:
                 raise ValueError("NPZ is missing required v1 compatibility arrays X/y")
@@ -315,3 +332,88 @@ def validate_tri_stream_npz_file(npz_path: Path, *, require_v1_compat_arrays: bo
             y = data["y"]
             if x.shape[0] != n or y.shape[0] != n:
                 raise ValueError("Compatibility arrays X/y do not align with primary arrays")
+
+
+def _normalize_tri_stream_target_profile(target_profile: object) -> str:
+    value = str(target_profile).strip().lower() or TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW
+    if value not in TRI_STREAM_TARGET_PROFILES:
+        allowed = ", ".join(sorted(TRI_STREAM_TARGET_PROFILES))
+        raise ValueError(f"Unsupported tri-stream target_profile {target_profile!r}. Allowed: {allowed}.")
+    return value
+
+
+def _metadata_scalar(payload: object, key: str) -> object:
+    values = np.asarray(payload[key])
+    if values.shape == ():
+        return values.item()
+    flattened = values.reshape(-1)
+    if flattened.size == 0:
+        raise ValueError(f"metadata key {key!r} is empty")
+    first = flattened[0]
+    if flattened.size > 1:
+        first_text = str(first)
+        if any(str(value) != first_text for value in flattened[1:]):
+            raise ValueError(f"metadata key {key!r} must be scalar or constant per shard")
+    return first.item() if hasattr(first, "item") else first
+
+
+def _metadata_matches_expected(actual: object, expected: object) -> bool:
+    if isinstance(expected, bool):
+        return bool(actual) == expected
+    if isinstance(expected, int) and not isinstance(expected, bool):
+        try:
+            return int(float(actual)) == int(expected)
+        except (TypeError, ValueError):
+            return False
+    if isinstance(expected, float):
+        try:
+            return abs(float(actual) - float(expected)) <= 1e-8
+        except (TypeError, ValueError):
+            return False
+    return str(actual).strip() == str(expected).strip()
+
+
+def _validate_defender_amodal_keypoint_pose_npz_payload(payload: object, *, n: int) -> None:
+    center = payload["y_defender_center_3d"]
+    keypoints = payload["y_defender_keypoints_3d_flat"]
+    visibility = payload["y_defender_keypoints_visible"]
+
+    _assert_numeric("y_defender_center_3d", center)
+    _assert_numeric("y_defender_keypoints_3d_flat", keypoints)
+    _assert_numeric("y_defender_keypoints_visible", visibility)
+
+    if center.ndim != 2 or center.shape[1] != 3:
+        raise ValueError(f"y_defender_center_3d must have shape (N, 3), got {center.shape}")
+    if keypoints.ndim != 2 or keypoints.shape[1] != 30:
+        raise ValueError(f"y_defender_keypoints_3d_flat must have shape (N, 30), got {keypoints.shape}")
+    if visibility.ndim != 2 or visibility.shape[1] != 10:
+        raise ValueError(f"y_defender_keypoints_visible must have shape (N, 10), got {visibility.shape}")
+
+    lengths = {
+        "y_defender_center_3d": int(center.shape[0]),
+        "y_defender_keypoints_3d_flat": int(keypoints.shape[0]),
+        "y_defender_keypoints_visible": int(visibility.shape[0]),
+    }
+    bad = {name: length for name, length in lengths.items() if length != n}
+    if bad:
+        raise ValueError(f"NPZ Defender target first-dimension mismatch against N={n}: {bad}")
+
+    for name, array in (
+        ("y_defender_center_3d", center),
+        ("y_defender_keypoints_3d_flat", keypoints),
+        ("y_defender_keypoints_visible", visibility),
+    ):
+        if not np.isfinite(array).all():
+            raise ValueError(f"{name} contains NaN or Inf")
+
+    if not np.isin(visibility, [0.0, 1.0]).all():
+        raise ValueError("y_defender_keypoints_visible must contain binary 0/1 values")
+
+    for key, expected in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
+        actual = _metadata_scalar(payload, key)
+        if not _metadata_matches_expected(actual, expected):
+            raise ValueError(
+                f"metadata {key!r} mismatch for Defender keypoint schema; "
+                f"expected {expected!r}, got {actual!r}"
+            )
+

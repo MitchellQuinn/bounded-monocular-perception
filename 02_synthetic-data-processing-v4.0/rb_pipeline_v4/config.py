@@ -7,6 +7,8 @@ import math
 from pathlib import Path
 from typing import Mapping
 
+from .constants import TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW, TRI_STREAM_TARGET_PROFILES
+
 
 _VALID_REPRESENTATION_MODES = {"outline", "filled"}
 _VALID_IMAGE_REPRESENTATION_MODES = {"inverted_vehicle_on_white", "raw_grayscale_on_white"}
@@ -555,6 +557,7 @@ class PackTriStreamStageConfigV4:
     use_intermediate_npy: bool = True
     delete_source_npy_after_pack: bool = True
     orientation_context_scale: float = 1.25
+    target_profile: str = TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW
     brightness_normalization: BrightnessNormalizationConfigV4 | Mapping[str, object] | None = field(
         default_factory=BrightnessNormalizationConfigV4
     )
@@ -602,6 +605,13 @@ class PackTriStreamStageConfigV4:
             raise ValueError("orientation_context_scale must be finite and >= 1.0")
         return value
 
+    def normalized_target_profile(self) -> str:
+        value = str(self.target_profile).strip().lower() or TRI_STREAM_TARGET_PROFILE_DISTANCE_YAW
+        if value not in TRI_STREAM_TARGET_PROFILES:
+            allowed = ", ".join(sorted(TRI_STREAM_TARGET_PROFILES))
+            raise ValueError(f"Unsupported target_profile '{self.target_profile}'. Allowed: {allowed}.")
+        return value
+
     def normalized_brightness_normalization(self) -> BrightnessNormalizationConfigV4:
         config = self.brightness_normalization
         if config is None:
@@ -639,6 +649,7 @@ class PackTriStreamStageConfigV4:
         payload["canvas_width_px"] = self.normalized_canvas_width_px()
         payload["canvas_height_px"] = self.normalized_canvas_height_px()
         payload["orientation_context_scale"] = self.normalized_orientation_context_scale()
+        payload["target_profile"] = self.normalized_target_profile()
         payload["foreground_enhancement"] = self.normalized_foreground_enhancement().to_log_dict()
         payload["brightness_normalization"] = self.normalized_brightness_normalization().to_log_dict()
         return payload

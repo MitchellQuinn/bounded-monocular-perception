@@ -19,6 +19,15 @@ from rb_pipeline_v4.config import (
     PackTriStreamStageConfigV4,
     SilhouetteStageConfigV4,
 )
+from rb_pipeline_v4.constants import (
+    DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS,
+    DEFENDER_CENTER_3D_TARGET_COLUMNS,
+    DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS,
+    DEFENDER_KEYPOINT_SCHEMA_METADATA,
+    DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS,
+    DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS,
+    TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+)
 from rb_pipeline_v4.contracts import Detection
 from rb_pipeline_v4.detect_stage import run_detect_stage_v4
 from rb_pipeline_v4.detector import EdgeRoiDetector
@@ -338,7 +347,9 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             contract = run_manifest["PreprocessingContract"]
             self.assertEqual(contract["ContractVersion"], "rb-preprocess-v4-tri-stream-orientation-v1")
             self.assertEqual(contract["CurrentStage"], "pack_tri_stream")
+            self.assertEqual(contract["Stages"]["pack_tri_stream"]["TargetProfile"], "distance_yaw")
             self.assertEqual(contract["CurrentRepresentation"]["Kind"], "tri_stream_npz")
+            self.assertEqual(contract["CurrentRepresentation"]["TargetProfile"], "distance_yaw")
             self.assertIn("x_distance_image", contract["CurrentRepresentation"]["ArrayKeys"])
             self.assertIn("x_orientation_image", contract["CurrentRepresentation"]["ArrayKeys"])
             self.assertIn("x_geometry", contract["CurrentRepresentation"]["ArrayKeys"])
@@ -364,12 +375,135 @@ class V4PipelineIntegrationTests(unittest.TestCase):
                 self.assertEqual(str(geometry.dtype), "float32")
                 self.assertEqual(geometry.shape[1], 10)
                 self.assertIn("x_geometry_schema", payload)
+                for key in DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS:
+                    self.assertNotIn(key, payload)
+                for key in DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS:
+                    self.assertNotIn(key, payload)
                 self.assertFalse(np.allclose(distance, orientation))
 
                 distance_extent = self._nonwhite_extent(distance[0, 0])
                 orientation_extent = self._nonwhite_extent(orientation[0, 0])
                 self.assertGreater(orientation_extent[2] - orientation_extent[0], distance_extent[2] - distance_extent[0])
                 self.assertGreater(orientation_extent[3] - orientation_extent[1], distance_extent[3] - distance_extent[1])
+
+    def test_pack_tri_stream_defender_profile_writes_pose_targets_and_schema(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_defender_pose"
+            self._make_fixture(project_root, run_name, include_defender_targets=True)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            summary = run_pack_tri_stream_stage_v4(
+                project_root,
+                run_name,
+                PackTriStreamStageConfigV4(
+                    canvas_width_px=64,
+                    canvas_height_px=64,
+                    shard_size=1,
+                    target_profile=TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+                ),
+            )
+
+            self.assertEqual(summary.successful_rows, 2)
+            self.assertEqual(summary.failed_rows, 0)
+            output_root = project_root / "training-data-v4-tri-stream" / run_name
+            output_samples = load_samples_csv(samples_csv_path(output_root / "manifests"))
+            for column in DEFENDER_KEYPOINT_SCHEMA_METADATA_KEYS:
+                self.assertIn(column, output_samples.columns)
+                self.assertEqual(str(output_samples[column].iloc[0]), str(DEFENDER_KEYPOINT_SCHEMA_METADATA[column]))
+            for column in (
+                *DEFENDER_CENTER_3D_TARGET_COLUMNS,
+                *DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS,
+                *DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS,
+            ):
+                self.assertIn(column, output_samples.columns)
+
+            run_manifest = json.loads((output_root / "manifests" / "run.json").read_text(encoding="utf-8"))
+            contract = run_manifest["PreprocessingContract"]
+            self.assertEqual(
+                contract["Stages"]["pack_tri_stream"]["TargetProfile"],
+                TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+            )
+            self.assertEqual(
+                contract["CurrentRepresentation"]["TargetProfile"],
+                TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+            )
+            self.assertIn("defender_center_3d", contract["CurrentRepresentation"]["TargetModes"])
+            for key in DEFENDER_AMODAL_KEYPOINT_POSE_ARRAY_KEYS:
+                self.assertIn(key, contract["CurrentRepresentation"]["ArrayKeys"])
+
+            npz_path = output_root / f"{run_name}_shard_00000.npz"
+            validate_tri_stream_npz_file(
+                npz_path,
+                target_profile=TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+            )
+            with np.load(npz_path, allow_pickle=False) as payload:
+                self.assertEqual(payload["y_defender_center_3d"].shape, (1, 3))
+                self.assertEqual(payload["y_defender_keypoints_3d_flat"].shape, (1, 30))
+                self.assertEqual(payload["y_defender_keypoints_visible"].shape, (1, 10))
+                np.testing.assert_allclose(
+                    payload["y_defender_center_3d"][0],
+                    np.asarray([0.25, 0.5, 4.5], dtype=np.float32),
+                )
+                np.testing.assert_allclose(
+                    payload["y_defender_keypoints_3d_flat"][0],
+                    np.arange(30, dtype=np.float32) / 100.0,
+                )
+                np.testing.assert_array_equal(
+                    payload["y_defender_keypoints_visible"][0],
+                    np.asarray([1, 0, 1, 0, 1, 0, 1, 0, 1, 0], dtype=np.float32),
+                )
+                for key, expected in DEFENDER_KEYPOINT_SCHEMA_METADATA.items():
+                    self.assertEqual(str(np.asarray(payload[key]).item()), str(expected))
+
+    def test_pack_tri_stream_defender_profile_requires_keypoint_targets(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            run_name = "run_v4_tri_defender_pose_missing"
+            self._make_fixture(project_root, run_name)
+
+            run_detect_stage_v4(
+                project_root,
+                run_name,
+                DetectStageConfigV4(defender_class_names=("defender",)),
+                detector=_FakeDetector(),
+            )
+            run_silhouette_stage_v4(
+                project_root,
+                run_name,
+                SilhouetteStageConfigV4(
+                    representation_mode="filled",
+                    roi_canvas_width_px=64,
+                    roi_canvas_height_px=64,
+                ),
+            )
+
+            with self.assertRaisesRegex(PipelineValidationError, "defender_center_x_m"):
+                run_pack_tri_stream_stage_v4(
+                    project_root,
+                    run_name,
+                    PackTriStreamStageConfigV4(
+                        canvas_width_px=64,
+                        canvas_height_px=64,
+                        shard_size=1,
+                        target_profile=TRI_STREAM_TARGET_PROFILE_DEFENDER_AMODAL_KEYPOINT_POSE,
+                    ),
+                )
 
     def test_pack_tri_stream_brightness_changes_distance_not_orientation(self) -> None:
         with TemporaryDirectory() as tmpdir:
@@ -697,6 +831,7 @@ class V4PipelineIntegrationTests(unittest.TestCase):
         rectangle_value: int = 170,
         circle_value: int = 90,
         line_value: int = 30,
+        include_defender_targets: bool = False,
     ) -> None:
         (project_root / "rb_pipeline_v4").mkdir(parents=True, exist_ok=True)
         (project_root / "rb_ui_v4").mkdir(parents=True, exist_ok=True)
@@ -720,22 +855,33 @@ class V4PipelineIntegrationTests(unittest.TestCase):
             if not ok:
                 raise RuntimeError(f"Failed to write fixture image: {path}")
 
-            rows.append(
-                {
-                    "run_id": run_name,
-                    "sample_id": f"{run_name}_sample_{idx:03d}",
-                    "frame_index": idx,
-                    "image_filename": filename,
-                    "distance_m": float(idx + 1),
-                    "image_width_px": 64,
-                    "image_height_px": 64,
-                    "capture_success": True,
-                    "final_pos_x_m": float(idx) * 0.1,
-                    "final_pos_y_m": 0.5,
-                    "final_pos_z_m": 4.0 + float(idx) * 0.2,
-                    "final_rot_y_deg": 170.0 + float(idx) * 7.5,
-                }
-            )
+            row = {
+                "run_id": run_name,
+                "sample_id": f"{run_name}_sample_{idx:03d}",
+                "frame_index": idx,
+                "image_filename": filename,
+                "distance_m": float(idx + 1),
+                "image_width_px": 64,
+                "image_height_px": 64,
+                "capture_success": True,
+                "final_pos_x_m": float(idx) * 0.1,
+                "final_pos_y_m": 0.5,
+                "final_pos_z_m": 4.0 + float(idx) * 0.2,
+                "final_rot_y_deg": 170.0 + float(idx) * 7.5,
+            }
+            if include_defender_targets:
+                row.update(
+                    {
+                        DEFENDER_CENTER_3D_TARGET_COLUMNS[0]: 0.25 + float(idx),
+                        DEFENDER_CENTER_3D_TARGET_COLUMNS[1]: 0.5 + float(idx),
+                        DEFENDER_CENTER_3D_TARGET_COLUMNS[2]: 4.5 + float(idx),
+                    }
+                )
+                for target_idx, column in enumerate(DEFENDER_KEYPOINTS_3D_TARGET_COLUMNS):
+                    row[column] = float(idx) + (float(target_idx) / 100.0)
+                for target_idx, column in enumerate(DEFENDER_KEYPOINT_VISIBILITY_TARGET_COLUMNS):
+                    row[column] = 1 if target_idx % 2 == 0 else 0
+            rows.append(row)
 
         pd.DataFrame(rows).to_csv(manifests_dir / "samples.csv", index=False)
         (manifests_dir / "run.json").write_text(
