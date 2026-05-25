@@ -105,6 +105,62 @@ class TopologyRegistryTests(unittest.TestCase):
             topology_contract_signature(spec.topology_contract),
         )
 
+    def test_task_contract_signature_keeps_implicit_huber_legacy_compatible(self) -> None:
+        legacy_contract = {
+            "task_family": "multitask_regression",
+            "prediction_mode": "distance_yaw_sincos",
+            "input_mode": "tri_stream_distance_orientation_geometry",
+            "output_kind": "mapping",
+            "target_columns": ["distance_m", "yaw_sin", "yaw_cos"],
+            "debug_target_columns": ["yaw_deg"],
+            "heads": {
+                "distance": {
+                    "target_columns": ["distance_m"],
+                    "metrics_role": "distance",
+                    "loss_role": "distance",
+                    "target_kind": "regression",
+                    "target_npz_key": "y_distance_m",
+                    "output_key": "distance_m",
+                },
+                "orientation": {
+                    "target_columns": ["yaw_sin", "yaw_cos"],
+                    "debug_target_columns": ["yaw_deg"],
+                    "metrics_role": "orientation",
+                    "loss_role": "orientation",
+                    "target_kind": "circular_regression",
+                    "target_npz_keys": ["y_yaw_sin", "y_yaw_cos"],
+                    "debug_target_npz_key": "y_yaw_deg",
+                    "output_key": "yaw_sin_cos",
+                },
+            },
+        }
+        explicit_huber_contract = {
+            **legacy_contract,
+            "heads": {
+                name: {**head, "loss_kind": "huber"}
+                for name, head in legacy_contract["heads"].items()
+            },
+        }
+        non_default_contract = {
+            **legacy_contract,
+            "heads": {
+                **legacy_contract["heads"],
+                "orientation": {
+                    **legacy_contract["heads"]["orientation"],
+                    "loss_kind": "bce_with_logits",
+                },
+            },
+        }
+
+        self.assertEqual(
+            task_contract_signature(legacy_contract),
+            task_contract_signature(explicit_huber_contract),
+        )
+        self.assertNotEqual(
+            task_contract_signature(legacy_contract),
+            task_contract_signature(non_default_contract),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

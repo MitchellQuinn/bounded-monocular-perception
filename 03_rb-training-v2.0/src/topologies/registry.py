@@ -342,13 +342,36 @@ def topology_spec_signature(spec: ResolvedTopologySpec | Mapping[str, Any]) -> s
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _drop_implicit_default_loss_kind(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        normalized: dict[str, Any] = {}
+        for key, item in value.items():
+            if (
+                str(key) == "loss_kind"
+                and str(item).strip().lower() == "huber"
+            ):
+                continue
+            normalized[str(key)] = _drop_implicit_default_loss_kind(item)
+        return normalized
+    if isinstance(value, (list, tuple)):
+        return [_drop_implicit_default_loss_kind(item) for item in value]
+    return value
+
+
+def _canonicalize_task_contract_for_signature(raw: Mapping[str, Any] | None) -> dict[str, Any]:
+    # Huber was the historical implicit default before loss_kind became explicit.
+    # Keep non-default loss kinds in the signature, but do not invalidate older
+    # distance/yaw artifacts just because their implicit Huber default is now recorded.
+    return _drop_implicit_default_loss_kind(canonicalize_task_contract(raw))
+
+
 def task_contract_signature(contract: ResolvedTopologySpec | Mapping[str, Any]) -> str:
     """Return stable hash signature for task/output-contract compatibility checks."""
     if isinstance(contract, ResolvedTopologySpec):
-        payload = canonicalize_task_contract(contract.task_contract)
+        payload = _canonicalize_task_contract_for_signature(contract.task_contract)
     elif isinstance(contract, Mapping):
         task_contract = contract.get("task_contract")
-        payload = canonicalize_task_contract(
+        payload = _canonicalize_task_contract_for_signature(
             task_contract if isinstance(task_contract, Mapping) else contract
         )
     else:
