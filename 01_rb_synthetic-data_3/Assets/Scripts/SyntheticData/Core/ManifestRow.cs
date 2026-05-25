@@ -38,6 +38,7 @@ namespace RaccoonBall.SyntheticData.Core
         public float FinalRotZDeg;
 
         public float DistanceM;
+        public DefenderAmodalKeypointPoseTargets DefenderAmodalKeypointPoseTargets;
 
         public int ImageWidthPx;
         public int ImageHeightPx;

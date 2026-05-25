@@ -128,6 +128,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
                 Camera captureCamera = _cameraRig.GetCamera();
                 Transform cameraTransform = _cameraRig.GetCameraTransform();
+                Transform vehicleRoot = _vehicleSceneController.GetVehicleRootTransform();
 
                 captureService = new CaptureService(captureCamera);
                 IImageFileWriter imageFileWriter = new ImageFileWriter();
@@ -139,6 +140,8 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                 StratifiedPlacementPlanner placementPlanner = new StratifiedPlacementPlanner();
 
                 AlignSceneToCoordinateConvention(config);
+                DefenderAmodalKeypointPoseTargetBuilder defenderTargetBuilder =
+                    BuildDefenderTargetBuilderIfNeeded(config, captureCamera, vehicleRoot);
                 EnsureOutputDirectories(config);
 
                 string runRoot = Path.Combine(config.Output.OutputRoot, config.RunId);
@@ -165,7 +168,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
                 var projectionValidator = new VehicleProjectionValidator(
                     captureCamera,
-                    _vehicleSceneController.GetVehicleRootTransform(),
+                    vehicleRoot,
                     config.Capture,
                     config.Sweep);
 
@@ -428,7 +431,10 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
 
                     float distanceM = distanceCalculator.CalculateDistanceM(
                         cameraTransform.position,
-                        _vehicleSceneController.GetVehicleRootTransform().position);
+                        vehicleRoot.position);
+                    DefenderAmodalKeypointPoseTargets defenderTargets = defenderTargetBuilder == null
+                        ? null
+                        : defenderTargetBuilder.Build();
 
                     ManifestRow row = manifestRowMapper.Map(
                         config,
@@ -438,6 +444,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                         distanceM,
                         imageWriteResult,
                         config.Capture);
+                    row.DefenderAmodalKeypointPoseTargets = defenderTargets;
 
                     manifestWriter.AppendRow(row);
                     processedInBatch++;
@@ -558,6 +565,32 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             }
         }
 
+        private static DefenderAmodalKeypointPoseTargetBuilder BuildDefenderTargetBuilderIfNeeded(
+            RunConfig config,
+            Camera captureCamera,
+            Transform vehicleRoot)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            if (captureCamera == null) throw new ArgumentNullException(nameof(captureCamera));
+            if (vehicleRoot == null) throw new ArgumentNullException(nameof(vehicleRoot));
+
+            if (!DefenderAmodalKeypointPoseTargetBuilder.UsesDefenderAmodalKeypointPoseTargets(config))
+            {
+                return null;
+            }
+
+            if (config.Targets == null || config.Targets.DefenderAmodalKeypointPose == null)
+            {
+                throw new ArgumentException(
+                    "Target profile defender_amodal_keypoint_pose requires DefenderAmodalKeypointPose target settings.");
+            }
+
+            return new DefenderAmodalKeypointPoseTargetBuilder(
+                captureCamera,
+                vehicleRoot,
+                config.Targets.DefenderAmodalKeypointPose);
+        }
+
         private void ValidateReferences()
         {
             if (_runConfigAsset == null)
@@ -667,6 +700,17 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
             }
 
             _ = StratifiedPlacementPlanner.ResolveTargetSampleCount(config.Sweep);
+
+            if (config.Targets != null)
+            {
+                string targetProfile = config.Targets.NormalizedTargetProfile();
+                if (targetProfile == TargetProfileIds.DefenderAmodalKeypointPose &&
+                    config.Targets.DefenderAmodalKeypointPose == null)
+                {
+                    throw new ArgumentException(
+                        "Target profile defender_amodal_keypoint_pose requires DefenderAmodalKeypointPose target settings.");
+                }
+            }
 
             if (config.CoordinateConvention == null)
                 throw new ArgumentException("CoordinateConvention must not be null.");
@@ -1984,6 +2028,7 @@ namespace RaccoonBall.SyntheticData.UnityAdapters
                     FixedObjectName = config.CoordinateConvention.FixedObjectName,
                     DistanceDefinition = config.CoordinateConvention.DistanceDefinition,
                 },
+                Targets = config.Targets ?? new TargetProfileSettings(),
                 CameraJitter = config.CameraJitter,
                 VehicleJitter = config.VehicleJitter,
                 RandomSeed = config.RandomSeed,

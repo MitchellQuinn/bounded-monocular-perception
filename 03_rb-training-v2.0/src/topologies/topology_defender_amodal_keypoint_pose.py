@@ -93,7 +93,7 @@ _DEFENDER_SCHEMA_REQUIREMENTS = {
             for item in _DEFENDER_KEYPOINT_SCHEMA["keypoints"]
             if str(item.get("status", "")).strip() == "blocked_unresolved"
         ],
-        "blocker": "Exact Defender keypoint datums 8 and 9 are unresolved; training/evaluation must fail until the schema is finalized.",
+        "blocker": "Defender keypoint schema is marked unavailable for training.",
     }
 }
 

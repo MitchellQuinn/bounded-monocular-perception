@@ -284,12 +284,16 @@ class DefenderAmodalKeypointPoseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "defender_keypoint_schema_hash"):
                 validate_task_contract_schema(metadata_df, schema_df, spec.task_contract, root_name="training")
 
-    def test_unresolved_schema_blocks_training_validation(self) -> None:
+    def test_active_schema_allows_training_validation(self) -> None:
         spec = resolve_topology_spec(
             topology_id=TOPOLOGY_ID,
             topology_variant=VARIANT,
             topology_params={},
         )
+        requirement = spec.task_contract["schema_requirements"]["defender_keypoint_schema"]
+        self.assertTrue(requirement["training_allowed"])
+        self.assertEqual(requirement["unresolved_keypoint_indices"], [])
+
         with TemporaryDirectory() as tmpdir:
             data_root = Path(tmpdir) / "training-data"
             self._write_fixture_corpus(
@@ -304,8 +308,7 @@ class DefenderAmodalKeypointPoseTests(unittest.TestCase):
                 root_name="training",
                 image_array_key=TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY,
             )
-            with self.assertRaisesRegex(ValueError, "schema requirement 'defender_keypoint_schema' is blocked"):
-                validate_task_contract_schema(metadata_df, schema_df, spec.task_contract, root_name="training")
+            validate_task_contract_schema(metadata_df, schema_df, spec.task_contract, root_name="training")
 
     def test_geometry_only_ablation_accepts_x_geometry_only(self) -> None:
         spec = resolve_topology_spec(

@@ -170,7 +170,7 @@ TRI_STREAM_TARGET_PROFILES = (
 DEFENDER_KEYPOINT_SCHEMA_REPO_RELATIVE_PATH = "03_rb-training-v2.0/schemas/defender_keypoint_schema.json"
 DEFENDER_KEYPOINT_SCHEMA_METADATA = {
     "defender_keypoint_schema_version": "0.1.0",
-    "defender_keypoint_schema_hash": "2cb343df75948fbc4fb6b872d5d889f9a95a8abd390dd5af3bdc10007aa6d940",
+    "defender_keypoint_schema_hash": "157d0224ec463338b79855fb26c58e1b01242c7d83c016c122ba2a3135e4eb93",
     "defender_keypoint_schema_path": DEFENDER_KEYPOINT_SCHEMA_REPO_RELATIVE_PATH,
     "coordinate_space": "camera_space_3d",
     "num_keypoints": 10,

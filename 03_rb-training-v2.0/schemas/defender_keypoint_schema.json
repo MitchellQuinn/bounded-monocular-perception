@@ -1,94 +1,207 @@
 {
   "schema_version": "0.1.0",
   "schema_id": "defender_amodal_keypoint_schema",
-  "schema_status": "blocked_unresolved_datums",
-  "training_allowed": false,
+  "schema_status": "active",
+  "training_allowed": true,
   "schema_hash_algorithm": "sha256_canonical_json_excluding_schema_hash",
-  "schema_hash": "2cb343df75948fbc4fb6b872d5d889f9a95a8abd390dd5af3bdc10007aa6d940",
+  "schema_hash": "157d0224ec463338b79855fb26c58e1b01242c7d83c016c122ba2a3135e4eb93",
   "coordinate_space": "camera_space_3d",
   "local_coordinate_frame": {
     "x_axis": "+X = Defender right",
     "y_axis": "+Y = Defender up",
     "z_axis": "+Z = Defender forward",
-    "note": "Semantic datums are defined in the Defender local frame and targets are emitted as camera-space 3D coordinates."
+    "note": "Targets are emitted as camera-space 3D coordinates. The simplified hull formula frame uses length/width/height parameters that the generator maps onto the configured Defender local axes."
   },
-  "origin_definition": "Midpoint of the canonical measured body-shell bounding box.",
+  "origin_definition": "Generator-derived simplified virtual hull over the placed/scaled Defender mesh; origin for hull formulas is rear-bottom centre, not a literal mesh vertex.",
   "units": "metres",
   "num_keypoints": 10,
   "coordinate_width": 3,
   "flattening_order": "keypoint_major_xyz",
+  "local_parameter_frame": {
+    "formula_axes": "(length_x, width_y, height_z) as supplied in the design definition",
+    "length_x": "rear-to-front distance, rear face at 0 and front face at L",
+    "width_y": "vehicle width, left side at -W/2 and right side at +W/2",
+    "height_z": "vehicle height, bottom at 0 and roof at H_roof",
+    "generator_axis_mapping": "length_x -> configured Defender forward axis, width_y -> configured Defender right axis, height_z -> configured Defender up axis"
+  },
+  "local_parameter_definitions": {
+    "L": "total vehicle length",
+    "W": "vehicle width",
+    "H_body": "bonnet/body height at the simplified front body datum",
+    "H_roof": "roof height",
+    "X_screen": "x-position in the formula frame of the top/front edge of the windscreen or front roof edge"
+  },
   "keypoints": [
     {
       "index": 0,
-      "name": "front_upper_left_body_shell_corner",
-      "status": "defined"
+      "name": "rear_bottom_left",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "0",
+        "-W/2",
+        "0"
+      ]
     },
     {
       "index": 1,
-      "name": "front_upper_right_body_shell_corner",
-      "status": "defined"
+      "name": "rear_bottom_right",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "0",
+        "W/2",
+        "0"
+      ]
     },
     {
       "index": 2,
-      "name": "front_lower_left_body_shell_corner",
-      "status": "defined"
+      "name": "rear_roof_left",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "0",
+        "-W/2",
+        "H_roof"
+      ]
     },
     {
       "index": 3,
-      "name": "front_lower_right_body_shell_corner",
-      "status": "defined"
+      "name": "rear_roof_right",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "0",
+        "W/2",
+        "H_roof"
+      ]
     },
     {
       "index": 4,
-      "name": "rear_upper_left_body_shell_corner",
-      "status": "defined"
+      "name": "front_bottom_left",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "L",
+        "-W/2",
+        "0"
+      ]
     },
     {
       "index": 5,
-      "name": "rear_upper_right_body_shell_corner",
-      "status": "defined"
+      "name": "front_bottom_right",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "L",
+        "W/2",
+        "0"
+      ]
     },
     {
       "index": 6,
-      "name": "rear_lower_left_body_shell_corner",
-      "status": "defined"
+      "name": "front_body_left",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "L",
+        "-W/2",
+        "H_body"
+      ]
     },
     {
       "index": 7,
-      "name": "rear_lower_right_body_shell_corner",
-      "status": "defined"
+      "name": "front_body_right",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "L",
+        "W/2",
+        "H_body"
+      ]
     },
     {
       "index": 8,
-      "name": "blocked_unresolved_semantic_datum_08",
-      "status": "blocked_unresolved",
-      "blocker": "Exact fixed amodal semantic datum 8 has not been specified. Training must fail until this datum is resolved."
+      "name": "screen_top_left",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "X_screen",
+        "-W/2",
+        "H_roof"
+      ]
     },
     {
       "index": 9,
-      "name": "blocked_unresolved_semantic_datum_09",
-      "status": "blocked_unresolved",
-      "blocker": "Exact fixed amodal semantic datum 9 has not been specified. Training must fail until this datum is resolved."
+      "name": "screen_top_right",
+      "status": "defined",
+      "formula_frame_xyz": [
+        "X_screen",
+        "W/2",
+        "H_roof"
+      ]
     }
   ],
   "wireframe_edges": [
-    [0, 1],
-    [1, 3],
-    [3, 2],
-    [2, 0],
-    [4, 5],
-    [5, 7],
-    [7, 6],
-    [6, 4],
-    [0, 4],
-    [1, 5],
-    [2, 6],
-    [3, 7]
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      3
+    ],
+    [
+      3,
+      2
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      4,
+      5
+    ],
+    [
+      5,
+      7
+    ],
+    [
+      7,
+      6
+    ],
+    [
+      6,
+      4
+    ],
+    [
+      0,
+      4
+    ],
+    [
+      1,
+      5
+    ],
+    [
+      2,
+      8
+    ],
+    [
+      3,
+      9
+    ],
+    [
+      8,
+      9
+    ],
+    [
+      6,
+      8
+    ],
+    [
+      7,
+      9
+    ]
   ],
   "measurement_notes": [
-    "The first eight datums are body-shell bounding-box corners.",
-    "Datums 8 and 9 are deliberately blocked until exact semantic choices are available.",
+    "The schema uses a simplified 10-point virtual hull; points are not required to coincide with literal rounded FBX mesh vertices.",
+    "The four rear datums are rear_bottom_left, rear_bottom_right, rear_roof_left, and rear_roof_right.",
+    "The four front lower/body datums are front_bottom_left, front_bottom_right, front_body_left, and front_body_right.",
+    "The two top windscreen/front-roof-edge datums are screen_top_left and screen_top_right.",
+    "The lower windscreen-base corners are deliberately omitted.",
     "Amodal 3D targets are supervised regardless of per-keypoint visibility."
   ],
-  "visibility_test_method": "A keypoint is visible when the semantic datum is directly visible to the camera under the dataset generator occlusion and self-occlusion test; visibility is an auxiliary target and must not mask amodal 3D supervision."
+  "visibility_test_method": "A keypoint is visible when the simplified virtual hull datum is directly visible to the camera under the dataset generator visibility test; visibility is an auxiliary target and must not mask amodal 3D supervision."
 }
