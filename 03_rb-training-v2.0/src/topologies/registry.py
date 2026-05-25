@@ -11,6 +11,7 @@ from torch import nn
 
 from . import (
     topology_2d_cnn,
+    topology_defender_amodal_keypoint_pose,
     topology_dual_stream_v0_2,
     topology_dual_stream_yaw,
     topology_dual_stream_yaw_from_tri_stream,
@@ -114,6 +115,7 @@ _REGISTRY: dict[str, TopologyDefinition] = {
     module.TOPOLOGY_ID: _build_definition(module)
     for module in (
         topology_2d_cnn,
+        topology_defender_amodal_keypoint_pose,
         topology_global_pool_cnn,
         topology_dual_stream_v0_2,
         topology_dual_stream_yaw,

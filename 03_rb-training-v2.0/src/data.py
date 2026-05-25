@@ -34,6 +34,7 @@ TRI_STREAM_GEOMETRY_ARRAY_KEY = "x_geometry"
 DUAL_STREAM_INPUT_MODE = "dual_stream_image_bbox_features"
 TRI_STREAM_INPUT_MODE = "tri_stream_distance_orientation_geometry"
 TRI_STREAM_DUAL_INPUT_MODE = "tri_stream_distance_geometry_as_dual"
+GEOMETRY_ONLY_INPUT_MODE = "geometry_only"
 SUPPORTED_NPZ_LAYOUTS: tuple[tuple[str, str], ...] = (
     (LEGACY_IMAGE_ARRAY_KEY, LEGACY_TARGET_ARRAY_KEY),
     (DUAL_STREAM_IMAGE_ARRAY_KEY, DUAL_STREAM_TARGET_ARRAY_KEY),
@@ -89,8 +90,8 @@ def input_mode_uses_bbox_features(input_mode: Any) -> bool:
 
 
 def input_mode_uses_geometry(input_mode: Any) -> bool:
-    """Return whether loader batches should include the tri-stream geometry input."""
-    return str(input_mode).strip() == TRI_STREAM_INPUT_MODE
+    """Return whether loader batches should include the x_geometry input."""
+    return str(input_mode).strip() in {TRI_STREAM_INPUT_MODE, GEOMETRY_ONLY_INPUT_MODE}
 
 
 def extra_input_array_keys_for_input_mode(input_mode: Any) -> tuple[str, ...]:
@@ -105,7 +106,7 @@ def primary_image_array_key_for_input_mode(input_mode: Any) -> str | None:
     normalized = str(input_mode).strip()
     if normalized == DUAL_STREAM_INPUT_MODE:
         return DUAL_STREAM_IMAGE_ARRAY_KEY
-    if normalized in {TRI_STREAM_INPUT_MODE, TRI_STREAM_DUAL_INPUT_MODE}:
+    if normalized in {TRI_STREAM_INPUT_MODE, TRI_STREAM_DUAL_INPUT_MODE, GEOMETRY_ONLY_INPUT_MODE}:
         return TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY
     return None
 
@@ -611,6 +612,91 @@ def _ordered_task_heads(
     return ordered
 
 
+def _schema_requirements(task_contract: Mapping[str, Any]) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    raw = task_contract.get("schema_requirements")
+    if not isinstance(raw, Mapping):
+        return ()
+    requirements: list[tuple[str, Mapping[str, Any]]] = []
+    for name, spec in raw.items():
+        if isinstance(spec, Mapping) and bool(spec.get("required", True)):
+            requirements.append((str(name), spec))
+    return tuple(requirements)
+
+
+def _required_schema_metadata_keys(task_contract: Mapping[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for _, spec in _schema_requirements(task_contract):
+        metadata = spec.get("required_npz_metadata")
+        if not isinstance(metadata, Mapping):
+            continue
+        keys.update(str(key) for key in metadata)
+    return keys
+
+
+def _npz_metadata_scalar(payload: Mapping[str, Any], key: str, *, npz_name: str) -> Any:
+    values = np.asarray(payload[key])
+    if values.shape == ():
+        return values.item()
+    flattened = values.reshape(-1)
+    if flattened.size == 0:
+        raise ValueError(f"{npz_name}: metadata key {key!r} is empty.")
+    first = flattened[0]
+    if flattened.size > 1:
+        first_text = str(first)
+        if any(str(value) != first_text for value in flattened[1:]):
+            raise ValueError(
+                f"{npz_name}: metadata key {key!r} must be scalar or constant per shard."
+            )
+    if hasattr(first, "item"):
+        return first.item()
+    return first
+
+
+def _metadata_matches_expected(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, bool):
+        return bool(actual) == expected
+    if isinstance(expected, int) and not isinstance(expected, bool):
+        try:
+            return int(float(actual)) == int(expected)
+        except (TypeError, ValueError):
+            return False
+    if isinstance(expected, float):
+        try:
+            return abs(float(actual) - float(expected)) <= 1e-8
+        except (TypeError, ValueError):
+            return False
+    return str(actual).strip() == str(expected).strip()
+
+
+def _validate_schema_requirements_for_payload(
+    payload: Mapping[str, Any],
+    task_contract: Mapping[str, Any],
+    *,
+    root_name: str,
+    npz_name: str,
+) -> None:
+    for requirement_name, spec in _schema_requirements(task_contract):
+        metadata = spec.get("required_npz_metadata")
+        if not isinstance(metadata, Mapping):
+            raise ValueError(
+                f"{root_name}: schema requirement {requirement_name!r} is missing "
+                "required_npz_metadata in the task contract."
+            )
+        for key, expected in metadata.items():
+            key_text = str(key)
+            actual = _npz_metadata_scalar(payload, key_text, npz_name=npz_name)
+            if not _metadata_matches_expected(actual, expected):
+                raise ValueError(
+                    f"{root_name}: shard {npz_name} metadata {key_text!r} mismatch for "
+                    f"schema requirement {requirement_name!r}; expected {expected!r}, got {actual!r}."
+                )
+        if spec.get("training_allowed") is False:
+            blocker = str(spec.get("blocker", "schema is marked unavailable for training")).strip()
+            raise ValueError(
+                f"{root_name}: schema requirement {requirement_name!r} is blocked; {blocker}"
+            )
+
+
 def _npz_bindings_for_columns(
     *,
     columns: tuple[str, ...],
@@ -677,8 +763,10 @@ def validate_task_contract_schema(
     uses_tri_stream_dual = input_mode == TRI_STREAM_DUAL_INPUT_MODE
     uses_bbox_features = input_mode_uses_bbox_features(input_mode)
     uses_geometry = input_mode == TRI_STREAM_INPUT_MODE
-    uses_tri_geometry_source = uses_geometry or uses_tri_stream_dual
-    if uses_bbox_features or uses_geometry:
+    uses_geometry_only = input_mode == GEOMETRY_ONLY_INPUT_MODE
+    uses_geometry_features = uses_geometry or uses_geometry_only
+    uses_tri_geometry_source = uses_geometry_features or uses_tri_stream_dual
+    if uses_bbox_features or uses_geometry_features:
         required_columns.update(BBOX_FEATURE_COLUMNS)
         expected_image_key = (
             TRI_STREAM_DISTANCE_IMAGE_ARRAY_KEY
@@ -753,6 +841,7 @@ def validate_task_contract_schema(
 
         if uses_dual_bbox_arrays:
             required_npz_keys.update({"bbox_features", "bbox_features_schema"})
+        required_npz_keys.update(_required_schema_metadata_keys(task_contract))
         if uses_tri_geometry_source:
             required_npz_keys.update(
                 {
@@ -771,6 +860,12 @@ def validate_task_contract_schema(
             )
 
         with np.load(npz_path, allow_pickle=False) as payload:
+            _validate_schema_requirements_for_payload(
+                payload,
+                task_contract,
+                root_name=root_name,
+                npz_name=npz_path.name,
+            )
             for npz_key, bound_columns in (*head_target_bindings, *head_debug_bindings):
                 values = np.asarray(payload[npz_key], dtype=np.float32)
                 if len(bound_columns) == 1:

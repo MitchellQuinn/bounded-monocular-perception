@@ -111,6 +111,9 @@ def _loss_weights_from_config(config: TrainConfig) -> dict[str, float]:
         "distance": float(config.distance_loss_weight),
         "orientation": float(config.orientation_loss_weight),
         "position": float(config.position_loss_weight),
+        "center_3d": float(config.center_3d_loss_weight),
+        "keypoint_3d": float(config.keypoint_3d_loss_weight),
+        "keypoint_visibility": float(config.keypoint_visibility_loss_weight),
     }
     for name, value in weights.items():
         if value < 0.0:
@@ -241,6 +244,20 @@ def _selected_loss_components(
         if name in loss_components:
             selected[str(name)] = float(loss_components[name])
     return selected
+
+
+def _schema_metadata_from_task_contract(task_contract: Mapping[str, Any]) -> dict[str, Any]:
+    raw_requirements = task_contract.get("schema_requirements")
+    if not isinstance(raw_requirements, Mapping):
+        return {}
+    metadata: dict[str, Any] = {}
+    for spec in raw_requirements.values():
+        if not isinstance(spec, Mapping):
+            continue
+        required_metadata = spec.get("required_npz_metadata")
+        if isinstance(required_metadata, Mapping):
+            metadata.update({str(key): value for key, value in required_metadata.items()})
+    return metadata
 
 
 def _format_yaw_metric_log_line(
@@ -641,7 +658,17 @@ def _write_model_card(
         input_text = "distance image tensor plus orientation image tensor plus geometry vector"
     else:
         input_text = "grayscale full-frame tensor normalized to [0, 1]"
-    if {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
+    if "keypoint_3d_loss" in declared_component_losses:
+        loss_text = (
+            "Weighted Defender amodal pose loss "
+            f"(Huber delta={config.huber_delta}, "
+            f"distance={config.distance_loss_weight}, "
+            f"orientation={config.orientation_loss_weight}, "
+            f"center_3d={config.center_3d_loss_weight}, "
+            f"keypoint_3d={config.keypoint_3d_loss_weight}, "
+            f"keypoint_visibility={config.keypoint_visibility_loss_weight} BCEWithLogits)"
+        )
+    elif {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
         loss_text = (
             "Weighted multitask Huber "
             f"(delta={config.huber_delta}, distance={config.distance_loss_weight}, "
@@ -952,6 +979,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
     topology_spec = _resolve_topology_from_train_config(config)
     topology_contract_signature_value = topology_contract_signature(topology_spec)
     task_contract_signature_value = task_contract_signature(topology_spec)
+    schema_metadata = _schema_metadata_from_task_contract(topology_spec.task_contract)
     loss_weights = _loss_weights_from_config(config)
     active_loss_roles = {
         str(spec.get("loss_role", head_name)).strip() or str(head_name)
@@ -1085,8 +1113,11 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "model_topology": topology_spec.to_dict(),
             "topology_contract": dict(topology_spec.topology_contract),
             "task_contract": dict(topology_spec.task_contract),
+            "schema_metadata": schema_metadata,
         }
     )
+    if schema_metadata:
+        config_payload.update(schema_metadata)
     write_json(run_dir / "config.json", config_payload)
 
     dataset_summary = {
@@ -1107,6 +1138,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             for record in preprocessing_contract_sources
         ],
         "preprocessing_contract_warnings": preprocessing_contract_warnings,
+        "schema_metadata": schema_metadata,
     }
     write_json(run_dir / "dataset_summary.json", dataset_summary)
 
@@ -1144,6 +1176,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "model_topology": topology_spec.to_dict(),
             "topology_contract": dict(topology_spec.topology_contract),
             "task_contract": dict(topology_spec.task_contract),
+            "schema_metadata": schema_metadata,
         },
     )
 
@@ -1639,7 +1672,14 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         target_name = target_columns[0]
     else:
         target_name = ",".join(target_columns)
-    if {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
+    if "keypoint_3d_loss" in declared_component_losses:
+        loss_function_text = (
+            f"WeightedDefenderAmodalPoseLoss(delta={config.huber_delta},"
+            f"distance={loss_weights['distance']},orientation={loss_weights['orientation']},"
+            f"center_3d={loss_weights['center_3d']},keypoint_3d={loss_weights['keypoint_3d']},"
+            f"keypoint_visibility={loss_weights['keypoint_visibility']},visibility=BCEWithLogits)"
+        )
+    elif {"distance_loss", "orientation_loss"}.issubset(declared_component_losses):
         loss_function_text = (
             f"WeightedMultiTaskHuber(delta={config.huber_delta},"
             f"distance={loss_weights['distance']},orientation={loss_weights['orientation']})"
@@ -1679,6 +1719,7 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         "model_topology": topology_spec.to_dict(),
         "topology_contract": dict(topology_spec.topology_contract),
         "task_contract": dict(topology_spec.task_contract),
+        "schema_metadata": schema_metadata,
         "input_representation": _describe_input_representation(preprocessing_contract),
         "input_shape": [1, int(target_hw[0]), int(target_hw[1])],
         "target_name": target_name,
@@ -1719,6 +1760,9 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
             "distance_loss_weight": float(config.distance_loss_weight),
             "orientation_loss_weight": float(config.orientation_loss_weight),
             "position_loss_weight": float(config.position_loss_weight),
+            "center_3d_loss_weight": float(config.center_3d_loss_weight),
+            "keypoint_3d_loss_weight": float(config.keypoint_3d_loss_weight),
+            "keypoint_visibility_loss_weight": float(config.keypoint_visibility_loss_weight),
             "enable_lr_scheduler": enable_lr_scheduler,
             "lr_scheduler_factor": lr_scheduler_factor,
             "lr_scheduler_patience": lr_scheduler_patience,
@@ -1770,6 +1814,8 @@ def train_distance_regressor(config: TrainConfig | dict[str, Any]) -> dict[str, 
         },
         "change_note": config.change_note,
     }
+    if schema_metadata:
+        run_manifest.update(schema_metadata)
     write_json(run_dir / "run_manifest.json", run_manifest)
 
     _write_model_card(
@@ -1808,6 +1854,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--distance-loss-weight", type=float, default=1.0)
     parser.add_argument("--orientation-loss-weight", type=float, default=1.0)
     parser.add_argument("--position-loss-weight", type=float, default=1.0)
+    parser.add_argument("--center-3d-loss-weight", type=float, default=1.0)
+    parser.add_argument("--keypoint-3d-loss-weight", type=float, default=1.0)
+    parser.add_argument("--keypoint-visibility-loss-weight", type=float, default=1.0)
     parser.add_argument("--early-stopping-patience", type=int, default=4)
     parser.add_argument("--model-name", default="2d-cnn")
     parser.add_argument("--run-id", default=None)
@@ -1877,6 +1926,9 @@ def main() -> None:
         distance_loss_weight=args.distance_loss_weight,
         orientation_loss_weight=args.orientation_loss_weight,
         position_loss_weight=args.position_loss_weight,
+        center_3d_loss_weight=args.center_3d_loss_weight,
+        keypoint_3d_loss_weight=args.keypoint_3d_loss_weight,
+        keypoint_visibility_loss_weight=args.keypoint_visibility_loss_weight,
         early_stopping_patience=args.early_stopping_patience,
         model_name=args.model_name,
         run_id=args.run_id,

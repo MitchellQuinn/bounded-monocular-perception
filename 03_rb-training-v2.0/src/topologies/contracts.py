@@ -25,6 +25,7 @@ _RUNTIME_TASK_CONTRACT_KEYS = (
     "output_kind",
     "target_columns",
     "debug_target_columns",
+    "schema_requirements",
     "heads",
 )
 
@@ -243,6 +244,11 @@ def task_contract_from_topology_contract(
             or head_name_text,
             "target_kind": str(target_spec.get("kind", "regression")).strip() or "regression",
         }
+        loss_kind = str(
+            head_spec_raw.get("loss_kind", target_spec.get("loss_kind", "huber"))
+        ).strip()
+        if loss_kind:
+            task_head["loss_kind"] = loss_kind
         if debug_columns:
             task_head["debug_target_columns"] = list(debug_columns)
         if output_kind == "mapping":
@@ -284,6 +290,9 @@ def task_contract_from_topology_contract(
         if isinstance(contract.get("reporting"), Mapping)
         else {},
     }
+    schema_requirements = runtime.get("schema_requirements", contract.get("schema_requirements"))
+    if isinstance(schema_requirements, Mapping):
+        task_contract["schema_requirements"] = dict(schema_requirements)
     return _canonicalize_mapping(task_contract, label="task_contract")
 
 

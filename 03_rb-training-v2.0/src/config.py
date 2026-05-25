@@ -23,6 +23,9 @@ class TrainConfig:
     distance_loss_weight: float = 1.0
     orientation_loss_weight: float = 1.0
     position_loss_weight: float = 1.0
+    center_3d_loss_weight: float = 1.0
+    keypoint_3d_loss_weight: float = 1.0
+    keypoint_visibility_loss_weight: float = 1.0
     early_stopping_patience: int = 4
     model_name: str = "2d-cnn"
     run_id: str | None = None

@@ -109,6 +109,9 @@ def _loss_weights_from_payload(payload: dict[str, Any]) -> dict[str, float]:
         "distance": float(payload.get("distance_loss_weight", 1.0)),
         "orientation": float(payload.get("orientation_loss_weight", 1.0)),
         "position": float(payload.get("position_loss_weight", 1.0)),
+        "center_3d": float(payload.get("center_3d_loss_weight", 1.0)),
+        "keypoint_3d": float(payload.get("keypoint_3d_loss_weight", 1.0)),
+        "keypoint_visibility": float(payload.get("keypoint_visibility_loss_weight", 1.0)),
     }
 
 
@@ -129,6 +132,20 @@ def _selected_loss_components(
         if name in loss_components:
             selected[str(name)] = float(loss_components[name])
     return selected
+
+
+def _schema_metadata_from_task_contract(task_contract: Mapping[str, Any]) -> dict[str, Any]:
+    raw_requirements = task_contract.get("schema_requirements")
+    if not isinstance(raw_requirements, Mapping):
+        return {}
+    metadata: dict[str, Any] = {}
+    for spec in raw_requirements.values():
+        if not isinstance(spec, Mapping):
+            continue
+        required_metadata = spec.get("required_npz_metadata")
+        if isinstance(required_metadata, Mapping):
+            metadata.update({str(key): value for key, value in required_metadata.items()})
+    return metadata
 
 
 def evaluate_split(
@@ -552,6 +569,7 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         shard_cache=validation_shard_cache,
     )
 
+    schema_metadata = _schema_metadata_from_task_contract(topology_spec.task_contract)
     summary: dict[str, Any] = {
         "evaluated_utc": utc_now_iso(),
         "run_dir": str(run_dir),
@@ -567,6 +585,7 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
         "model_topology": topology_spec.to_dict(),
         "topology_contract": dict(topology_spec.topology_contract),
         "task_contract": dict(topology_spec.task_contract),
+        "schema_metadata": schema_metadata,
         "padding_mode": padding_mode,
         "target_hw": {"height": int(target_hw[0]), "width": int(target_hw[1])},
         "accuracy_tolerance_m": accuracy_tolerance_m,
@@ -686,6 +705,8 @@ def evaluate_saved_run(config: EvalConfig | dict[str, Any]) -> dict[str, Any]:
     if val_eval.y_true.size > 0 and val_eval.y_pred.size > 0:
         save_prediction_scatter(val_eval.y_true, val_eval.y_pred, scatter_path)
         save_residual_plot(val_eval.y_true, val_eval.y_pred, residual_path)
+    if schema_metadata:
+        summary.update(schema_metadata)
     write_json(run_dir / "evaluation_summary.json", summary)
 
     result = {

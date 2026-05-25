@@ -11,10 +11,11 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from .data import Batch, input_mode_uses_bbox_features
+from .data import Batch, GEOMETRY_ONLY_INPUT_MODE, input_mode_uses_bbox_features
 from .topologies.contracts import (
     reporting_family,
     reporting_orientation_accuracy_thresholds_deg,
+    reporting_train_losses,
     reporting_validation_metrics,
 )
 
@@ -84,6 +85,11 @@ def batch_to_model_inputs(
             "x_orientation_image": x_orientation_image,
             "x_geometry": x_geometry,
         }
+    if input_mode == GEOMETRY_ONLY_INPUT_MODE:
+        if batch.geometry is None:
+            raise ValueError("Topology input_mode='geometry_only' requires geometry in the batch.")
+        x_geometry = torch.from_numpy(batch.geometry).to(device=device, dtype=torch.float32)
+        return {"x_geometry": x_geometry}
     raise ValueError(f"Unsupported task_contract input_mode={input_mode!r}")
 
 
@@ -235,24 +241,44 @@ def compute_task_loss(
     huber_delta: float,
     loss_weights: Mapping[str, float] | None = None,
 ) -> LossResult:
-    """Compute a weighted multitask Huber loss from named prediction heads."""
+    """Compute weighted task losses from named prediction heads."""
     weights = {str(key): float(value) for key, value in (loss_weights or {}).items()}
     total: torch.Tensor | None = None
     components: dict[str, torch.Tensor] = {}
+    declared_losses = reporting_train_losses(task_contract)
+    expose_weighted = any(
+        str(name).startswith(("raw_", "weighted_")) for name in declared_losses
+    )
 
     for head_name, head_spec in _ordered_heads(task_contract):
         if head_name not in prediction_heads or head_name not in target_heads:
             raise KeyError(f"Missing prediction/target tensors for head {head_name!r}.")
         loss_role = str(head_spec.get("loss_role", head_name)).strip() or head_name
+        loss_kind = str(head_spec.get("loss_kind", "huber")).strip().lower() or "huber"
         component_name = f"{loss_role}_loss"
-        component = F.huber_loss(
-            prediction_heads[head_name],
-            target_heads[head_name],
-            delta=float(huber_delta),
-            reduction="mean",
-        )
+        if loss_kind in {"bce_with_logits", "binary_cross_entropy_with_logits"}:
+            component = F.binary_cross_entropy_with_logits(
+                prediction_heads[head_name],
+                target_heads[head_name],
+                reduction="mean",
+            )
+        elif loss_kind in {"huber", "smooth_l1", "smoothl1"}:
+            component = F.huber_loss(
+                prediction_heads[head_name],
+                target_heads[head_name],
+                delta=float(huber_delta),
+                reduction="mean",
+            )
+        else:
+            raise ValueError(
+                f"Unsupported loss_kind={loss_kind!r} for task head {head_name!r}."
+            )
+        weight = float(weights.get(loss_role, 1.0))
+        weighted = component * weight
         components[component_name] = component
-        weighted = component * float(weights.get(loss_role, 1.0))
+        if expose_weighted:
+            components[f"raw_{component_name}"] = component
+            components[f"weighted_{component_name}"] = weighted
         total = weighted if total is None else total + weighted
 
     if total is None:
@@ -533,6 +559,34 @@ def summarize_task_metrics(
             f"Unsupported task contract {prediction_mode!r}: no distance or position metrics head found."
         )
 
+    center_head = next(
+        (
+            head_name
+            for head_name, spec in ordered_heads
+            if str(spec.get("metrics_role", "")).strip()
+            in {"defender_center_3d", "center_3d"}
+        ),
+        None,
+    )
+    keypoint_head = next(
+        (
+            head_name
+            for head_name, spec in ordered_heads
+            if str(spec.get("metrics_role", "")).strip()
+            in {"defender_keypoints_3d", "keypoints_3d"}
+        ),
+        None,
+    )
+    visibility_head = next(
+        (
+            head_name
+            for head_name, spec in ordered_heads
+            if str(spec.get("metrics_role", "")).strip()
+            in {"defender_keypoints_visible", "keypoints_visible"}
+        ),
+        None,
+    )
+
     if orientation_head is not None:
         true_orientation = np.asarray(target_heads[orientation_head], dtype=np.float32)
         pred_orientation = np.asarray(prediction_heads[orientation_head], dtype=np.float32)
@@ -547,7 +601,7 @@ def summarize_task_metrics(
         pred_yaw_deg = _decode_yaw_deg(pred_orientation[:, 0], pred_orientation[:, 1])
         pred_norm = np.linalg.norm(pred_orientation, axis=1).astype(np.float32)
         angular_error = _angular_error_deg(pred_yaw_deg, true_yaw_deg)
-        if declared_reporting_family == "distance_orientation_multitask":
+        if declared_reporting_family in {"distance_orientation_multitask", "defender_amodal_keypoint_pose"}:
             orientation_metrics: dict[str, float] = {
                 "yaw_mean_error_deg": float(np.mean(angular_error)),
                 "yaw_median_error_deg": float(np.median(angular_error)),
@@ -576,6 +630,93 @@ def summarize_task_metrics(
         true_yaw_deg = None
         pred_yaw_deg = None
         angular_error = None
+
+    if center_head is not None:
+        true_center = np.asarray(target_heads[center_head], dtype=np.float32)
+        pred_center = np.asarray(prediction_heads[center_head], dtype=np.float32)
+        if true_center.ndim != 2 or pred_center.ndim != 2 or true_center.shape[1] != 3 or pred_center.shape[1] != 3:
+            raise ValueError(
+                "defender_center_3d head requires (N, 3) arrays; "
+                f"got true={true_center.shape} pred={pred_center.shape}"
+            )
+        center_error = np.linalg.norm(pred_center - true_center, axis=1).astype(np.float32)
+        task_metrics["defender_center_3d"] = {
+            "center_mean_error_m": float(np.mean(center_error)),
+            "center_median_error_m": float(np.median(center_error)),
+            "center_p95_error_m": float(np.percentile(center_error, 95)),
+        }
+
+    if keypoint_head is not None:
+        true_keypoints_flat = np.asarray(target_heads[keypoint_head], dtype=np.float32)
+        pred_keypoints_flat = np.asarray(prediction_heads[keypoint_head], dtype=np.float32)
+        if true_keypoints_flat.ndim != 2 or pred_keypoints_flat.ndim != 2:
+            raise ValueError(
+                "defender_keypoints_3d head requires rank-2 arrays; "
+                f"got true={true_keypoints_flat.shape} pred={pred_keypoints_flat.shape}"
+            )
+        if true_keypoints_flat.shape != pred_keypoints_flat.shape:
+            raise ValueError(
+                "defender_keypoints_3d prediction/target shape mismatch; "
+                f"true={true_keypoints_flat.shape} pred={pred_keypoints_flat.shape}"
+            )
+        coordinate_width = 3
+        if true_keypoints_flat.shape[1] % coordinate_width != 0:
+            raise ValueError(
+                "defender_keypoints_3d width must be divisible by 3; "
+                f"got {true_keypoints_flat.shape[1]}"
+            )
+        num_keypoints = int(true_keypoints_flat.shape[1] // coordinate_width)
+        true_keypoints = true_keypoints_flat.reshape(-1, num_keypoints, coordinate_width)
+        pred_keypoints = pred_keypoints_flat.reshape(-1, num_keypoints, coordinate_width)
+        keypoint_diff = pred_keypoints - true_keypoints
+        point_error = np.linalg.norm(keypoint_diff, axis=2).astype(np.float32)
+        keypoint_metrics: dict[str, float] = {
+            "keypoint_mean_point_error_m": float(np.mean(point_error)),
+            "keypoint_median_point_error_m": float(np.median(point_error)),
+            "keypoint_p95_point_error_m": float(np.percentile(point_error, 95)),
+            "keypoint_mean_coordinate_error_m": float(np.mean(np.abs(keypoint_diff))),
+        }
+        if visibility_head is not None and visibility_head in target_heads:
+            true_visibility = np.asarray(target_heads[visibility_head], dtype=np.float32)
+            if true_visibility.shape != point_error.shape:
+                raise ValueError(
+                    "defender_keypoints_visible target shape must match keypoint errors; "
+                    f"visibility={true_visibility.shape} errors={point_error.shape}"
+                )
+            visible_mask = true_visibility >= 0.5
+            hidden_mask = ~visible_mask
+            keypoint_metrics["visible_keypoint_mean_error_m"] = (
+                float(np.mean(point_error[visible_mask])) if np.any(visible_mask) else float("nan")
+            )
+            keypoint_metrics["hidden_keypoint_mean_error_m"] = (
+                float(np.mean(point_error[hidden_mask])) if np.any(hidden_mask) else float("nan")
+            )
+        task_metrics["defender_keypoints_3d"] = keypoint_metrics
+
+    if visibility_head is not None:
+        true_visibility = np.asarray(target_heads[visibility_head], dtype=np.float32)
+        pred_visibility_logits = np.asarray(prediction_heads[visibility_head], dtype=np.float32)
+        if true_visibility.shape != pred_visibility_logits.shape:
+            raise ValueError(
+                "defender_keypoints_visible prediction/target shape mismatch; "
+                f"true={true_visibility.shape} pred={pred_visibility_logits.shape}"
+            )
+        true_visible = true_visibility >= 0.5
+        pred_visible = pred_visibility_logits >= 0.0
+        tp = int(np.count_nonzero(pred_visible & true_visible))
+        tn = int(np.count_nonzero(~pred_visible & ~true_visible))
+        fp = int(np.count_nonzero(pred_visible & ~true_visible))
+        fn = int(np.count_nonzero(~pred_visible & true_visible))
+        total_visibility = max(1, int(true_visible.size))
+        precision = float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0
+        recall = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+        f1 = float((2.0 * precision * recall) / (precision + recall)) if (precision + recall) > 0.0 else 0.0
+        task_metrics["defender_keypoints_visible"] = {
+            "keypoint_visibility_accuracy": float((tp + tn) / total_visibility),
+            "keypoint_visibility_precision": precision,
+            "keypoint_visibility_recall": recall,
+            "keypoint_visibility_f1": f1,
+        }
 
     if collect_predictions:
         if rows is None:
