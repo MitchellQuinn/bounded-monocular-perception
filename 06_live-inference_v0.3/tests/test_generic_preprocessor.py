@@ -38,7 +38,6 @@ from live_inference.preprocessing import (  # noqa: E402
     FixedCenterRoiLocator,
     ForegroundExtractionPolicyState,
     ManualFixedRoiLocator,
-    PreprocessingDebugError,
     StageTransformPolicyState,
     TriStreamLivePreprocessor,
 )
@@ -351,7 +350,7 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         distance_image = prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
         self.assertGreater(int(np.count_nonzero(distance_image < 250)), 40_000)
 
-    def test_incident_003_overexpanded_foreground_is_rejected(self) -> None:
+    def test_incident_003_overexpanded_foreground_is_diagnostic_only(self) -> None:
         image = np.full((1200, 1920), 255, dtype=np.uint8)
         image[420:740, 944:1264] = 170
         cv2.rectangle(image, (944, 441), (1247, 699), 100, thickness=-1)
@@ -367,22 +366,53 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
             ),
         )
 
-        with self.assertRaises(PreprocessingDebugError) as raised:
-            preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
+        prepared = preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
 
-        metadata = raised.exception.preprocessing_metadata
+        metadata = prepared.preprocessing_metadata
         self.assertEqual(
             metadata["foreground_locator_consistency_status"],
-            "rejected_expanded_foreground",
+            "diagnostic_expanded_foreground",
         )
         self.assertIn(
             "implausibly large",
-            metadata["preprocessing_failure_message"],
+            metadata["foreground_locator_consistency_warning"],
         )
         self.assertGreater(metadata["foreground_pixel_count"], 70_000)
         self.assertGreater(metadata["foreground_locator_bbox_area_ratio"], 4.0)
         self.assertGreater(metadata["foreground_locator_width_ratio"], 1.75)
         self.assertGreater(metadata["foreground_locator_height_ratio"], 1.75)
+
+    def test_threshold_foreground_selects_target_component(self) -> None:
+        image = np.full((600, 960), 255, dtype=np.uint8)
+        image[140:460, 320:640] = 180
+        cv2.rectangle(image, (420, 240), (540, 340), 75, thickness=-1)
+        cv2.rectangle(image, (355, 385), (605, 430), 125, thickness=-1)
+        ok, encoded = cv2.imencode(".png", image)
+        self.assertTrue(ok)
+        image_bytes = encoded.tobytes()
+        preprocessor = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=ManualFixedRoiLocator(
+                bbox_xyxy_px=(420.0, 240.0, 540.0, 340.0),
+                roi_wh_px=(320, 320),
+            ),
+        )
+
+        prepared = preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        diagnostics = metadata["foreground_extraction_diagnostics"]
+        self.assertEqual(
+            diagnostics["component_selection_status"],
+            "selected_component",
+        )
+        self.assertGreaterEqual(diagnostics["component_selection_component_count"], 2)
+        self.assertLess(metadata["foreground_pixel_count"], 20_000)
+        self.assertGreater(metadata["foreground_pixel_count"], 10_000)
+        x1, y1, x2, y2 = metadata["foreground_bbox_xyxy_px"]
+        self.assertGreaterEqual(x1, 415.0)
+        self.assertLessEqual(x2, 545.0)
+        self.assertLess(y2, 360.0)
 
     def test_foreground_policy_can_select_legacy_silhouette_path(self) -> None:
         image_bytes = _fixture_image_bytes()

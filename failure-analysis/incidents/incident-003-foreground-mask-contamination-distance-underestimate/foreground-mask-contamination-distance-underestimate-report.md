@@ -3,7 +3,7 @@
 **Incident:** `incident-003-foreground-mask-contamination-distance-underestimate`  
 **System:** bounded monocular perception, live inference v0.3  
 **Date analysed:** 2026-05-26  
-**Status:** Partially remediated; P0 guard implemented  
+**Status:** Partially remediated; component-aware foreground extraction implemented  
 **Primary trace:** [`20260526T111823Z__600bc624-cee3-4aa5-a22f-3cdbda11963a__354ad859`](evidence/traces/20260526T111823Z__600bc624-cee3-4aa5-a22f-3cdbda11963a__354ad859)
 
 ## 1. Executive Summary
@@ -24,7 +24,7 @@ x_geometry
 
 All three streams were contaminated by the foreground mask. The model saw a large, dark, contiguous foreground region on a `320 x 320 px` canvas and inferred a closer object.
 
-The first remediation is now implemented: the live preprocessor rejects frames where foreground geometry is implausibly small or implausibly large relative to the accepted locator bbox. This prevents the incident trace from producing an unqualified scalar prediction. The remaining recommended work is to add locator-anchored fallback extraction, improve background-removal workflow, and make foreground extraction more component-aware.
+The initial foreground-vs-locator guard was useful diagnostically, but was too brittle as a live rejection policy. The implemented remediation now keeps that consistency check as trace metadata while changing the threshold foreground path to select a coherent connected component instead of accepting every dark pixel in the ROI. The remaining recommended work is to validate against a broader trace fixture set, improve background-removal workflow, and continue the model-representation pivot described in incident 002.
 
 ## 2. Incident Scope
 
@@ -210,17 +210,17 @@ The failure is most likely under these conditions:
 - no background snapshot available for subtraction
 - foreground extraction based primarily on grayscale thresholding
 - ROI large enough to include adjacent support texture
-- no post-foreground consistency check against locator geometry
+- no post-foreground component selection or foreground-confidence scoring
 
 The trace system limited the impact by preserving enough evidence to reconstruct the failure. Operationally, however, the runtime should prevent this class of corrupted input from reaching the model.
 
 ## 11. Proposed Remediation
 
-### 11.1 Add a post-foreground quality gate
+### 11.1 Keep a post-foreground diagnostic gate
 
-Add a guard after foreground extraction and before model inference. The guard should compare foreground geometry against locator geometry and reject or fall back when they disagree.
+Keep a diagnostic check after foreground extraction and before model inference. The check should compare foreground geometry against locator geometry and report when they disagree. It should not be the primary live remediation because the locator bbox is not the model's object-extent contract; the locator primarily defines the fixed ROI center.
 
-Suggested checks:
+Useful diagnostic checks:
 
 - foreground bbox width or height exceeds the locator bbox by more than a configured ratio
 - foreground bbox area is several times larger than locator bbox area
@@ -228,7 +228,7 @@ Suggested checks:
 - foreground pixel count is implausibly high relative to locator bbox area
 - threshold diagnostics show high Otsu foreground fraction or weak background-white separation
 
-For this trace, the guard would have fired:
+For this trace, the diagnostic would have fired:
 
 ```text
 locator bbox:    150 x 117 px
@@ -237,21 +237,31 @@ foreground / locator bbox area ratio: 4.49 x
 foreground pixels / locator bbox area ratio: 2.55 x
 ```
 
-Failing closed is acceptable. A rejected frame with a clear preprocessing warning is better than a wrong distance estimate with no indication of degraded input quality.
+Failing closed can be appropriate when the system has no recovery path, but this incident showed that a hard foreground-vs-locator rejection can reduce overall live usefulness. The preferred live behaviour is to correct recoverable masks first, then emit diagnostic metadata and warnings for unresolved cases.
 
-### 11.2 Add a locator-anchored fallback path
+### 11.2 Add component-aware threshold extraction
 
-If locator confidence is high but foreground extraction is over-expanded, the system can attempt a bounded fallback:
+The immediate remediation is to keep the simple thresholding front end, then apply connected-component selection before rendering model inputs:
+
+1. Estimate the threshold mask as before.
+2. Morphologically close the mask to stabilize the target component.
+3. Score connected components by area, center proximity, border contact, and ROI saturation.
+4. Reject components that look like support-surface saturation rather than object extent.
+5. If the largest threshold component saturates the ROI, retry with a stricter threshold and select the best strict component.
+6. Rebuild `x_distance_image`, `x_orientation_image`, and `x_geometry` from the selected component.
+
+This preserves the useful signal from thresholding while preventing disconnected or ROI-saturating support-surface texture from dominating the geometry.
+
+### 11.3 Add a locator-anchored fallback path
+
+If component selection remains ambiguous, the system can attempt a bounded locator-aware fallback:
 
 1. Define a padded locator gate, for example `1.25x` to `1.50x` around the accepted locator bbox.
 2. Keep only thresholded connected components that intersect the locator gate.
 3. Prefer the component or component group nearest the locator center.
-4. Rebuild `x_distance_image`, `x_orientation_image`, and `x_geometry` from the gated mask.
-5. Mark the result in metadata as a fallback, not as the primary path.
+4. Mark the result in metadata as a fallback, not as the primary path.
 
-This would preserve the useful signal from thresholding while preventing distant support-surface texture from dominating the geometry.
-
-### 11.3 Enable and operationalize background removal
+### 11.4 Enable and operationalize background removal
 
 The trace reports that background removal was not captured or applied. For a fixed-camera bounded-perception system, background subtraction is a natural control.
 
@@ -264,7 +274,7 @@ Recommended changes:
 
 Background removal will not solve every issue, but it directly targets support-surface contamination.
 
-### 11.4 Improve foreground extraction beyond global thresholding
+### 11.5 Improve foreground extraction beyond global thresholding
 
 The current threshold path is simple and fast, but it is sensitive to support texture. A stronger foreground extractor should combine intensity with spatial and locator priors.
 
@@ -278,30 +288,38 @@ Candidate improvements:
 
 The key design requirement is that foreground extraction should explain why a set of pixels is the vehicle, not merely why they are dark.
 
-### 11.5 Continue the model-representation pivot
+### 11.6 Continue the model-representation pivot
 
 Incident 002 already argues for an amodal keypoint topology. Incident 003 reinforces that direction. A keypoint or amodal-geometry model can expose intermediate structure that is easier to validate than a scalar distance regressor.
 
 This does not remove the need for clean preprocessing. It does reduce the chance that one contaminated foreground mask silently becomes the only explanation for distance.
 
-### 11.6 Implemented P0 guard
+### 11.7 Implemented P0 changes
 
-The first remediation has been implemented in the live v0.3 generic tri-stream preprocessor. The existing foreground-vs-locator guard previously covered only the incident-001 collapse case, where foreground became implausibly small relative to the accepted locator bbox. It now also rejects the incident-003 expansion case, where foreground is implausibly large relative to the locator in both dimensions.
+The live v0.3 generic tri-stream preprocessor has been updated in two ways.
 
-The implemented guard records top-level trace metadata including:
+First, the foreground-vs-locator check is now diagnostic-only. It records top-level trace metadata including:
 
 ```text
 foreground_locator_consistency_status
 foreground_locator_consistency_reason
+foreground_locator_consistency_warning
 foreground_locator_width_ratio
 foreground_locator_height_ratio
 foreground_locator_bbox_area_ratio
 foreground_locator_pixel_area_ratio
 ```
 
-For the incident trace, the guard reports `rejected_expanded_foreground` and raises a preprocessing debug error before model inference. The failure still carries traceable preprocessing metadata and debug artifacts, so the runtime fails closed without losing diagnostic evidence.
+For incident-shaped over-expansion, the status is now `diagnostic_expanded_foreground`. The live path no longer raises a preprocessing debug error solely because foreground and locator extents disagree.
 
-Regression coverage was added to `test_generic_preprocessor.py` using an incident-shaped synthetic ROI that reproduces the over-expanded foreground/compact-locator geometry. The copied live trace remains the evidence record. The focused preprocessor suite and the full v0.3 live-inference unittest suite pass after the change.
+Second, threshold foreground extraction now performs connected-component selection before rendering model inputs. The trace-level replay over the two most recent ROI crops showed the intended effect:
+
+| Trace | Old contaminated foreground | New selected foreground | Selection path |
+| --- | ---: | ---: | --- |
+| `20260526T142310Z...` | broad/noisy ROI-scale mask | `29,721 px` | strict component after saturated candidate |
+| `20260526T142231Z...` | broad/noisy mask with support texture | `18,082 px` | selected threshold component |
+
+Regression coverage was updated in `test_generic_preprocessor.py` to verify that the over-expanded foreground condition is diagnostic-only and that disconnected threshold contaminants are excluded by component selection. The copied live trace remains the evidence record. The focused preprocessor suite and the full v0.3 live-inference unittest suite pass after the change.
 
 ## 12. Verification Plan
 
@@ -311,21 +329,22 @@ The remediation should be validated with fixture-backed tests and live traces.
 
 Use this trace as a regression fixture. A test should assert at least one of:
 
-- the foreground quality gate rejects the saved trace
-- the fallback path produces a foreground bbox that is close to the locator extent
-- the trace does not produce an unqualified scalar prediction
+- component selection materially reduces the contaminated foreground extent
+- diagnostic metadata reports foreground/locator disagreement when it remains
+- the trace does not produce an unqualified scalar prediction if component selection cannot recover a plausible target
 
-The test should also assert that clean May 21 v0.5 traces from incident 002 are not rejected by the same guard.
+The test should also assert that clean May 21 v0.5 traces from incident 002 are not degraded by the component selector.
 
 ### 12.2 Model-input replay
 
 Record model-input-level replay tests for:
 
 - original contaminated inputs
-- locator-anchored fallback inputs
+- component-selected threshold inputs
+- locator-anchored fallback inputs, if added
 - background-removal-enabled inputs, once captured
 
-The goal is not to tune the model to one trace. The goal is to prove that corrupted apparent-scale inputs are either corrected or rejected before inference.
+The goal is not to tune the model to one trace. The goal is to prove that corrupted apparent-scale inputs are corrected where possible and clearly flagged where not.
 
 ### 12.3 Live validation
 
@@ -338,18 +357,19 @@ Run a controlled sweep after remediation:
 
 Acceptance criteria:
 
-- no accepted trace has foreground bbox area more than a configured multiple of locator bbox area
-- no accepted trace has foreground pixel count inconsistent with locator geometry
-- rejected traces produce explicit preprocessing warnings
+- accepted traces have foreground geometry consistent with the visible target
+- component-selection diagnostics explain which component was selected
+- unrecoverable traces produce explicit preprocessing warnings
 - distance predictions for accepted traces return to the expected tolerance band used in the failure-analysis framework
 
 ## 13. Recommended Implementation Order
 
 | Priority | Work item | Rationale |
 | --- | --- | --- |
-| P0 | Add foreground-vs-locator quality gate | Implemented; prevents silent corrupted predictions |
-| P0 | Add metadata and warning fields for foreground contamination | Implemented for guard metrics and rejection reason |
-| P1 | Add locator-anchored fallback extraction | Preserves predictions when contamination is recoverable |
+| P0 | Make foreground-vs-locator quality check diagnostic-only | Implemented; avoids brittle live rejection while preserving evidence |
+| P0 | Add threshold connected-component selection | Implemented; prevents simple shadow/support components from dominating model inputs |
+| P0 | Add metadata and warning fields for foreground contamination | Implemented for consistency and component-selection metrics |
+| P1 | Add locator-anchored fallback extraction | Further improves recovery when component selection is ambiguous |
 | P1 | Add fixture tests using this trace | Prevents recurrence |
 | P1 | Improve background-removal workflow in live GUI | Reduces support-surface contamination at source |
 | P2 | Train or integrate a learned ROI foreground segmenter | More robust than global thresholding |

@@ -127,6 +127,35 @@ def _inference_result(path: Path) -> contracts.InferenceResult:
     )
 
 
+def _inference_result_with_roi(
+    path: Path,
+    *,
+    center_xy_px: tuple[float, float],
+    roi_bounds_xyxy_px: tuple[float, float, float, float],
+) -> contracts.InferenceResult:
+    return contracts.InferenceResult(
+        request_id="request",
+        input_image_path=path,
+        input_image_hash=contracts.FrameHash("hash"),
+        timestamp_utc="2026-05-24T00:00:00Z",
+        predicted_distance_m=1.0,
+        predicted_yaw_sin=0.0,
+        predicted_yaw_cos=1.0,
+        predicted_yaw_deg=0.0,
+        inference_time_ms=1.0,
+        roi_metadata=contracts.RoiMetadata(
+            source_image_wh_px=(640, 480),
+            center_xy_px=center_xy_px,
+            roi_requested_xyxy_px=roi_bounds_xyxy_px,
+            extras={
+                contracts.PREPROCESSING_METADATA_ROI_REQUESTED_XYXY_PX: (
+                    roi_bounds_xyxy_px
+                ),
+            },
+        ),
+    )
+
+
 class GuiUiAndAppTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -368,6 +397,54 @@ class GuiUiAndAppTests(unittest.TestCase):
             self.assertIsNotNone(newer_preview)
             assert newer_preview is not None
             self.assertEqual(int(newer_preview[0, 0, 0]), 96)
+
+    def test_live_inference_overlay_is_display_smoothed(self) -> None:
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+        )
+
+        window._on_inference_result_ready(
+            _inference_result_with_roi(
+                Path("frame-1.png"),
+                center_xy_px=(50.0, 50.0),
+                roi_bounds_xyxy_px=(0.0, 0.0, 100.0, 100.0),
+            )
+        )
+        window._on_inference_result_ready(
+            _inference_result_with_roi(
+                Path("frame-2.png"),
+                center_xy_px=(70.0, 70.0),
+                roi_bounds_xyxy_px=(40.0, 40.0, 120.0, 120.0),
+            )
+        )
+
+        overlay = window._last_overlay
+        self.assertIsNotNone(overlay)
+        assert overlay is not None
+        self.assertEqual(overlay.center_xy_px, (60.0, 60.0))
+        self.assertEqual(overlay.roi_bounds_xyxy_px, (25.0, 25.0, 105.0, 105.0))
+
+    def test_single_frame_overlay_stays_raw(self) -> None:
+        window = LiveInferenceMainWindow(
+            camera_controller=_Controller(),
+            inference_controller=_Controller(),
+        )
+        window._captured_single_frame = SimpleNamespace(image_bytes=b"captured")
+
+        window._on_inference_result_ready(
+            _inference_result_with_roi(
+                Path("captured.png"),
+                center_xy_px=(70.0, 70.0),
+                roi_bounds_xyxy_px=(40.0, 40.0, 120.0, 120.0),
+            )
+        )
+
+        overlay = window._last_overlay
+        self.assertIsNotNone(overlay)
+        assert overlay is not None
+        self.assertEqual(overlay.center_xy_px, (70.0, 70.0))
+        self.assertEqual(overlay.roi_bounds_xyxy_px, (40.0, 40.0, 120.0, 120.0))
 
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
         policy_state = ForegroundExtractionPolicyState()

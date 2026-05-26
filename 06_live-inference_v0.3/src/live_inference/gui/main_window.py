@@ -40,6 +40,7 @@ from live_inference.preprocessing import (
 )
 
 from .frame_preview_widget import FramePreviewOverlay, FramePreviewWidget
+from .overlay_smoothing import FramePreviewOverlaySmoother
 
 
 _FPS_LABEL_PRECISION = 1
@@ -101,6 +102,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._captured_single_frame: _CapturedSingleFrame | None = None
         self._base_preview_image: QImage | None = None
         self._last_overlay: FramePreviewOverlay | None = None
+        self._overlay_smoother = FramePreviewOverlaySmoother()
         self._debug_paths: dict[str, Path] = {}
         self._last_camera_intrinsics_preview_warning: str | None = None
         self._last_preview_update_seconds = 0.0
@@ -315,6 +317,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def start_continuous_inference(self) -> None:
         self._resume_live_preview_after_single_frame()
+        self._reset_preview_overlay_smoothing()
         start = getattr(self.inference_controller, "start", None)
         if callable(start):
             start()
@@ -350,6 +353,7 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         if preview_image is not None:
             self._set_base_preview_image(preview_image)
+        self._reset_preview_overlay_smoothing()
         self.frame_hash_value.setText(f"frame hash: {frame_hash.value}")
         self._append_log("INFO", f"Captured frame {frame_hash.value}")
 
@@ -369,6 +373,7 @@ class LiveInferenceMainWindow(QMainWindow):
             return
         gray = self._preview_grayscale_from_bytes(image_bytes)
         revision = self.background_state.capture_background(gray)
+        self._reset_preview_overlay_smoothing()
         snapshot = self.background_state.get_snapshot()
         self._sync_background_widgets(snapshot)
         self._append_log(
@@ -380,6 +385,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def clear_background(self) -> None:
         revision = self.background_state.clear()
+        self._reset_preview_overlay_smoothing()
         self._sync_background_widgets()
         self._append_log("INFO", f"Background cleared; revision={revision}")
 
@@ -413,6 +419,7 @@ class LiveInferenceMainWindow(QMainWindow):
         )
         snapshot = self.mask_state.get_snapshot()
         self.main_preview_widget.set_committed_mask_snapshot(snapshot)
+        self._reset_preview_overlay_smoothing()
         self._update_mask_status()
         self._append_log(
             "INFO",
@@ -429,6 +436,7 @@ class LiveInferenceMainWindow(QMainWindow):
     def clear_mask(self) -> None:
         revision = self.mask_state.clear()
         self.main_preview_widget.clear_masks()
+        self._reset_preview_overlay_smoothing()
         self._update_mask_status()
         self._append_log("INFO", f"Mask cleared: revision={revision}")
 
@@ -488,6 +496,7 @@ class LiveInferenceMainWindow(QMainWindow):
             debug_paths = _mapping_payload(_payload_value(result, "debug_paths"))
             self._debug_paths = {str(k): Path(v) for k, v in debug_paths.items()}
             self._update_status_from_metadata(metadata)
+            self._reset_preview_overlay_smoothing()
             self._last_overlay = _overlay_from_metadata(metadata, locator_result)
             self._refresh_artifact_summary()
             self._refresh_visual_surface()
@@ -512,7 +521,15 @@ class LiveInferenceMainWindow(QMainWindow):
             for key, path in _mapping_payload(_payload_value(result, "debug_paths")).items()
         }
         self._update_status_from_metadata(extras)
-        self._last_overlay = _overlay_from_roi_metadata(roi_metadata)
+        overlay = _overlay_from_roi_metadata(roi_metadata)
+        if self._captured_single_frame is None:
+            overlay = self._overlay_smoother.smooth_overlay(
+                overlay,
+                now_seconds=monotonic(),
+            )
+        else:
+            self._reset_preview_overlay_smoothing()
+        self._last_overlay = overlay
         self._set_warnings(_sequence_payload(_payload_value(result, "warnings")))
         self._refresh_artifact_summary()
         self._refresh_visual_surface()
@@ -685,6 +702,9 @@ class LiveInferenceMainWindow(QMainWindow):
             self._sync_preview_mask_snapshot()
         self.main_preview_widget.set_overlay(self._filtered_overlay())
 
+    def _reset_preview_overlay_smoothing(self) -> None:
+        self._overlay_smoother.reset()
+
     def _selected_artifact_key(self) -> str | None:
         checks = (
             (self.show_chosen_contour_checkbox, contracts.DISPLAY_ARTIFACT_CHOSEN_CONTOUR),
@@ -760,6 +780,7 @@ class LiveInferenceMainWindow(QMainWindow):
             canny_high_threshold=self.canny_high_spinbox.value(),
         )
         self.background_state.set_threshold(config.background_threshold)
+        self._reset_preview_overlay_smoothing()
         self._sync_background_widgets()
         self._append_log("DEBUG", f"Locator parameters revision={revision}")
 
@@ -770,6 +791,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
     def _on_background_enabled_toggled(self, checked: bool) -> None:
         revision = self.background_state.set_enabled(bool(checked))
+        self._reset_preview_overlay_smoothing()
         self._sync_background_widgets()
         state = "enabled" if bool(checked) else "disabled"
         self._append_log("INFO", f"Background removal {state}; revision={revision}")
@@ -778,6 +800,7 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.stage_policy_state.update(
             apply_background_removal_to_roi_locator=bool(checked)
         )
+        self._reset_preview_overlay_smoothing()
         self._sync_background_widgets()
         self._append_log(
             "INFO",
@@ -792,6 +815,7 @@ class LiveInferenceMainWindow(QMainWindow):
         snapshot = self.stage_policy_state.update(
             apply_background_removal_to_regressor_preprocessing=bool(checked)
         )
+        self._reset_preview_overlay_smoothing()
         self._sync_background_widgets()
         self._append_log(
             "INFO",
@@ -929,6 +953,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self.background_state.clear()
         self.mask_state.clear()
         self.main_preview_widget.clear_masks()
+        self._reset_preview_overlay_smoothing()
         self._sync_background_widgets()
         self._debug_paths = {}
         self._last_overlay = None
@@ -974,6 +999,7 @@ class LiveInferenceMainWindow(QMainWindow):
             "INFO",
             f"Foreground extraction: {current_mode}; revision={revision}",
         )
+        self._reset_preview_overlay_smoothing()
 
     def _sync_mask_widgets(self) -> None:
         snapshot = self.mask_state.get_snapshot()
@@ -1008,6 +1034,7 @@ class LiveInferenceMainWindow(QMainWindow):
         revision = self.mask_state.set_fill_value(fill_value)
         self.main_preview_widget.set_mask_fill_value(fill_value)
         self.main_preview_widget.set_committed_mask_snapshot(self.mask_state.get_snapshot())
+        self._reset_preview_overlay_smoothing()
         self._update_mask_status()
         fill_name = "white" if fill_value == 255 else "black"
         self._append_log("INFO", f"Mask fill set to {fill_name}; revision={revision}")
@@ -1114,6 +1141,7 @@ class LiveInferenceMainWindow(QMainWindow):
 
         self._captured_single_frame = None
         self._last_overlay = None
+        self._reset_preview_overlay_smoothing()
         self._debug_paths = {}
         self.main_preview_widget.set_overlay(None)
         self._refresh_artifact_summary()

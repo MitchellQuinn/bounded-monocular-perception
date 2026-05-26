@@ -493,15 +493,13 @@ class TriStreamLivePreprocessor:
                 bool,
                 copy=True,
             )
-            consistency_metadata, consistency_error = (
+            consistency_metadata, _consistency_error = (
                 _foreground_locator_consistency_check(
                     foreground_result=foreground_extraction_result,
                     locator_result=locator_result,
                 )
             )
             mask_metadata.update(consistency_metadata)
-            if consistency_error is not None:
-                raise ValueError(consistency_error)
             foreground_mask, foreground_background_metadata = (
                 _foreground_mask_after_background_removal(
                     foreground_mask,
@@ -1357,12 +1355,19 @@ def _threshold_foreground_mask(
         selected_threshold = relative_threshold
         threshold_source = "background_white_relative"
 
-    foreground_mask = gray <= int(selected_threshold)
-    foreground_before_cleanup_px = int(np.count_nonzero(foreground_mask))
-    foreground_mask = _close_binary_mask(
-        foreground_mask,
+    threshold_mask = gray <= int(selected_threshold)
+    foreground_before_cleanup_px = int(np.count_nonzero(threshold_mask))
+    closed_mask = _close_binary_mask(
+        threshold_mask,
         kernel_size_px=int(policy.threshold_morphology_close_kernel_px),
     )
+    component_mask, component_diagnostics = _select_foreground_components(
+        closed_mask,
+        gray=gray,
+        selected_threshold=int(selected_threshold),
+        background_white=float(background_white),
+    )
+    foreground_mask = component_mask
     if bool(policy.threshold_fill_holes):
         foreground_mask = _fill_binary_holes(foreground_mask)
     foreground_after_cleanup_px = int(np.count_nonzero(foreground_mask))
@@ -1378,13 +1383,239 @@ def _threshold_foreground_mask(
         "selected_threshold": int(selected_threshold),
         "selected_threshold_source": threshold_source,
         "foreground_pixel_count_before_cleanup": foreground_before_cleanup_px,
+        "foreground_pixel_count_after_threshold_close": int(
+            np.count_nonzero(closed_mask)
+        ),
+        "foreground_pixel_count_after_component_selection": int(
+            np.count_nonzero(component_mask)
+        ),
         "foreground_pixel_count_after_cleanup": foreground_after_cleanup_px,
         "morphology_close_kernel_px": int(
             _normalized_odd_kernel_size(policy.threshold_morphology_close_kernel_px)
         ),
         "fill_holes": bool(policy.threshold_fill_holes),
     }
+    diagnostics.update(component_diagnostics)
     return foreground_mask.astype(bool, copy=False), diagnostics
+
+
+def _select_foreground_components(
+    mask: np.ndarray,
+    *,
+    gray: np.ndarray,
+    selected_threshold: int,
+    background_white: float,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    candidate = np.asarray(mask, dtype=bool)
+    roi_h, roi_w = int(candidate.shape[0]), int(candidate.shape[1])
+    empty = np.zeros(candidate.shape, dtype=bool)
+    if roi_h <= 0 or roi_w <= 0 or not bool(np.any(candidate)):
+        return empty, {
+            "component_selection_enabled": True,
+            "component_selection_status": "empty_threshold_mask",
+            "component_selection_source": "threshold_mask",
+            "component_selection_component_count": 0,
+            "component_selection_selected_label": None,
+            "component_selection_selected_area_px": 0,
+            "component_selection_selected_bbox_xywh_px": None,
+            "component_selection_strict_threshold": _strict_component_threshold(
+                selected_threshold,
+                background_white,
+            ),
+        }
+
+    selected, candidate_diag = _select_best_component(
+        candidate,
+        source="threshold_mask",
+        reject_saturated=True,
+    )
+    strict_threshold = _strict_component_threshold(selected_threshold, background_white)
+    strict_selected = empty
+    strict_diag: dict[str, Any] | None = None
+    if bool(candidate_diag.get("largest_component_saturated", False)):
+        strict_mask = np.asarray(gray, dtype=np.uint8) <= int(strict_threshold)
+        strict_mask = _close_binary_mask(strict_mask, kernel_size_px=3)
+        strict_selected, strict_diag = _select_best_component(
+            strict_mask,
+            source="strict_threshold_mask",
+            reject_saturated=False,
+        )
+
+    use_strict = (
+        strict_diag is not None
+        and int(strict_diag.get("selected_area_px") or 0)
+        > max(0, int(candidate_diag.get("selected_area_px") or 0))
+    )
+    final = strict_selected if use_strict else selected
+    final_diag = strict_diag if use_strict and strict_diag is not None else candidate_diag
+    status = "selected_component"
+    if use_strict:
+        status = "selected_strict_component_after_saturated_candidate"
+    elif int(candidate_diag.get("selected_area_px") or 0) <= 0:
+        final = candidate
+        status = "fallback_all_components"
+
+    diagnostics = {
+        "component_selection_enabled": True,
+        "component_selection_status": status,
+        "component_selection_source": final_diag.get("source"),
+        "component_selection_component_count": int(
+            final_diag.get("component_count") or 0
+        ),
+        "component_selection_selected_label": final_diag.get("selected_label"),
+        "component_selection_selected_area_px": int(
+            final_diag.get("selected_area_px") or 0
+        ),
+        "component_selection_selected_bbox_xywh_px": final_diag.get(
+            "selected_bbox_xywh_px"
+        ),
+        "component_selection_selected_score": final_diag.get("selected_score"),
+        "component_selection_largest_area_px": int(
+            candidate_diag.get("largest_area_px") or 0
+        ),
+        "component_selection_largest_bbox_xywh_px": candidate_diag.get(
+            "largest_bbox_xywh_px"
+        ),
+        "component_selection_largest_saturated": bool(
+            candidate_diag.get("largest_component_saturated", False)
+        ),
+        "component_selection_saturated_rejected_count": int(
+            candidate_diag.get("saturated_rejected_count") or 0
+        ),
+        "component_selection_strict_threshold": int(strict_threshold),
+    }
+    if strict_diag is not None:
+        diagnostics.update(
+            {
+                "component_selection_strict_component_count": int(
+                    strict_diag.get("component_count") or 0
+                ),
+                "component_selection_strict_selected_area_px": int(
+                    strict_diag.get("selected_area_px") or 0
+                ),
+                "component_selection_strict_selected_bbox_xywh_px": strict_diag.get(
+                    "selected_bbox_xywh_px"
+                ),
+            }
+        )
+    return final.astype(bool, copy=False), diagnostics
+
+
+def _select_best_component(
+    mask: np.ndarray,
+    *,
+    source: str,
+    reject_saturated: bool,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    component_mask = np.asarray(mask, dtype=np.uint8)
+    roi_h, roi_w = int(component_mask.shape[0]), int(component_mask.shape[1])
+    label_count, labels, stats, centroids = cv2.connectedComponentsWithStats(
+        component_mask,
+        8,
+    )
+    selected_label: int | None = None
+    selected_score = -1.0
+    selected_area = 0
+    selected_bbox: tuple[int, int, int, int] | None = None
+    largest_area = 0
+    largest_bbox: tuple[int, int, int, int] | None = None
+    largest_saturated = False
+    saturated_rejected_count = 0
+    center_x = (float(roi_w) - 1.0) * 0.5
+    center_y = (float(roi_h) - 1.0) * 0.5
+    max_center_distance = max(1.0, math.hypot(center_x, center_y))
+
+    for label in range(1, int(label_count)):
+        x, y, w, h, area = [int(value) for value in stats[label]]
+        if area <= 0:
+            continue
+        bbox = (x, y, w, h)
+        saturated = _component_is_roi_saturated(
+            bbox,
+            area_px=area,
+            roi_w=roi_w,
+            roi_h=roi_h,
+        )
+        if area > largest_area:
+            largest_area = area
+            largest_bbox = bbox
+            largest_saturated = saturated
+        if reject_saturated and saturated:
+            saturated_rejected_count += 1
+            continue
+        cx, cy = [float(value) for value in centroids[label]]
+        center_distance = math.hypot(cx - center_x, cy - center_y) / max_center_distance
+        center_weight = max(0.25, 1.0 - center_distance)
+        border_touches = (
+            int(x <= 0)
+            + int(y <= 0)
+            + int(x + w >= roi_w)
+            + int(y + h >= roi_h)
+        )
+        border_weight = 1.0 / (1.0 + (0.35 * float(border_touches)))
+        bbox_area_fraction = float(w * h) / max(1.0, float(roi_w * roi_h))
+        extent_weight = max(0.15, 1.0 - max(0.0, bbox_area_fraction - 0.55))
+        score = float(area) * center_weight * border_weight * extent_weight
+        if score > selected_score:
+            selected_score = score
+            selected_label = label
+            selected_area = area
+            selected_bbox = bbox
+
+    selected = labels == int(selected_label) if selected_label is not None else np.zeros(
+        labels.shape,
+        dtype=bool,
+    )
+    return selected.astype(bool, copy=False), {
+        "source": source,
+        "component_count": max(0, int(label_count) - 1),
+        "selected_label": selected_label,
+        "selected_score": float(selected_score) if selected_label is not None else None,
+        "selected_area_px": int(selected_area),
+        "selected_bbox_xywh_px": selected_bbox,
+        "largest_area_px": int(largest_area),
+        "largest_bbox_xywh_px": largest_bbox,
+        "largest_component_saturated": bool(largest_saturated),
+        "saturated_rejected_count": int(saturated_rejected_count),
+    }
+
+
+def _component_is_roi_saturated(
+    bbox_xywh: tuple[int, int, int, int],
+    *,
+    area_px: int,
+    roi_w: int,
+    roi_h: int,
+) -> bool:
+    x, y, w, h = bbox_xywh
+    roi_area = max(1.0, float(roi_w * roi_h))
+    bbox_area_fraction = float(w * h) / roi_area
+    area_fraction = float(area_px) / roi_area
+    width_fraction = float(w) / max(1.0, float(roi_w))
+    height_fraction = float(h) / max(1.0, float(roi_h))
+    border_touches = (
+        int(x <= 0)
+        + int(y <= 0)
+        + int(x + w >= roi_w)
+        + int(y + h >= roi_h)
+    )
+    return (
+        (width_fraction >= 0.95 and height_fraction >= 0.95)
+        or (border_touches >= 3 and bbox_area_fraction >= 0.70)
+        or (border_touches >= 2 and bbox_area_fraction >= 0.80 and area_fraction >= 0.30)
+    )
+
+
+def _strict_component_threshold(
+    selected_threshold: int,
+    background_white: float,
+) -> int:
+    return _clamped_uint8(
+        min(
+            int(selected_threshold) - 55,
+            int(round(float(background_white))) - 105,
+        )
+    )
 
 
 def _estimate_background_white(gray: np.ndarray, percentile: float) -> float:
@@ -1563,17 +1794,18 @@ def _foreground_locator_consistency_check(
 
     if bbox_area_ratio < 0.02 and width_ratio < 0.15 and height_ratio < 0.15:
         metadata["foreground_locator_consistency_status"] = (
-            "rejected_small_foreground"
+            "diagnostic_small_foreground"
         )
         metadata["foreground_locator_consistency_reason"] = (
             "foreground_bbox_implausibly_small_relative_to_locator"
         )
-        return metadata, (
+        metadata["foreground_locator_consistency_warning"] = (
             "foreground bbox is implausibly small relative to accepted locator bbox: "
             f"foreground=({foreground_w:.1f}x{foreground_h:.1f}), "
             f"locator=({locator_w:.1f}x{locator_h:.1f}), "
             f"area_ratio={bbox_area_ratio:.4f}"
         )
+        return metadata, None
 
     if (
         bbox_area_ratio > 4.0
@@ -1581,12 +1813,12 @@ def _foreground_locator_consistency_check(
         and height_ratio > 1.75
     ):
         metadata["foreground_locator_consistency_status"] = (
-            "rejected_expanded_foreground"
+            "diagnostic_expanded_foreground"
         )
         metadata["foreground_locator_consistency_reason"] = (
             "foreground_bbox_implausibly_large_relative_to_locator"
         )
-        return metadata, (
+        metadata["foreground_locator_consistency_warning"] = (
             "foreground bbox is implausibly large relative to accepted locator bbox: "
             f"foreground=({foreground_w:.1f}x{foreground_h:.1f}), "
             f"locator=({locator_w:.1f}x{locator_h:.1f}), "
@@ -1595,6 +1827,7 @@ def _foreground_locator_consistency_check(
             f"bbox_area_ratio={bbox_area_ratio:.3f}, "
             f"pixel_area_ratio={pixel_area_ratio:.3f}"
         )
+        return metadata, None
 
     return metadata, None
 
