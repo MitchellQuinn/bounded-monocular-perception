@@ -314,6 +314,7 @@ class LiveInferenceMainWindow(QMainWindow):
         self._set_worker_running_state(contracts.WorkerName.CAMERA.value, False)
 
     def start_continuous_inference(self) -> None:
+        self._resume_live_preview_after_single_frame()
         start = getattr(self.inference_controller, "start", None)
         if callable(start):
             start()
@@ -1093,8 +1094,10 @@ class LiveInferenceMainWindow(QMainWindow):
         transformer = self.camera_intrinsics_frame_transformer
         mode = _camera_intrinsics_mode(self.camera_intrinsics_state)
         if transformer is None or mode == SUPPORTED_CAMERA_INTRINSICS_MODES[0]:
-            if self.main_preview_widget.load_image(path):
-                self._sync_preview_mask_snapshot()
+            image = QImage(str(path))
+            if image.isNull():
+                return
+            self._set_base_preview_image(image)
             return
         try:
             image = self._preview_qimage_from_bytes(path.read_bytes())
@@ -1104,6 +1107,28 @@ class LiveInferenceMainWindow(QMainWindow):
         if image is None or image.isNull():
             return
         self._set_base_preview_image(image)
+
+    def _resume_live_preview_after_single_frame(self) -> None:
+        if self._captured_single_frame is None:
+            return
+
+        self._captured_single_frame = None
+        self._last_overlay = None
+        self._debug_paths = {}
+        self.main_preview_widget.set_overlay(None)
+        self._refresh_artifact_summary()
+
+        latest_frame = self._latest_frame()
+        latest_path = (
+            _path_or_none(_payload_value(latest_frame, "image_path"))
+            if latest_frame is not None
+            else None
+        )
+        if latest_path is not None:
+            self._load_preview_frame(latest_path)
+        else:
+            self._base_preview_image = None
+        self._append_log("INFO", "Live preview resumed from captured frame")
 
     def _current_preview_update_interval_seconds(self) -> float:
         mode = _camera_intrinsics_mode(self.camera_intrinsics_state)

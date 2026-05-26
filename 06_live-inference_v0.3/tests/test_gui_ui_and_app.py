@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 
@@ -48,6 +49,82 @@ class _Controller:
 
     def wait(self, _timeout_ms: int) -> bool:
         return True
+
+
+class _StartCountingController(_Controller):
+    def __init__(self) -> None:
+        self.start_count = 0
+
+    def start(self) -> None:
+        self.start_count += 1
+
+
+class _FrameReader:
+    def __init__(self) -> None:
+        self._latest_frame: object | None = None
+        self._bytes_by_path: dict[Path, bytes] = {}
+
+    def set_latest(self, frame: object, image_bytes: bytes) -> None:
+        image_path = getattr(frame, "image_path")
+        self._latest_frame = frame
+        self._bytes_by_path[Path(image_path)] = bytes(image_bytes)
+
+    def latest_completed_frame(self) -> object | None:
+        return self._latest_frame
+
+    def read_frame_bytes(self, frame: object) -> bytes:
+        image_path = getattr(frame, "image_path")
+        return self._bytes_by_path[Path(image_path)]
+
+
+class _SingleFrameRunner:
+    def __init__(self) -> None:
+        self.run_count = 0
+
+    def run_single_frame(
+        self,
+        _image_bytes: bytes,
+        *,
+        source_path: Path | None = None,
+        frame_metadata: object | None = None,
+        record_trace: bool = False,
+    ) -> object:
+        del frame_metadata, record_trace
+        self.run_count += 1
+        return SimpleNamespace(
+            result=_inference_result(source_path or Path("captured.png")),
+            error=None,
+            trace_path=None,
+        )
+
+
+def _solid_png_bytes(value: int) -> bytes:
+    image = np.full((6, 8, 3), int(value), dtype=np.uint8)
+    ok, encoded = cv2.imencode(".png", image)
+    if not ok:
+        raise AssertionError("Could not encode test image.")
+    return encoded.tobytes()
+
+
+def _frame_reference(path: Path) -> contracts.FrameReference:
+    return contracts.FrameReference(
+        image_path=path,
+        metadata=contracts.FrameMetadata(width_px=8, height_px=6),
+    )
+
+
+def _inference_result(path: Path) -> contracts.InferenceResult:
+    return contracts.InferenceResult(
+        request_id="request",
+        input_image_path=path,
+        input_image_hash=contracts.FrameHash("hash"),
+        timestamp_utc="2026-05-24T00:00:00Z",
+        predicted_distance_m=1.0,
+        predicted_yaw_sin=0.0,
+        predicted_yaw_cos=1.0,
+        predicted_yaw_deg=0.0,
+        inference_time_ms=1.0,
+    )
 
 
 class GuiUiAndAppTests(unittest.TestCase):
@@ -236,6 +313,61 @@ class GuiUiAndAppTests(unittest.TestCase):
 
         self.assertEqual(window.distance_value.text(), "distance: 1.23 m")
         self.assertEqual(window.yaw_value.text(), "yaw: 13 deg")
+
+    def test_start_continuous_inference_resumes_live_preview_after_single_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            captured_path = tmp_path / "captured.png"
+            live_path = tmp_path / "live.png"
+            newer_path = tmp_path / "newer.png"
+            captured_bytes = _solid_png_bytes(32)
+            live_bytes = _solid_png_bytes(220)
+            newer_bytes = _solid_png_bytes(96)
+            captured_path.write_bytes(captured_bytes)
+            live_path.write_bytes(live_bytes)
+            newer_path.write_bytes(newer_bytes)
+
+            frame_reader = _FrameReader()
+            captured_frame = _frame_reference(captured_path)
+            live_frame = _frame_reference(live_path)
+            newer_frame = _frame_reference(newer_path)
+            frame_reader.set_latest(captured_frame, captured_bytes)
+            inference_controller = _StartCountingController()
+            single_frame_runner = _SingleFrameRunner()
+            window = LiveInferenceMainWindow(
+                camera_controller=_Controller(),
+                inference_controller=inference_controller,
+                frame_reader=frame_reader,
+                single_frame_runner=single_frame_runner,
+            )
+
+            window.capture_frame()
+            window.run_single_inference()
+            self.assertEqual(single_frame_runner.run_count, 1)
+            self.assertIsNotNone(window._captured_single_frame)
+            captured_preview = window.main_preview_widget.effective_preview_image()
+            self.assertIsNotNone(captured_preview)
+            assert captured_preview is not None
+            self.assertEqual(int(captured_preview[0, 0, 0]), 32)
+
+            frame_reader.set_latest(live_frame, live_bytes)
+            window.start_continuous_inference()
+
+            self.assertEqual(inference_controller.start_count, 1)
+            self.assertIsNone(window._captured_single_frame)
+            live_preview = window.main_preview_widget.effective_preview_image()
+            self.assertIsNotNone(live_preview)
+            assert live_preview is not None
+            self.assertEqual(int(live_preview[0, 0, 0]), 220)
+
+            frame_reader.set_latest(newer_frame, newer_bytes)
+            window._on_frame_written(newer_frame)
+            window._on_inference_result_ready(_inference_result(newer_path))
+
+            newer_preview = window.main_preview_widget.effective_preview_image()
+            self.assertIsNotNone(newer_preview)
+            assert newer_preview is not None
+            self.assertEqual(int(newer_preview[0, 0, 0]), 96)
 
     def test_silhouette_checkbox_updates_preprocessing_policy_state(self) -> None:
         policy_state = ForegroundExtractionPolicyState()
