@@ -3,7 +3,7 @@
 **Incident:** `incident-003-foreground-mask-contamination-distance-underestimate`  
 **System:** bounded monocular perception, live inference v0.3  
 **Date analysed:** 2026-05-26  
-**Status:** Investigated; remediation proposed  
+**Status:** Partially remediated; P0 guard implemented  
 **Primary trace:** [`20260526T111823Z__600bc624-cee3-4aa5-a22f-3cdbda11963a__354ad859`](evidence/traces/20260526T111823Z__600bc624-cee3-4aa5-a22f-3cdbda11963a__354ad859)
 
 ## 1. Executive Summary
@@ -24,7 +24,7 @@ x_geometry
 
 All three streams were contaminated by the foreground mask. The model saw a large, dark, contiguous foreground region on a `320 x 320 px` canvas and inferred a closer object.
 
-The recommended remediation is to add a post-foreground quality gate that compares foreground geometry against locator geometry, then either rejects the frame or falls back to locator-anchored foreground extraction. The medium-term fix is to make foreground extraction component-aware and locator-anchored, rather than accepting all thresholded dark pixels inside the ROI.
+The first remediation is now implemented: the live preprocessor rejects frames where foreground geometry is implausibly small or implausibly large relative to the accepted locator bbox. This prevents the incident trace from producing an unqualified scalar prediction. The remaining recommended work is to add locator-anchored fallback extraction, improve background-removal workflow, and make foreground extraction more component-aware.
 
 ## 2. Incident Scope
 
@@ -284,6 +284,25 @@ Incident 002 already argues for an amodal keypoint topology. Incident 003 reinfo
 
 This does not remove the need for clean preprocessing. It does reduce the chance that one contaminated foreground mask silently becomes the only explanation for distance.
 
+### 11.6 Implemented P0 guard
+
+The first remediation has been implemented in the live v0.3 generic tri-stream preprocessor. The existing foreground-vs-locator guard previously covered only the incident-001 collapse case, where foreground became implausibly small relative to the accepted locator bbox. It now also rejects the incident-003 expansion case, where foreground is implausibly large relative to the locator in both dimensions.
+
+The implemented guard records top-level trace metadata including:
+
+```text
+foreground_locator_consistency_status
+foreground_locator_consistency_reason
+foreground_locator_width_ratio
+foreground_locator_height_ratio
+foreground_locator_bbox_area_ratio
+foreground_locator_pixel_area_ratio
+```
+
+For the incident trace, the guard reports `rejected_expanded_foreground` and raises a preprocessing debug error before model inference. The failure still carries traceable preprocessing metadata and debug artifacts, so the runtime fails closed without losing diagnostic evidence.
+
+Regression coverage was added to `test_generic_preprocessor.py` using an incident-shaped synthetic ROI that reproduces the over-expanded foreground/compact-locator geometry. The copied live trace remains the evidence record. The focused preprocessor suite and the full v0.3 live-inference unittest suite pass after the change.
+
 ## 12. Verification Plan
 
 The remediation should be validated with fixture-backed tests and live traces.
@@ -328,8 +347,8 @@ Acceptance criteria:
 
 | Priority | Work item | Rationale |
 | --- | --- | --- |
-| P0 | Add foreground-vs-locator quality gate | Low risk; prevents silent corrupted predictions |
-| P0 | Add metadata and warning fields for foreground contamination | Makes future traces self-diagnosing |
+| P0 | Add foreground-vs-locator quality gate | Implemented; prevents silent corrupted predictions |
+| P0 | Add metadata and warning fields for foreground contamination | Implemented for guard metrics and rejection reason |
 | P1 | Add locator-anchored fallback extraction | Preserves predictions when contamination is recoverable |
 | P1 | Add fixture tests using this trace | Prevents recurrence |
 | P1 | Improve background-removal workflow in live GUI | Reduces support-surface contamination at source |

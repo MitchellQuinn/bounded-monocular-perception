@@ -4,9 +4,9 @@ This incident records a live inference trace where the system predicted the Defe
 
 ## Contents
 
-- [`foreground-mask-contamination-distance-underestimate-report.md`](foreground-mask-contamination-distance-underestimate-report.md): employer-facing incident report with evidence, root-cause analysis, and proposed remediation plan
+- [`foreground-mask-contamination-distance-underestimate-report.md`](foreground-mask-contamination-distance-underestimate-report.md): employer-facing incident report with evidence, root-cause analysis, implemented P0 guard, and follow-up remediation plan
 - [`evidence/traces/20260526T111823Z__600bc624-cee3-4aa5-a22f-3cdbda11963a__354ad859`](evidence/traces/20260526T111823Z__600bc624-cee3-4aa5-a22f-3cdbda11963a__354ad859): copied live trace used as the primary evidence record
 
 ## Status
 
-Investigated. Remediation is proposed but not yet implemented in this incident package.
+Partially remediated. The P0 foreground-vs-locator quality gate and regression test are implemented. Locator-anchored fallback extraction, background-removal workflow improvements, and stronger foreground extraction remain planned follow-up work.

@@ -38,6 +38,7 @@ from live_inference.preprocessing import (  # noqa: E402
     FixedCenterRoiLocator,
     ForegroundExtractionPolicyState,
     ManualFixedRoiLocator,
+    PreprocessingDebugError,
     StageTransformPolicyState,
     TriStreamLivePreprocessor,
 )
@@ -349,6 +350,39 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         self.assertGreater(float(geometry[3]), 290.0)
         distance_image = prepared.model_inputs[contracts.TRI_STREAM_DISTANCE_IMAGE_KEY][0]
         self.assertGreater(int(np.count_nonzero(distance_image < 250)), 40_000)
+
+    def test_incident_003_overexpanded_foreground_is_rejected(self) -> None:
+        image = np.full((1200, 1920), 255, dtype=np.uint8)
+        image[420:740, 944:1264] = 170
+        cv2.rectangle(image, (944, 441), (1247, 699), 100, thickness=-1)
+        cv2.rectangle(image, (1029, 521), (1178, 637), 70, thickness=-1)
+        ok, encoded = cv2.imencode(".png", image)
+        self.assertTrue(ok)
+        image_bytes = encoded.tobytes()
+        preprocessor = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=ManualFixedRoiLocator(
+                bbox_xyxy_px=(1029.0, 521.0, 1179.0, 638.0),
+                roi_wh_px=(320, 320),
+            ),
+        )
+
+        with self.assertRaises(PreprocessingDebugError) as raised:
+            preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = raised.exception.preprocessing_metadata
+        self.assertEqual(
+            metadata["foreground_locator_consistency_status"],
+            "rejected_expanded_foreground",
+        )
+        self.assertIn(
+            "implausibly large",
+            metadata["preprocessing_failure_message"],
+        )
+        self.assertGreater(metadata["foreground_pixel_count"], 70_000)
+        self.assertGreater(metadata["foreground_locator_bbox_area_ratio"], 4.0)
+        self.assertGreater(metadata["foreground_locator_width_ratio"], 1.75)
+        self.assertGreater(metadata["foreground_locator_height_ratio"], 1.75)
 
     def test_foreground_policy_can_select_legacy_silhouette_path(self) -> None:
         image_bytes = _fixture_image_bytes()

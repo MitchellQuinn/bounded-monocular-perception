@@ -489,14 +489,19 @@ class TriStreamLivePreprocessor:
                 roi_bounds=roi_bounds,
                 policy=foreground_extraction_policy,
             )
-            _validate_foreground_locator_consistency(
-                foreground_result=foreground_extraction_result,
-                locator_result=locator_result,
-            )
             foreground_mask = foreground_extraction_result.roi_foreground_mask.astype(
                 bool,
                 copy=True,
             )
+            consistency_metadata, consistency_error = (
+                _foreground_locator_consistency_check(
+                    foreground_result=foreground_extraction_result,
+                    locator_result=locator_result,
+                )
+            )
+            mask_metadata.update(consistency_metadata)
+            if consistency_error is not None:
+                raise ValueError(consistency_error)
             foreground_mask, foreground_background_metadata = (
                 _foreground_mask_after_background_removal(
                     foreground_mask,
@@ -1494,14 +1499,20 @@ def _reason_text(reasons: tuple[str, ...]) -> str:
     return ";".join(str(reason) for reason in reasons if str(reason).strip())
 
 
-def _validate_foreground_locator_consistency(
+def _foreground_locator_consistency_check(
     *,
     foreground_result: _ForegroundExtractionResult,
     locator_result: contracts.LocatorResult,
-) -> None:
+) -> tuple[dict[str, Any], str | None]:
     locator_bbox = locator_result.bbox_xyxy_px
     if locator_bbox is None:
-        return
+        return (
+            {
+                "foreground_locator_consistency_status": "skipped_no_locator_bbox",
+                "foreground_locator_consistency_reason": "locator_result_missing_bbox",
+            },
+            None,
+        )
     lx1, ly1, lx2, ly2 = [float(value) for value in locator_bbox]
     sx1, sy1, sx2, sy2 = [
         float(value) for value in foreground_result.feature_bbox_xyxy_px
@@ -1511,21 +1522,81 @@ def _validate_foreground_locator_consistency(
     foreground_w = max(0.0, sx2 - sx1)
     foreground_h = max(0.0, sy2 - sy1)
     locator_area = locator_w * locator_h
-    if locator_area < 5_000.0:
-        return
-
+    foreground_bbox_area = foreground_w * foreground_h
+    foreground_pixel_count = int(foreground_result.area_px)
     width_ratio = foreground_w / locator_w
     height_ratio = foreground_h / locator_h
-    area_ratio = (foreground_w * foreground_h) / locator_area
-    if area_ratio >= 0.02 or width_ratio >= 0.15 or height_ratio >= 0.15:
-        return
+    bbox_area_ratio = foreground_bbox_area / locator_area
+    pixel_area_ratio = float(foreground_pixel_count) / locator_area
+    metadata: dict[str, Any] = {
+        "foreground_locator_consistency_status": "ok",
+        "foreground_locator_consistency_reason": None,
+        "foreground_locator_bbox_xyxy_px": tuple(float(value) for value in locator_bbox),
+        "foreground_locator_foreground_bbox_xyxy_px": tuple(
+            float(value) for value in foreground_result.feature_bbox_xyxy_px
+        ),
+        "foreground_locator_locator_width_px": float(locator_w),
+        "foreground_locator_locator_height_px": float(locator_h),
+        "foreground_locator_locator_area_px": float(locator_area),
+        "foreground_locator_foreground_width_px": float(foreground_w),
+        "foreground_locator_foreground_height_px": float(foreground_h),
+        "foreground_locator_foreground_bbox_area_px": float(foreground_bbox_area),
+        "foreground_locator_foreground_pixel_count": int(foreground_pixel_count),
+        "foreground_locator_width_ratio": float(width_ratio),
+        "foreground_locator_height_ratio": float(height_ratio),
+        "foreground_locator_bbox_area_ratio": float(bbox_area_ratio),
+        "foreground_locator_pixel_area_ratio": float(pixel_area_ratio),
+        "foreground_locator_min_guard_locator_area_px": 5_000.0,
+        "foreground_locator_small_min_area_ratio": 0.02,
+        "foreground_locator_small_min_width_ratio": 0.15,
+        "foreground_locator_small_min_height_ratio": 0.15,
+        "foreground_locator_expanded_max_bbox_area_ratio": 4.0,
+        "foreground_locator_expanded_max_width_ratio": 1.75,
+        "foreground_locator_expanded_max_height_ratio": 1.75,
+    }
+    if locator_area < 5_000.0:
+        metadata["foreground_locator_consistency_status"] = "skipped_small_locator"
+        metadata["foreground_locator_consistency_reason"] = (
+            "locator_area_below_guard_minimum"
+        )
+        return metadata, None
 
-    raise ValueError(
-        "foreground bbox is implausibly small relative to accepted locator bbox: "
-        f"foreground=({foreground_w:.1f}x{foreground_h:.1f}), "
-        f"locator=({locator_w:.1f}x{locator_h:.1f}), "
-        f"area_ratio={area_ratio:.4f}"
-    )
+    if bbox_area_ratio < 0.02 and width_ratio < 0.15 and height_ratio < 0.15:
+        metadata["foreground_locator_consistency_status"] = (
+            "rejected_small_foreground"
+        )
+        metadata["foreground_locator_consistency_reason"] = (
+            "foreground_bbox_implausibly_small_relative_to_locator"
+        )
+        return metadata, (
+            "foreground bbox is implausibly small relative to accepted locator bbox: "
+            f"foreground=({foreground_w:.1f}x{foreground_h:.1f}), "
+            f"locator=({locator_w:.1f}x{locator_h:.1f}), "
+            f"area_ratio={bbox_area_ratio:.4f}"
+        )
+
+    if (
+        bbox_area_ratio > 4.0
+        and width_ratio > 1.75
+        and height_ratio > 1.75
+    ):
+        metadata["foreground_locator_consistency_status"] = (
+            "rejected_expanded_foreground"
+        )
+        metadata["foreground_locator_consistency_reason"] = (
+            "foreground_bbox_implausibly_large_relative_to_locator"
+        )
+        return metadata, (
+            "foreground bbox is implausibly large relative to accepted locator bbox: "
+            f"foreground=({foreground_w:.1f}x{foreground_h:.1f}), "
+            f"locator=({locator_w:.1f}x{locator_h:.1f}), "
+            f"width_ratio={width_ratio:.3f}, "
+            f"height_ratio={height_ratio:.3f}, "
+            f"bbox_area_ratio={bbox_area_ratio:.3f}, "
+            f"pixel_area_ratio={pixel_area_ratio:.3f}"
+        )
+
+    return metadata, None
 
 
 def _background_for_stage(
