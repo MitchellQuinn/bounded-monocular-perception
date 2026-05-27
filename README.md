@@ -49,7 +49,9 @@ For a fast technical review, start here:
    architectural pivot.
 7. [`failure-analysis/incidents/incident-003-foreground-mask-contamination-distance-underestimate/foreground-mask-contamination-distance-underestimate-report.md`](failure-analysis/incidents/incident-003-foreground-mask-contamination-distance-underestimate/foreground-mask-contamination-distance-underestimate-report.md) - foreground-mask contamination underestimate and
    diagnostic/component-selection remediation.
-8. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md) - amodal semantic keypoint model direction and
+8. [`failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md`](failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md) - retrospective justification for moving live ROI selection from ROI-FCN
+   to the inspectable geometric locator.
+9. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md) - amodal semantic keypoint model direction and
    implementation milestone.
 
 ## What This Repository Demonstrates
@@ -61,7 +63,7 @@ For a fast technical review, start here:
   tri-stream, ROI-localisation, and experimental amodal keypoint model families.
 - Circular yaw regression through `sin/cos` targets.
 - Learned ROI-FCN crop-centre localisation and deterministic live localisation
-  alternatives.
+  alternatives, including an explicit ROI-FCN-to-geometric-locator pivot.
 - Raw-image inference paths that compose localisation, preprocessing, model
   loading, and JSON/image artifacts.
 - A PySide6 live-local inference runtime with camera workers, GUI controls,
@@ -85,11 +87,12 @@ tri-stream artifact using the `tri_stream_yaw_v0_5` topology variant and the
 
 Offline synthetic validation is strong, but live trace-backed testing still
 shows unresolved pose-dependent distance bias and foreground-dependent apparent
-scale failures. Incident 002 motivates the amodal keypoint direction, and
-Incident 003 reinforces the need for stronger foreground diagnostics. The
-keypoint topology now has a first experimental registered implementation, but it
-is not yet a selected live model artifact or externally validated accuracy
-improvement.
+scale failures. Incident 002 motivates the amodal keypoint direction, Incident
+003 reinforces the need for stronger foreground diagnostics, and Incident 004
+records why live ROI selection moved from ROI-FCN to an inspectable geometric
+locator. The keypoint topology now has a first experimental registered
+implementation, but it is not yet a selected live model artifact or externally
+validated accuracy improvement.
 
 ## Repository Layout
 
@@ -135,6 +138,7 @@ headline metric.
 | Live preprocessing failure analysis | Incident 001 traces a live distance spike to foreground/silhouette collapse, remediates the preprocessing path, and adds fixture-backed regression tests. |
 | Live pose-bias failure analysis | Incident 002 shows that camera intrinsics improve aggregate live error but do not remove pose-linked distance bias in the direct tri-stream model family. |
 | Live foreground contamination analysis | Incident 003 shows foreground-mask expansion into support-surface texture causing a distance underestimate; hard rejection was backed out in favour of diagnostic/component-selection remediation. |
+| Live locator architecture retrospective | Incident 004 explains the pivot from ROI-FCN heatmap-centre localisation to inspectable geometric ROI selection with candidates, bbox geometry, rejection reasons, and trace artifacts. |
 | Experimental keypoint direction | `defender_amodal_keypoint_pose_v0_1` is registered with schema-backed centre/keypoint/visibility targets, losses, metrics, tests, and a geometry-only ablation path. |
 
 See the v0.9 technical writeup for the full results table and caveats.

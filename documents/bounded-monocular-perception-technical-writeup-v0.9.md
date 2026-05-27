@@ -253,11 +253,25 @@ Its validation metrics are:
 | p95 centre error | `7.7098 px` |
 | ROI full-containment success | `0.9891` |
 
-The current live demo path should be understood separately from the learned
-ROI-FCN path. The live v0.3 runtime defaults to `background_edge_v1`, an
-inspectable deterministic locator built for real-camera stabilisation. ROI-FCN
-is retained as a legacy comparison path, and the current model selection file
-references `260516-1714_roi-fcn-tiny__run_0002` for that route.
+The live locator history is important. Live inference v0.2 used ROI-FCN as
+the active live ROI locator: it resized the grayscale camera frame into a fixed
+locator canvas, ran the learned heatmap model, decoded the argmax to one
+source-image centre, and extracted a fixed ROI around that point.
+
+Live inference v0.3 changed the default locator to `background_edge_v1`, an
+inspectable deterministic geometric locator built for the controlled fixed-camera
+path. ROI-FCN is retained as `roi_fcn_legacy`, an explicit comparison/fallback
+route, and the current model selection file references
+`260516-1714_roi-fcn-tiny__run_0002` for that route.
+
+Incident 004 records the engineering justification for this pivot. The issue was
+not simply that ROI-FCN could miss a centre point. The deeper boundary mismatch
+was that ROI-FCN compressed live ROI selection into a learned heatmap peak, while
+the runtime needed an auditable apparent-scale measurement path: foreground mask,
+edge map, candidate contours, chosen bbox, ROI crop bounds, rejection reasons,
+and traceable artifacts. This matters because downstream distance depends on crop
+boundaries, foreground quality, and geometry, not only on whether a centre point
+looks plausible.
 
 ## 8. Raw-Image Inference
 
@@ -334,6 +348,8 @@ stabilisation layer. It includes:
 * synthetic camera publisher for deterministic GUI smoke tests.
 * OpenCV/V4L2 camera source targeting `/dev/video0`.
 * deterministic `background_edge_v1` locator.
+* generic `LocatorResult` metadata with accepted state, candidates, chosen bbox,
+  ROI bounds, clipping/content metadata, warnings, and rejection reasons.
 * retained ROI-FCN legacy locator path.
 * manual fixed ROI and fixed-centre fallback locator paths.
 * static background capture and clear controls.
@@ -612,7 +628,65 @@ for trace analysis. The recommended follow-up work is broader trace replay, a
 locator-anchored fallback extractor, a better background-removal workflow, and
 eventually a stronger foreground model.
 
-## 14. Experimental Amodal Keypoint Topology
+## 14. Incident 004: ROI-FCN to Geometric Locator Retrospective
+
+The `failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective`
+directory records the architectural justification for moving the live default ROI
+locator from ROI-FCN in v0.2 to the deterministic `background_edge_v1` locator in
+v0.3.
+
+The retrospective conclusion is not that ROI-FCN was useless or that a geometric
+locator is a general object detector. ROI-FCN remains a valid learned crop-centre
+localiser and a retained legacy comparison path. The problem was that ROI-FCN was
+a poor operational boundary for the live system. It solved:
+
+```text
+choose one centre point from a learned heatmap
+```
+
+but the live runtime needed:
+
+```text
+choose, explain, reject, and repair a crop and apparent-scale representation
+```
+
+The v0.2 traces support that distinction. The checked-in trace population
+contains:
+
+| Trace population signal | Count / value |
+| --- | ---: |
+| Trace directories with preprocessing metadata | `33` |
+| Inference traces | `21` |
+| Failure traces | `8` |
+| Locator-only traces | `4` |
+| Clipped ROI failures | `6 / 8` |
+| Low-confidence failures | `2 / 8` |
+| Accepted inference confidence median | `0.4886` |
+| Failure confidence median | `0.8479` |
+
+The confidence signal was therefore not a reliable live health measure. Several
+high-confidence ROI-FCN failures were rejected only after the centre-derived ROI
+was found to be clipped. Accepted ROI-FCN traces also showed that accepting a
+crop was not enough: one v0.2 trace accepted an ROI with confidence `0.359`, the
+downstream foreground collapsed to `119` pixels, and the model predicted
+`5.1837 m`. That pattern matches the later formal Incident 001 mechanism: the
+locator can be acceptable while the model input is corrupted by foreground
+collapse.
+
+The v0.3 geometric locator exposes the evidence needed for live diagnosis:
+foreground mask, edge map, contour candidates, chosen bbox, ROI request/source
+bounds, clipping and content metadata, explicit rejection reasons, and debug
+artifacts. That makes ROI selection inspectable, rejectable, tunable, and
+comparable to downstream foreground geometry.
+
+Incident 004 does not claim a quantified locator accuracy improvement. The
+repository does not contain a controlled replay where every v0.2 trace is run
+through both ROI-FCN and `background_edge_v1` against hand-labelled ROI centres.
+The claim is narrower and better supported: for this bounded fixed-camera live
+system, the geometric locator is a better engineering interface because it turns
+ROI selection into an auditable apparent-scale measurement path.
+
+## 15. Experimental Amodal Keypoint Topology
 
 The repository contains both the keypoint topology design documents and a first
 experimental implementation:
@@ -665,19 +739,20 @@ The first implementation milestone now has concrete code support for:
 * clear failures for missing labels or schema metadata.
 * a `geometry_only` ablation mode.
 
-This topology follows directly from Incidents 002 and 003. Direct distance/yaw
-regression can report that a prediction is wrong, but it cannot expose enough
-intermediate geometric state to determine whether the model misunderstood scale,
-pose, extent, visibility, lighting, foreground shape, or a combination of those
-factors. A keypoint-based representation gives the system an inspectable object
-hypothesis that can be compared against known rigid geometry.
+This topology follows directly from Incidents 002, 003, and 004. Direct
+distance/yaw regression can report that a prediction is wrong, but it cannot
+expose enough intermediate geometric state to determine whether the model
+misunderstood scale, pose, extent, visibility, lighting, foreground shape, ROI
+selection, or a combination of those factors. A keypoint-based representation
+gives the system an inspectable object hypothesis that can be compared against
+known rigid geometry.
 
 The remaining caution is important: until trained keypoint artifacts and
 geometry-only ablations are evaluated, the keypoint topology should be described
 as an implemented experimental direction rather than an externally validated
 accuracy improvement.
 
-## 15. Representative Results
+## 16. Representative Results
 
 The table below separates offline preprocessed evaluation, raw-image composed
 inference, live-local artifact selection, and live incident evidence. These are
@@ -692,18 +767,21 @@ different evidence types and should not be collapsed into one headline number.
 | `260415-1146_ds-2d-cnn` raw-image output | composed ROI-FCN plus dual-stream inference on `49,999` raw validation rows | `n/a / 49,999` | `0.11117 m` | `0.43346 m` | `0.92948` | `12.33194 deg` | `0.58491` | Shows runtime degradation and a crop-boundary distance tail. |
 | `260425-1025_ds-2d-cnn` raw-image output | composed ROI-FCN plus brightness-normalised dual-stream inference on `49,999` raw validation rows | `n/a / 49,999` | `0.04784 m` | `0.10853 m` | `0.95312` | `16.48438 deg` | `0.38421` | Better bulk distance, but broad yaw underperformance. |
 | `260420-1219_roi-fcn-tiny__run_0003` | ROI-FCN locator validation | `100,000 / 20,000` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Mean centre error `3.1757 px`, p95 `7.7098 px`, full-containment success `0.9891`. |
+| Incident 004 ROI-FCN retrospective | live locator architecture evidence | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | v0.2 traces show high-confidence clipped ROI failures and accepted crops with downstream foreground collapse; v0.3 pivoted to inspectable geometric ROI selection. |
 | `tri_stream_yaw_v0_4` live sweep | trace-backed live incident evidence | `n/a` | `0.1105 m` | `0.1317 m` | `7 / 12` | `n/a` | `n/a` | Pose-dependent live distance bias persisted with intrinsics applied. |
 | `tri_stream_yaw_v0_5` live sweep | trace-backed live incident evidence | `n/a` | `0.1074 m` | `0.1341 m` | `6 / 12` | `n/a` | `n/a` | Current direct-regression model remained pose-sensitive and shifted signed error negative. |
 | Incident 003 primary trace | live preprocessing failure evidence | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Foreground-mask contamination expanded apparent scale and drove a distance underestimate; hard rejection was backed out in favour of diagnostic/component-selection remediation. |
 
-Three conclusions follow from these results. First, the repository contains
+Four conclusions follow from these results. First, the repository contains
 strong offline evidence for the bounded preprocessed task. Second, end-to-end
 raw-image and live inference are harder than the offline task. Third, foreground
 quality is a first-class operational risk for the direct tri-stream family,
 because corrupted apparent scale can drive confident but wrong distance outputs.
-The repository measures and investigates those gaps rather than hiding them.
+Fourth, the live ROI boundary needs inspectable geometric evidence, not only a
+learned centre-point confidence. The repository measures and investigates those
+gaps rather than hiding them.
 
-## 16. Failure Analysis and Engineering Learnings
+## 17. Failure Analysis and Engineering Learnings
 
 The failure-analysis framework uses a primary threshold of:
 
@@ -747,13 +825,18 @@ surface texture and shadow. The initial hard rejection gate was backed out; the
 retained strategy is connected-component foreground selection plus diagnostic
 foreground/locator metadata.
 
+Incident 004 reframes the ROI-FCN-to-geometric-locator pivot as an operational
+boundary decision. ROI-FCN predicts a centre point, but live inference needs an
+auditable apparent-scale path with candidates, bbox geometry, rejection reasons,
+and artifacts that can be compared to downstream foreground geometry.
+
 The main learning is that model metrics alone are insufficient. In a multi-stage
 perception system, accuracy depends on the contracts and failure modes of every
 stage: camera capture, calibration, background handling, ROI selection,
 foreground extraction, geometry construction, model input rendering, and output
 decoding.
 
-## 17. Testing and Engineering Discipline
+## 18. Testing and Engineering Discipline
 
 The repository includes focused tests across multiple layers:
 
@@ -776,7 +859,8 @@ The repository includes focused tests across multiple layers:
 * v0.3-specific tests for `background_edge_v1`, generic tri-stream
   preprocessing, component-aware foreground selection, foreground policy
   selection, manual mask application, trace artifact contents, GUI app wiring,
-  incident-001 preprocessing regression, and incident-003 diagnostic behaviour.
+  incident-001 preprocessing regression, incident-003 diagnostic behaviour, and
+  generic locator compatibility.
 * ChArUco calibration contracts, config loading, dictionary probing, capture
   quality, capture decisions, session storage, pose diversity, reprojection, and
   artifact export.
@@ -796,8 +880,10 @@ The incident-specific tests are particularly valuable:
 * `test_generic_preprocessor.py` also verifies that incident-shaped foreground
   over-expansion is diagnostic-only and that disconnected threshold contaminants
   are excluded by component selection.
+* The Incident 004 retrospective identifies v0.2 trace replay as useful follow-up
+  work, but does not require it for the architectural justification.
 
-## 18. Technically Distinctive Features
+## 19. Technically Distinctive Features
 
 The project demonstrates:
 
@@ -812,6 +898,8 @@ The project demonstrates:
 * learned ROI-FCN crop-centre localisation.
 * deterministic background/edge live localisation for inspectable demo
   operation.
+* geometric ROI selection that exposes foreground masks, edge maps, contour
+  candidates, chosen bboxes, ROI bounds, and rejection reasons.
 * manual masks and static background handling in the live runtime.
 * component-aware threshold foreground extraction with foreground/locator
   diagnostic metadata.
@@ -830,7 +918,7 @@ The project demonstrates:
 These are not presented as novel research contributions. They are practical
 engineering capabilities in applied ML and perception-system development.
 
-## 19. Established Engineering Patterns Demonstrated
+## 20. Established Engineering Patterns Demonstrated
 
 The repository implements established engineering patterns relevant to applied
 ML systems:
@@ -841,6 +929,8 @@ ML systems:
 * OpenCV contour processing, foreground extraction, silhouette generation,
   ChArUco detection, and camera calibration.
 * heatmap-based localisation and argmax decode.
+* deterministic geometric locator contracts with candidate scoring and explicit
+  rejection metadata.
 * notebook control surfaces backed by importable Python modules.
 * JSON, YAML, and TOML artifacts for traceability and audit.
 * GUI-worker separation through payload contracts.
@@ -849,7 +939,7 @@ ML systems:
 * multitask topology contracts spanning scalar regression, circular yaw, 3D
   centre regression, keypoint regression, and visibility classification.
 
-## 20. Scope and Current Limits
+## 21. Scope and Current Limits
 
 This repository is not presented as a packaged product or broad general-purpose
 vision model. It is a bounded research-engineering workspace for testing whether
@@ -874,10 +964,13 @@ The current evidence should be read with the following constraints in mind:
 * The live sweeps use practical measured floor marks, not calibrated metrology
   ground truth.
 * `background_edge_v1` is deterministic and inspectable, and is designed for
-  the controlled fixed-camera live-local path.
+  the controlled fixed-camera live-local path. It is not a general detector.
 * ROI-FCN targets are bootstrapped from an existing crop heuristic, so the
   localiser initially learns that crop-centre definition rather than
   independently curated ground truth.
+* Incident 004 is a retrospective engineering justification, not a benchmark that
+  quantifies geometric-locator centre accuracy against ROI-FCN on hand-labelled
+  live frames.
 * The current next architectural direction is a more inspectable
   keypoint/topology-based representation.
 * The keypoint topology now has a first experimental registered implementation,
@@ -892,7 +985,7 @@ The current evidence should be read with the following constraints in mind:
 These caveats are part of the technical value of the project. They keep the
 claims bounded and make the results easier to evaluate honestly.
 
-## 21. Short Technical Summary
+## 22. Short Technical Summary
 
 This repository is a bounded computer-vision project for fixed-camera vehicle
 distance and yaw estimation. It combines Unity synthetic data generation,
@@ -910,8 +1003,9 @@ handling, trace capture, and failure analysis.
 The most valuable result is not a single accuracy number. The repository shows
 strong offline synthetic performance, measurable degradation in composed
 raw-image inference, live preprocessing incidents that were traced and
-remediated or partially remediated, a pose-dependent distance-bias incident that
-motivates a more inspectable model family, and a first experimental amodal
-keypoint topology implementation. That makes the repository useful evidence of
-applied ML engineering, computer vision, evaluation discipline, and runtime
-integration capability.
+remediated or partially remediated, a ROI-FCN-to-geometric-locator pivot toward
+an inspectable apparent-scale measurement path, a pose-dependent distance-bias
+incident that motivates a more inspectable model family, and a first experimental
+amodal keypoint topology implementation. That makes the repository useful
+evidence of applied ML engineering, computer vision, evaluation discipline, and
+runtime integration capability.
