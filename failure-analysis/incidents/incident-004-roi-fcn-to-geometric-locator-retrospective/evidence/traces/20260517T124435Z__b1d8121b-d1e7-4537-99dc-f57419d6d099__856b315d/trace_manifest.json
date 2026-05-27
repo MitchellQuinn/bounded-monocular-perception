@@ -1,0 +1,467 @@
+{
+  "app_project_name": "06_live-inference_v0.2",
+  "app_root_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2",
+  "app_version": "v0.2",
+  "apply_background_removal_to_regressor_preprocessing": true,
+  "apply_background_removal_to_roi_locator": true,
+  "apply_manual_mask_to_regressor_preprocessing": true,
+  "apply_manual_mask_to_roi_locator": true,
+  "argv": [
+    "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/src/live_inference/gui/app.py",
+    "--camera-source",
+    "opencv-v4l2",
+    "--camera-device",
+    "/dev/video0",
+    "--camera-width",
+    "1920",
+    "--camera-height",
+    "1200",
+    "--camera-fps",
+    "50",
+    "--camera-pixel-format",
+    "YUYV",
+    "--device",
+    "auto",
+    "--roi-locator-polarity",
+    "inverted",
+    "--auto-start-camera",
+    "--diagnostic-profile",
+    "baseline_inverted_masked_locator"
+  ],
+  "artifacts": [
+    {
+      "filename": "accepted_raw_frame.png",
+      "kind": "accepted_raw_frame",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/accepted_raw_frame.png",
+      "required": true
+    },
+    {
+      "filename": "inference_result.json",
+      "kind": "inference_result",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/inference_result.json",
+      "required": true
+    },
+    {
+      "filename": "model_outputs.json",
+      "kind": "model_outputs",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/model_outputs.json",
+      "required": false
+    },
+    {
+      "filename": "preprocessing_metadata.json",
+      "kind": "preprocessing_metadata",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/preprocessing_metadata.json",
+      "required": false
+    },
+    {
+      "filename": "roi_fcn_metadata.json",
+      "kind": "roi_fcn_metadata",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/roi_fcn_metadata.json",
+      "required": false
+    },
+    {
+      "filename": "mask_background_metadata.json",
+      "kind": "mask_background_metadata",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/mask_background_metadata.json",
+      "required": false
+    },
+    {
+      "filename": "x_geometry.json",
+      "kind": "x_geometry",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/x_geometry.json",
+      "required": false
+    },
+    {
+      "filename": "background_removal_mask.png",
+      "kind": "background_removal_mask",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/background_removal_mask.png",
+      "required": false
+    },
+    {
+      "filename": "background_snapshot.png",
+      "kind": "background_snapshot",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/background_snapshot.png",
+      "required": false
+    },
+    {
+      "filename": "combined_ignore_mask.png",
+      "kind": "combined_ignore_mask",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/combined_ignore_mask.png",
+      "required": false
+    },
+    {
+      "filename": "final_locator_input.png",
+      "kind": "final_locator_input",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/final_locator_input.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input.png",
+      "kind": "locator_input",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_after_background_removal.png",
+      "kind": "locator_input_after_background_removal",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_after_background_removal.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_after_manual_mask.png",
+      "kind": "locator_input_after_manual_mask",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_after_manual_mask.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_after_polarity.png",
+      "kind": "locator_input_after_polarity",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_after_polarity.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_as_is.png",
+      "kind": "locator_input_as_is",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_as_is.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_before_polarity.png",
+      "kind": "locator_input_before_polarity",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_before_polarity.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_inverted.png",
+      "kind": "locator_input_inverted",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_inverted.png",
+      "required": false
+    },
+    {
+      "filename": "locator_input_sheet_dark_foreground.png",
+      "kind": "locator_input_sheet_dark_foreground",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/locator_input_sheet_dark_foreground.png",
+      "required": false
+    },
+    {
+      "filename": "manual_mask.png",
+      "kind": "manual_mask",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/manual_mask.png",
+      "required": false
+    },
+    {
+      "filename": "preprocessor_source_after_regressor_masks.png",
+      "kind": "preprocessor_source_after_regressor_masks",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/preprocessor_source_after_regressor_masks.png",
+      "required": false
+    },
+    {
+      "filename": "preprocessor_source_before_regressor_masks.png",
+      "kind": "preprocessor_source_before_regressor_masks",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/preprocessor_source_before_regressor_masks.png",
+      "required": false
+    },
+    {
+      "filename": "roi_crop.png",
+      "kind": "roi_crop",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/roi_crop.png",
+      "required": false
+    },
+    {
+      "filename": "roi_fcn_heatmap.png",
+      "kind": "roi_fcn_heatmap",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/roi_fcn_heatmap.png",
+      "required": false
+    },
+    {
+      "filename": "roi_fcn_heatmap_post_exclusion.png",
+      "kind": "roi_fcn_heatmap_post_exclusion",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/roi_fcn_heatmap_post_exclusion.png",
+      "required": false
+    },
+    {
+      "filename": "roi_fcn_heatmap_pre_exclusion.png",
+      "kind": "roi_fcn_heatmap_pre_exclusion",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/roi_fcn_heatmap_pre_exclusion.png",
+      "required": false
+    },
+    {
+      "filename": "roi_overlay_metadata.json",
+      "kind": "roi_overlay_metadata",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/roi_overlay_metadata.json",
+      "required": false
+    },
+    {
+      "filename": "x_distance_image.png",
+      "kind": "x_distance_image",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/x_distance_image.png",
+      "required": false
+    },
+    {
+      "filename": "x_orientation_image.png",
+      "kind": "x_orientation_image",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/x_orientation_image.png",
+      "required": false
+    },
+    {
+      "filename": "trace_manifest.json",
+      "kind": "trace_manifest",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d/trace_manifest.json",
+      "required": true
+    }
+  ],
+  "background_removal_applied_to_roi_locator": true,
+  "background_revision": 8,
+  "background_threshold": 25,
+  "checkpoint_file_hashes": {
+    "distance_orientation": {
+      "algorithm": "sha256",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn/best.pt",
+      "size_bytes": 2338158,
+      "skipped": null,
+      "value": "aaed28bee799ef1e722c8dbb34bdec2677afe0d659d30d95b7b60310a5c5ae4b"
+    },
+    "roi_fcn": {
+      "algorithm": "sha256",
+      "path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002/best.pt",
+      "size_bytes": 2746106,
+      "skipped": null,
+      "value": "df2a65210417455bb990e49e140b294773b890572be00055029f177e32824f49"
+    }
+  },
+  "checkpoint_paths": {
+    "distance_orientation": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn/best.pt",
+    "roi_fcn": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002/best.pt"
+  },
+  "command_line": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/src/live_inference/gui/app.py --camera-source opencv-v4l2 --camera-device /dev/video0 --camera-width 1920 --camera-height 1200 --camera-fps 50 --camera-pixel-format YUYV --device auto --roi-locator-polarity inverted --auto-start-camera --diagnostic-profile baseline_inverted_masked_locator",
+  "context": {
+    "app_project_name": "06_live-inference_v0.2",
+    "app_root_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2",
+    "app_version": "v0.2",
+    "argv": [
+      "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/src/live_inference/gui/app.py",
+      "--camera-source",
+      "opencv-v4l2",
+      "--camera-device",
+      "/dev/video0",
+      "--camera-width",
+      "1920",
+      "--camera-height",
+      "1200",
+      "--camera-fps",
+      "50",
+      "--camera-pixel-format",
+      "YUYV",
+      "--device",
+      "auto",
+      "--roi-locator-polarity",
+      "inverted",
+      "--auto-start-camera",
+      "--diagnostic-profile",
+      "baseline_inverted_masked_locator"
+    ],
+    "command_line": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/src/live_inference/gui/app.py --camera-source opencv-v4l2 --camera-device /dev/video0 --camera-width 1920 --camera-height 1200 --camera-fps 50 --camera-pixel-format YUYV --device auto --roi-locator-polarity inverted --auto-start-camera --diagnostic-profile baseline_inverted_masked_locator",
+    "device": "auto",
+    "distance_orientation_checkpoint_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn/best.pt",
+    "distance_orientation_device": "auto",
+    "distance_orientation_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn",
+    "git_commit_sha": "dd5b5fc8dda24a3e757abdae244e2b5d3d3a4364",
+    "git_dirty": null,
+    "live_inference_version": "v0.2",
+    "model_selection_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/selections/current.toml",
+    "process_cwd": "/home/mitch/development/bounded-monocular-perception",
+    "python_executable": "/home/mitch/development/bounded-monocular-perception/.venv/bin/python",
+    "roi_fcn_checkpoint_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002/best.pt",
+    "roi_fcn_device": "auto",
+    "roi_fcn_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002",
+    "trace_root_overridden": false,
+    "trace_root_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces"
+  },
+  "created_at_utc": "2026-05-17T12:44:35.817136Z",
+  "device": "cpu",
+  "diagnostic_profile_name": null,
+  "distance_orientation_artifact_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn",
+  "distance_orientation_checkpoint_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn/best.pt",
+  "distance_orientation_regressor_reached": true,
+  "distance_orientation_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn",
+  "error_type": null,
+  "failure_stage": null,
+  "fill_value": 255,
+  "final_locator_input_max": 174,
+  "final_locator_input_mean": 1.2534791666666667,
+  "final_locator_input_median": 0.0,
+  "final_locator_input_min": 0,
+  "final_locator_input_non_whiteish_pixel_count": 144000,
+  "final_locator_input_nonzero_pixel_count": 2487,
+  "final_locator_input_stats": {
+    "max": 174,
+    "mean": 1.2534791666666667,
+    "median": 0.0,
+    "min": 0,
+    "non_whiteish_pixel_count": 144000,
+    "nonzero_pixel_count": 2487
+  },
+  "foreground_mask_empty": false,
+  "foreground_pixel_count": 119,
+  "frame_hash": "856b315d8cf4a1593ffad1e64e58e9da",
+  "git_commit_sha": "dd5b5fc8dda24a3e757abdae244e2b5d3d3a4364",
+  "git_dirty": null,
+  "input_image_hash": {
+    "algorithm": "blake2b-128",
+    "contract_version": "rb-live-inference-v0_1",
+    "digest_size_bytes": 16,
+    "value": "856b315d8cf4a1593ffad1e64e58e9da"
+  },
+  "input_image_hash_value": "856b315d8cf4a1593ffad1e64e58e9da",
+  "live_inference_version": "v0.2",
+  "locator_input_mode": "as_is",
+  "locator_input_parameters": {
+    "dilate_kernel_px": 0,
+    "min_component_area_px": 75,
+    "morphology_close_kernel_px": 3,
+    "restrict_to_lower_frame_fraction": 0.0,
+    "sheet_min_gray": 190,
+    "target_max_gray": 130
+  },
+  "manual_mask_applied_to_roi_locator": true,
+  "mask_revision": 1,
+  "missing_optional_artifacts": [],
+  "model_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/distance-orientation/260515-1301_ts-2d-cnn",
+  "model_selection_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/selections/current.toml",
+  "orientation_source_mode": "raw_grayscale_on_white",
+  "preprocessing_contract_name": "rb-preprocess-v4-tri-stream-grayscale-white-v1",
+  "preprocessing_parameter_revision": null,
+  "process_cwd": "/home/mitch/development/bounded-monocular-perception",
+  "python_executable": "/home/mitch/development/bounded-monocular-perception/.venv/bin/python",
+  "request_frame_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_frames/latest_frame.png",
+  "request_id": "b1d8121b-d1e7-4537-99dc-f57419d6d099",
+  "roi_accepted": true,
+  "roi_center_canvas_xy_px": [
+    230.0,
+    171.0
+  ],
+  "roi_center_source_xy_px": [
+    920.0,
+    684.0
+  ],
+  "roi_clip_max_px": 0,
+  "roi_clip_tolerance_px": 0,
+  "roi_clip_tolerated": false,
+  "roi_clipped": false,
+  "roi_clipped_bounds_xyxy_px": [
+    760.0,
+    524.0,
+    1080.0,
+    844.0
+  ],
+  "roi_confidence": 0.35943084955215454,
+  "roi_fcn_artifact_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002",
+  "roi_fcn_checkpoint_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002/best.pt",
+  "roi_fcn_root": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/models/roi-fcn/260516-1714_roi-fcn-tiny__run_0002",
+  "roi_locator_center_source_xy_px": [
+    920.0,
+    684.0
+  ],
+  "roi_locator_confidence": 0.35943084955215454,
+  "roi_locator_input_polarity": "as_is",
+  "roi_pre_clip_bounds_xyxy_px": [
+    760.0,
+    524.0,
+    1080.0,
+    844.0
+  ],
+  "roi_rejected": false,
+  "roi_rejection_reason": null,
+  "roi_requested_bounds_xyxy_px": [
+    760.0,
+    524.0,
+    1080.0,
+    844.0
+  ],
+  "roi_requested_xyxy_px": [
+    760.0,
+    524.0,
+    1080.0,
+    844.0
+  ],
+  "roi_source_bounds_xyxy_px": [
+    760.0,
+    524.0,
+    1080.0,
+    844.0
+  ],
+  "silhouette_diagnostics": {
+    "contour_area": 100,
+    "contour_bbox": [
+      247,
+      132,
+      260,
+      145
+    ],
+    "filled_area": 119,
+    "filled_to_component_ratio": 1.0,
+    "initial_quality_flags": [
+      "contour_bbox_fill_ratio_small"
+    ],
+    "num_components_after_filter": 6,
+    "num_components_total": 6,
+    "recovered_via": "intensity_otsu_v1",
+    "recovery_component_area": 119,
+    "recovery_component_area_ratio": 0.001162109375,
+    "recovery_component_border_ratio": 0.0,
+    "recovery_component_fill_ratio": 0.6071428571428571,
+    "recovery_component_touches_border": false,
+    "recovery_threshold_mode": "binary",
+    "recovery_threshold_value": 122.0,
+    "selected_component_area": 119,
+    "selected_component_bbox": [
+      247,
+      132,
+      260,
+      145
+    ]
+  },
+  "source_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_frames/latest_frame.png",
+  "stage_policy_revision": 4,
+  "stage_policy_snapshot": {
+    "apply_background_removal_to_regressor_preprocessing": true,
+    "apply_background_removal_to_roi_locator": true,
+    "apply_manual_mask_to_regressor_preprocessing": true,
+    "apply_manual_mask_to_roi_locator": true,
+    "diagnostic_profile_name": null,
+    "reject_clipped_roi": true,
+    "roi_clip_tolerance_px": 0,
+    "roi_locator_dilate_kernel_px": 0,
+    "roi_locator_input_mode": "as_is",
+    "roi_locator_input_polarity": "as_is",
+    "roi_locator_min_component_area_px": 75,
+    "roi_locator_morphology_close_kernel_px": 3,
+    "roi_locator_restrict_to_lower_frame_fraction": 0.0,
+    "roi_locator_sheet_min_gray": 190,
+    "roi_locator_target_max_gray": 130,
+    "roi_min_confidence": 0.3,
+    "roi_min_content_fraction": 0.0,
+    "stage_policy_revision": 4
+  },
+  "trace_dir": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d",
+  "trace_kind": "single_frame_inference",
+  "trace_root_overridden": false,
+  "trace_root_path": "/home/mitch/development/bounded-monocular-perception/06_live-inference_v0.2/live_traces",
+  "ui_state_snapshot": {
+    "apply_background_removal_to_model_preprocessing_checkbox": true,
+    "apply_background_removal_to_roi_locator_checkbox": true,
+    "apply_manual_mask_to_model_preprocessing_checkbox": true,
+    "apply_manual_mask_to_roi_locator_checkbox": true,
+    "background_captured": true,
+    "background_enabled": true,
+    "background_revision": 8,
+    "background_threshold": 25,
+    "diagnostic_profile_name": null,
+    "invert_roi_locator_input_checkbox_checked": false,
+    "invert_roi_locator_input_checkbox_enabled": true,
+    "mask_fill_value": 255,
+    "mask_pixel_count": 1954076,
+    "mask_revision": 1,
+    "roi_locator_input_mode_dropdown": "as_is"
+  }
+}

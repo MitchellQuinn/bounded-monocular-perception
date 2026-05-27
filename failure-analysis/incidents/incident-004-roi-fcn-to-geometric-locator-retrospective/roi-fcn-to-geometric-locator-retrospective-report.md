@@ -48,6 +48,25 @@ This retrospective is based on repository artifacts only:
   - [`260415-1146_ds-2d-cnn`](../../model-evaluations/260415-1146_ds-2d-cnn.md)
   - [`260425-1025_ds-2d-cnn`](../../model-evaluations/260425-1025_ds-2d-cnn.md)
 
+### 2.1 Evidence Trace Bundle
+
+Selected trace artifacts are preserved under [`evidence/traces`](evidence/traces).
+The full v0.2 source trace population is large, so this incident keeps a
+representative bundle rather than duplicating every trace directory.
+
+The copied trace directories use the canonical artifact filenames from each
+trace. Generated duplicate sidecars with frame-hash prefixes and raw byte dumps
+are intentionally omitted where the non-prefixed image, JSON, and metadata
+artifacts already preserve the evidence needed for review.
+
+| Evidence trace | Source runtime | Role in report |
+| --- | --- | --- |
+| [`20260513T114741Z__4c7f3a05-a4a2-4839-9125-59529662c151__ad073540`](evidence/traces/20260513T114741Z__4c7f3a05-a4a2-4839-9125-59529662c151__ad073540) | v0.2 ROI-FCN | High-confidence clipped ROI failure: confidence `0.8848`, rejection `clipped_roi:110px>tolerance:0px`. |
+| [`20260513T143009Z__91bba664-eb45-479c-950b-062bca12f646__da1b05a4`](evidence/traces/20260513T143009Z__91bba664-eb45-479c-950b-062bca12f646__da1b05a4) | v0.2 ROI-FCN | Clipped ROI failure with a larger clipped extent: confidence `0.4880`, rejection `clipped_roi:146px>tolerance:0px`. |
+| [`20260517T113934Z__1930e4b2-d6a9-4e55-b890-594717411915__11c31935`](evidence/traces/20260517T113934Z__1930e4b2-d6a9-4e55-b890-594717411915__11c31935) | v0.2 ROI-FCN | Low-confidence ROI-FCN rejection: confidence `0.1868`, rejection `low_confidence:0.187<min:0.300`. |
+| [`20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d`](evidence/traces/20260517T124435Z__b1d8121b-d1e7-4537-99dc-f57419d6d099__856b315d) | v0.2 ROI-FCN | Accepted ROI with downstream foreground collapse: foreground `119` pixels, predicted distance `5.1837 m`. |
+| [`20260521T155122Z__dfe65dea-eb25-4685-9444-8df71b3054c7__53517f6c`](evidence/traces/20260521T155122Z__dfe65dea-eb25-4685-9444-8df71b3054c7__53517f6c) | v0.3 `background_edge_v1` | Geometric locator comparison trace with `locator_result.json`, foreground mask, edge map, candidate contours, chosen contour, and ROI artifacts. |
+
 ## 3. What v0.2 Did
 
 v0.2 wired ROI-FCN into the app as the active locator. `gui/app.py` loads the selected ROI-FCN root, constructs `RoiFcnLocator`, and passes it into `TriStreamLivePreprocessor`.
