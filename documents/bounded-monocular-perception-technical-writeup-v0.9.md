@@ -1,4 +1,4 @@
-# Bounded Monocular Perception System - Technical Writeup v0.8
+# Bounded Monocular Perception System - Technical Writeup v0.9
 
 ## 1. Project Overview
 
@@ -51,12 +51,14 @@ composition.
 
 The repository is organised as a versioned multi-project workspace:
 
-* `01_rb_synthetic-data_3`: Unity/C# synthetic image generation.
+* `01_rb_synthetic-data_3`: Unity/C# synthetic image generation, including
+  distance/yaw targets and experimental Defender amodal keypoint labels.
 * `02_synthetic-data-processing-v4.0`: OpenCV and NumPy preprocessing,
   detection, silhouette generation, foreground enhancement, and dual-stream /
   tri-stream packing.
 * `03_rb-training-v2.0`: PyTorch training, topology registry, model evaluation,
-  resume support, and reporting.
+  resume support, reporting, and experimental amodal keypoint pose topology
+  work.
 * `04_ROI-FCN`: preprocessing and training for crop-centre heatmap localisation.
 * `05_inference-v0.3-ds`: raw-image inference using ROI-FCN plus dual-stream
   distance/yaw models.
@@ -68,8 +70,8 @@ The repository is organised as a versioned multi-project workspace:
   handling, and ROI-FCN visualisation work.
 * `06_live-inference_v0.3`: current live-local runtime with generic locator
   interfaces, deterministic background/edge localisation, manual masks,
-  selectable foreground extraction, camera-intrinsics preprocessing, trace
-  evidence, and GUI controls.
+  selectable foreground extraction, component-aware threshold foreground
+  selection, camera-intrinsics preprocessing, trace evidence, and GUI controls.
 * `charuco-calibration`: PySide6/OpenCV ChArUco calibration tool for capturing
   pose-diverse calibration frames, solving camera intrinsics, and exporting
   JSON/YAML calibration artifacts.
@@ -98,6 +100,8 @@ Key generator components include:
 * `DistanceCalculator.cs` for explicit target derivation.
 * `StratifiedPlacementPlanner.cs` for camera-footprint-aware placement.
 * `VehicleProjectionValidator.cs` for image-space feasibility checks.
+* `DefenderAmodalKeypointPoseTargetBuilder.cs` for experimental camera-space
+  Defender centre, amodal keypoint, and visibility target generation.
 
 The placement strategy is an important design choice. Rather than sampling
 arbitrary world positions, the generator projects the camera footprint onto the
@@ -112,8 +116,10 @@ The generator writes:
 * `manifests/samples.csv`
 * `runlog.txt`
 
-This gives downstream stages explicit lineage rather than relying on filenames
-alone.
+The sample manifest now also carries Defender keypoint schema metadata,
+camera-space centre labels, ten fixed camera-space 3D keypoints, and per-keypoint
+visibility labels. This gives downstream stages explicit lineage and typed target
+metadata rather than relying on filenames alone.
 
 ## 5. Preprocessing and Representation Design
 
@@ -178,6 +184,7 @@ Model families represented in implemented code include:
 * dual-stream distance-plus-yaw regression.
 * tri-stream distance-plus-yaw regression.
 * ROI-FCN crop-centre localisation.
+* experimental Defender amodal keypoint pose regression.
 
 Yaw is modelled through circular regression using `sin/cos` targets rather than
 direct angle regression. The training runtime resolves prediction heads and
@@ -201,6 +208,15 @@ That design was an attempt to protect distance prediction from unstable yaw
 features while still allowing pose-conditioned corrections. Live incident
 evidence shows that it is a useful baseline, but not a complete solution to
 pose-linked distance bias.
+
+The first experimental keypoint topology is registered as
+`defender_amodal_keypoint_pose` with variant
+`defender_amodal_keypoint_pose_v0_1`. It reuses the tri-stream input family and
+adds heads for distance, yaw, Defender centre, flattened 3D keypoints, and
+visibility logits. The training task runtime supports the corresponding
+distance, orientation, centre, keypoint, and visibility losses and metrics. This
+is an implementation milestone, not yet a selected live model artifact or a
+real-camera accuracy result.
 
 ## 7. ROI-FCN and Runtime Localisation
 
@@ -325,6 +341,8 @@ stabilisation layer. It includes:
 * camera intrinsics mode selection and preview/background transform handling.
 * foreground extraction policy state with `threshold_foreground_v1` as default
   and `silhouette_contour_v2` retained as a legacy selectable path.
+* component-aware threshold foreground selection with diagnostic metadata for
+  foreground/locator disagreement.
 * tri-stream live preprocessor.
 * PyTorch tri-stream inference engine.
 * camera and inference workers.
@@ -402,7 +420,8 @@ The remediation had several parts:
 * The live default foreground path was changed to `threshold_foreground_v1`.
 * The old contour/silhouette path remains selectable as `silhouette_contour_v2`
   but is no longer the default live path.
-* A locator-relative consistency guard was added before inference.
+* A locator-relative consistency check was added and later evolved into
+  diagnostic metadata rather than a hard rejection path.
 * Regression tests were added for the v4 silhouette algorithm and the live
   preprocessor using incident artifacts.
 
@@ -536,18 +555,80 @@ path, but it is no longer the preferred path for the next major improvement
 cycle. The remaining problem needs a representation that exposes inferred
 geometry, not only final scalar outputs.
 
-## 13. Proposed Keypoint-Based Topology
+## 13. Incident 003: Foreground Mask Contamination Underestimate
 
-The repository contains a proposed amodal keypoint topology in:
+The `failure-analysis/incidents/incident-003-foreground-mask-contamination-distance-underestimate`
+directory records a live preprocessing failure where foreground extraction
+expanded the apparent vehicle extent and drove a distance underestimate.
+
+The primary trace was captured on 2026-05-26. The system predicted the Defender
+at `1.325526 m`, while nearby live behaviour suggested that this was a clear
+"too close" outlier. The ROI locator found a plausible compact target, but the
+threshold foreground path merged the vehicle with dark sheet folds and shadow on
+the support surface. The model then received a foreground mask, distance image,
+orientation image, and geometry vector describing a much larger object than the
+Defender itself.
+
+The key trace signals were:
+
+| Signal | Value |
+| --- | ---: |
+| Predicted distance | `1.325526 m` |
+| Predicted yaw | `29.3355 deg` |
+| Locator bbox | `[1029, 521, 1179, 638]` |
+| Locator bbox size | `150 x 117 px` |
+| Locator confidence | `0.838026` |
+| Foreground bbox | `[944, 441, 1248, 700]` |
+| Foreground bbox size | `304 x 259 px` |
+| Foreground pixel count | `44,792 px` |
+| Foreground bbox area / locator bbox area | `4.49 x` |
+| Foreground pixels / locator bbox area | `2.55 x` |
+| Geometry `area_norm` | `0.034174` |
+
+This incident is the mirror image of Incident 001. Incident 001 collapsed the
+foreground to a tiny fragment and drove a distance overestimate. Incident 003
+expanded the foreground into support-surface texture and drove a distance
+underestimate. In both cases, the model output was coherent with corrupted model
+inputs.
+
+The first attempted remediation was a hard foreground-vs-locator rejection gate.
+That change was backed out because the locator bbox is primarily a ROI-centre
+cue, not a reliable object-extent contract, and hard rejection was too brittle
+for live use. The retained remediation is diagnostic and corrective rather than
+strictly rejecting:
+
+* foreground-vs-locator disagreement is recorded as trace metadata and warning
+  fields.
+* `threshold_foreground_v1` performs connected-component selection before
+  rendering model inputs.
+* ROI-saturating threshold candidates can trigger a stricter threshold retry.
+* disconnected or ROI-scale support-surface components are less likely to become
+  `x_distance_image`, `x_orientation_image`, and `x_geometry`.
+
+The current implementation does not claim to solve every support-texture case.
+If contamination remains physically connected to the vehicle in the threshold
+mask, the system is expected to preserve suspicious foreground/locator metadata
+for trace analysis. The recommended follow-up work is broader trace replay, a
+locator-anchored fallback extractor, a better background-removal workflow, and
+eventually a stronger foreground model.
+
+## 14. Experimental Amodal Keypoint Topology
+
+The repository contains both the keypoint topology design documents and a first
+experimental implementation:
 
 * `documents/keypoint-regression-topology-v0.4.md`
 * `documents/keypoint-regression-topology-v0.4-technical-summary.md`
+* `03_rb-training-v2.0/src/topologies/topology_defender_amodal_keypoint_pose.py`
+* `03_rb-training-v2.0/src/topologies/topology_defender_amodal_keypoint_pose_v0_1.py`
+* `03_rb-training-v2.0/schemas/defender_keypoint_schema.json`
 
-This topology is documented as a proposal and development direction, not as an
-implemented training topology in the current code. The implemented topology
-registry still contains the existing CNN, dual-stream, and tri-stream families.
+The implemented topology is registered as `defender_amodal_keypoint_pose`, with
+default variant `defender_amodal_keypoint_pose_v0_1`. Its metadata marks it as
+experimental. It is not the currently selected live distance/yaw model, and this
+writeup does not claim live keypoint accuracy.
 
-The proposal is to add a more inspectable intermediate representation:
+The model emits a structured object-state hypothesis:
 
 ```text
 tri-stream image-derived inputs
@@ -555,43 +636,48 @@ tri-stream image-derived inputs
   -> all fixed semantic external vehicle keypoints, including occluded keypoints
   -> keypoint visibility / in-frame state
   -> direct distance and yaw heads for compatibility
-  -> optional rigid fit to known vehicle geometry
-  -> derived distance/yaw and diagnostic residuals
 ```
 
-The key design choice is to predict all ten fixed external keypoints, not only
-the visible ones. Hidden keypoints are treated as amodal inferred targets
-derived from known object geometry, camera setup, visible evidence, ROI
-geometry, and the synthetic training distribution.
+The current implemented outputs are:
 
-The representation deliberately separates:
+* `distance_m`
+* `yaw_sin_cos`
+* `defender_center_3d`
+* `defender_keypoints_3d_flat`
+* `defender_keypoints_visible_logits`
 
-* amodal target: where the fixed keypoint is in 3D.
-* visibility: whether the keypoint is directly visible or in frame.
-* confidence / uncertainty: how reliable the prediction is likely to be.
+The key design choice remains to predict all ten fixed external keypoints, not
+only the visible ones. Hidden keypoints are treated as amodal inferred targets
+derived from known object geometry, camera setup, visible evidence, ROI geometry,
+and the synthetic training distribution. Visibility is a separate target and
+diagnostic signal; it does not mask the amodal 3D supervision.
 
-The first implementation milestone requires:
+The first implementation milestone now has concrete code support for:
 
-* a registered topology family.
-* a versioned `defender_keypoint_schema.json`.
-* synthetic batches that include the new labels.
+* a registered topology family and selectable variant.
+* a versioned `defender_keypoint_schema.json` with schema-hash validation.
+* synthetic manifest labels for centre, ten 3D keypoints, visibility, and schema
+  metadata.
 * model outputs for distance, yaw, centre, flattened 3D keypoints, and
   visibility logits.
 * distance, yaw, centre, keypoint, and visibility losses.
-* centre/keypoint metrics plus visible-vs-hidden metrics.
+* centre/keypoint metrics plus visible-vs-hidden keypoint metrics.
 * clear failures for missing labels or schema metadata.
-* continued compatibility with existing live distance/yaw inference.
-* no external claim about image-stream contribution until a geometry-only
-  ablation exists.
+* a `geometry_only` ablation mode.
 
-The proposal follows directly from Incident 002. Direct distance/yaw regression
-can report that a prediction is wrong, but it cannot expose enough intermediate
-geometric state to determine whether the model misunderstood scale, pose,
-extent, visibility, lighting, foreground shape, or a combination of those
+This topology follows directly from Incidents 002 and 003. Direct distance/yaw
+regression can report that a prediction is wrong, but it cannot expose enough
+intermediate geometric state to determine whether the model misunderstood scale,
+pose, extent, visibility, lighting, foreground shape, or a combination of those
 factors. A keypoint-based representation gives the system an inspectable object
 hypothesis that can be compared against known rigid geometry.
 
-## 14. Representative Results
+The remaining caution is important: until trained keypoint artifacts and
+geometry-only ablations are evaluated, the keypoint topology should be described
+as an implemented experimental direction rather than an externally validated
+accuracy improvement.
+
+## 15. Representative Results
 
 The table below separates offline preprocessed evaluation, raw-image composed
 inference, live-local artifact selection, and live incident evidence. These are
@@ -608,13 +694,16 @@ different evidence types and should not be collapsed into one headline number.
 | `260420-1219_roi-fcn-tiny__run_0003` | ROI-FCN locator validation | `100,000 / 20,000` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Mean centre error `3.1757 px`, p95 `7.7098 px`, full-containment success `0.9891`. |
 | `tri_stream_yaw_v0_4` live sweep | trace-backed live incident evidence | `n/a` | `0.1105 m` | `0.1317 m` | `7 / 12` | `n/a` | `n/a` | Pose-dependent live distance bias persisted with intrinsics applied. |
 | `tri_stream_yaw_v0_5` live sweep | trace-backed live incident evidence | `n/a` | `0.1074 m` | `0.1341 m` | `6 / 12` | `n/a` | `n/a` | Current direct-regression model remained pose-sensitive and shifted signed error negative. |
+| Incident 003 primary trace | live preprocessing failure evidence | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Foreground-mask contamination expanded apparent scale and drove a distance underestimate; hard rejection was backed out in favour of diagnostic/component-selection remediation. |
 
-Two conclusions follow from these results. First, the repository contains strong
-offline evidence for the bounded preprocessed task. Second, end-to-end
-raw-image and live inference are harder than the offline task, and the
-repository measures and investigates that gap rather than hiding it.
+Three conclusions follow from these results. First, the repository contains
+strong offline evidence for the bounded preprocessed task. Second, end-to-end
+raw-image and live inference are harder than the offline task. Third, foreground
+quality is a first-class operational risk for the direct tri-stream family,
+because corrupted apparent scale can drive confident but wrong distance outputs.
+The repository measures and investigates those gaps rather than hiding them.
 
-## 15. Failure Analysis and Engineering Learnings
+## 16. Failure Analysis and Engineering Learnings
 
 The failure-analysis framework uses a primary threshold of:
 
@@ -652,19 +741,26 @@ and camera intrinsics are applied. The direct model family can still encode
 pose-dependent distance bias, which motivates a more inspectable intermediate
 representation.
 
+Incident 003 shows the opposite foreground failure from Incident 001: instead of
+collapsing to a tiny fragment, foreground extraction expanded into support
+surface texture and shadow. The initial hard rejection gate was backed out; the
+retained strategy is connected-component foreground selection plus diagnostic
+foreground/locator metadata.
+
 The main learning is that model metrics alone are insufficient. In a multi-stage
 perception system, accuracy depends on the contracts and failure modes of every
 stage: camera capture, calibration, background handling, ROI selection,
 foreground extraction, geometry construction, model input rendering, and output
 decoding.
 
-## 16. Testing and Engineering Discipline
+## 17. Testing and Engineering Discipline
 
 The repository includes focused tests across multiple layers:
 
 * v4 preprocessing integration, silhouette algorithms, foreground handling, and
   brightness normalisation.
-* topology contracts and task-runtime reporting.
+* topology contracts and task-runtime reporting, including keypoint/visibility
+  heads for the experimental amodal topology.
 * tri-stream yaw variants, including v0.5's pose-conditioned bounded residual
   structure.
 * resume features and epoch summaries.
@@ -678,8 +774,9 @@ The repository includes focused tests across multiple layers:
 * live camera intrinsics modes, preview/background transform handling, and
   metadata propagation.
 * v0.3-specific tests for `background_edge_v1`, generic tri-stream
-  preprocessing, foreground policy selection, manual mask application, trace
-  artifact contents, GUI app wiring, and incident-001 preprocessing regression.
+  preprocessing, component-aware foreground selection, foreground policy
+  selection, manual mask application, trace artifact contents, GUI app wiring,
+  incident-001 preprocessing regression, and incident-003 diagnostic behaviour.
 * ChArUco calibration contracts, config loading, dictionary probing, capture
   quality, capture decisions, session storage, pose diversity, reprojection, and
   artifact export.
@@ -695,9 +792,12 @@ The incident-specific tests are particularly valuable:
   fragment.
 * `test_generic_preprocessor.py` verifies that the live preprocessor produces a
   large foreground mask, large geometry, and non-empty vehicle representation
-  from the incident frame and locator bbox.
+  from the Incident 001 frame and locator bbox.
+* `test_generic_preprocessor.py` also verifies that incident-shaped foreground
+  over-expansion is diagnostic-only and that disconnected threshold contaminants
+  are excluded by component selection.
 
-## 17. Technically Distinctive Features
+## 18. Technically Distinctive Features
 
 The project demonstrates:
 
@@ -713,6 +813,8 @@ The project demonstrates:
 * deterministic background/edge live localisation for inspectable demo
   operation.
 * manual masks and static background handling in the live runtime.
+* component-aware threshold foreground extraction with foreground/locator
+  diagnostic metadata.
 * calibration-backed live camera intrinsics transforms.
 * a tri-stream model contract separating distance image, orientation image, and
   geometry features.
@@ -722,13 +824,13 @@ The project demonstrates:
   artifacts, model inputs, metadata, and inference outputs.
 * failure analysis that distinguishes offline validation quality from composed
   runtime quality.
-* a proposed keypoint-based topology motivated by measured limitations of
-  direct scalar regression.
+* an experimental amodal keypoint topology motivated by measured limitations of
+  direct scalar regression and foreground-dependent apparent-scale failures.
 
 These are not presented as novel research contributions. They are practical
 engineering capabilities in applied ML and perception-system development.
 
-## 18. Established Engineering Patterns Demonstrated
+## 19. Established Engineering Patterns Demonstrated
 
 The repository implements established engineering patterns relevant to applied
 ML systems:
@@ -744,8 +846,10 @@ ML systems:
 * GUI-worker separation through payload contracts.
 * device policy management for CPU and CUDA execution paths.
 * artifact-backed incident analysis and regression tests.
+* multitask topology contracts spanning scalar regression, circular yaw, 3D
+  centre regression, keypoint regression, and visibility classification.
 
-## 19. Scope and Current Limits
+## 20. Scope and Current Limits
 
 This repository is not presented as a packaged product or broad general-purpose
 vision model. It is a bounded research-engineering workspace for testing whether
@@ -776,15 +880,19 @@ The current evidence should be read with the following constraints in mind:
   independently curated ground truth.
 * The current next architectural direction is a more inspectable
   keypoint/topology-based representation.
-* The proposed keypoint topology is documented, but not yet implemented as a
-  registered training topology.
+* The keypoint topology now has a first experimental registered implementation,
+  schema, labels, losses, metrics, and tests, but it is not yet a selected live
+  model artifact or externally validated accuracy improvement.
+* Foreground extraction remains a live-runtime risk. The current strategy
+  favours component selection plus diagnostic metadata over brittle hard
+  rejection.
 * The codebase is a research workspace with versioned subprojects,
   compatibility shims, and evolving runtime paths.
 
 These caveats are part of the technical value of the project. They keep the
 claims bounded and make the results easier to evaluate honestly.
 
-## 20. Short Technical Summary
+## 21. Short Technical Summary
 
 This repository is a bounded computer-vision project for fixed-camera vehicle
 distance and yaw estimation. It combines Unity synthetic data generation,
@@ -801,8 +909,9 @@ handling, trace capture, and failure analysis.
 
 The most valuable result is not a single accuracy number. The repository shows
 strong offline synthetic performance, measurable degradation in composed
-raw-image inference, a live preprocessing incident that was traced and
-remediated, and a later pose-dependent distance-bias incident that motivates a
-more inspectable keypoint-based model direction. That makes the repository
-useful evidence of applied ML engineering, computer vision, evaluation
-discipline, and runtime integration capability.
+raw-image inference, live preprocessing incidents that were traced and
+remediated or partially remediated, a pose-dependent distance-bias incident that
+motivates a more inspectable model family, and a first experimental amodal
+keypoint topology implementation. That makes the repository useful evidence of
+applied ML engineering, computer vision, evaluation discipline, and runtime
+integration capability.
