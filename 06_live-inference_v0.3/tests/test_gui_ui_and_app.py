@@ -18,7 +18,7 @@ if str(SRC_ROOT) not in sys.path:
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QImage  # noqa: E402
+from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QGridLayout,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 
 import interfaces.contracts as contracts  # noqa: E402
 from live_inference.gui.app import build_live_inference_gui_context  # noqa: E402
+from live_inference.gui.frame_preview_widget import FramePreviewWidget  # noqa: E402
 from live_inference.gui.main_window import LiveInferenceMainWindow  # noqa: E402
 from live_inference.preprocessing import (  # noqa: E402
     CAMERA_INTRINSICS_MODE_REAL_TO_UNITY_INTRINSICS_REMAP,
@@ -154,6 +155,16 @@ def _inference_result_with_roi(
             },
         ),
     )
+
+
+def _qimage_rgb_array(image: QImage) -> np.ndarray:
+    rgb_image = image.convertToFormat(QImage.Format.Format_RGB888)
+    width = int(rgb_image.width())
+    height = int(rgb_image.height())
+    bytes_per_line = int(rgb_image.bytesPerLine())
+    buffer = rgb_image.bits()
+    array = np.frombuffer(buffer, dtype=np.uint8).reshape(height, bytes_per_line)
+    return np.array(array[:, : width * 3].reshape(height, width, 3), copy=True)
 
 
 class GuiUiAndAppTests(unittest.TestCase):
@@ -505,6 +516,35 @@ class GuiUiAndAppTests(unittest.TestCase):
         self.assertIsNotNone(preview)
         assert preview is not None
         self.assertTrue(np.all(preview == 255))
+
+    def test_drawn_mask_is_visible_as_opaque_white_gui_overlay(self) -> None:
+        widget = FramePreviewWidget()
+        widget.resize(40, 30)
+        image = QImage(40, 30, QImage.Format.Format_RGB888)
+        image.fill(QColor(100, 100, 100))
+        widget.set_image(image)
+
+        widget.set_brush_diameter_px(5)
+        widget.begin_mask_edit("draw")
+        widget._apply_brush_at_source((20, 15))
+        widget.show()
+        self.app.processEvents()
+
+        rendered = _qimage_rgb_array(widget.grab().toImage())
+        base_preview = widget.effective_preview_image()
+        self.assertIsNotNone(base_preview)
+        assert base_preview is not None
+
+        self.assertTrue(np.array_equal(base_preview[15, 20], [100, 100, 100]))
+        self.assertTrue(np.array_equal(rendered[0, 0], [100, 100, 100]))
+        self.assertTrue(np.array_equal(rendered[15, 20], [255, 255, 255]))
+
+        widget.finish_mask_edit(commit=True)
+        self.app.processEvents()
+        committed_rendered = _qimage_rgb_array(widget.grab().toImage())
+
+        self.assertTrue(np.array_equal(committed_rendered[0, 0], [100, 100, 100]))
+        self.assertTrue(np.array_equal(committed_rendered[15, 20], [255, 255, 255]))
 
     def test_app_context_uses_background_edge_locator_by_default(self) -> None:
         context = build_live_inference_gui_context(device="cpu")

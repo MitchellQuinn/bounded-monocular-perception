@@ -602,7 +602,7 @@ class FramePreviewWidget(QWidget):
             if self._committed_overlay_pixmap is None and self._committed_mask is not None:
                 self._committed_overlay_pixmap = _mask_overlay_pixmap(
                     self._committed_mask,
-                    rgba=(255, 80, 80, 70),
+                    rgba=(255, 255, 255, 255),
                 )
             if self._committed_overlay_pixmap is not None:
                 painter.drawPixmap(
@@ -614,7 +614,7 @@ class FramePreviewWidget(QWidget):
             if self._draft_overlay_pixmap is None:
                 self._draft_overlay_pixmap = _mask_overlay_pixmap(
                     self._draft_mask,
-                    rgba=(255, 210, 55, 110),
+                    rgba=(255, 255, 255, 255),
                 )
             if self._draft_overlay_pixmap is not None:
                 painter.drawPixmap(
