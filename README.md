@@ -1,6 +1,6 @@
 # Bounded Monocular Perception
 
-> 🎥 **Live demo:** [YouTube link pending]  
+> 🎥 **Live demo:** [https://youtu.be/fCXdb0SeLFY](https://youtu.be/fCXdb0SeLFY)
 > 📄 **Technical writeup:** [`documents/bounded-monocular-perception-technical-writeup-v0.9.md`](documents/bounded-monocular-perception-technical-writeup-v0.9.md)  
 > 🔍 **Failure analysis:** [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md)  
 > 🧭 **Current model direction:** amodal semantic keypoint regression, with training data processing in progress
@@ -22,7 +22,6 @@ This is a bounded research-engineering artifact for making a controlled monocula
 It is **not** presented as:
 
 - a general object detector
-- an autonomous-driving system
 - an open-world monocular 3D perception solution
 - a production-ready real-world vision product
 - a claim of robust real-camera transfer
