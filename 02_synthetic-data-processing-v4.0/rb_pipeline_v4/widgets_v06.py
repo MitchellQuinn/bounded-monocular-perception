@@ -29,6 +29,8 @@ class PipelineLauncherV6(PipelineLauncherV5):
         super().__init__(project_root)
         self.stage_dropdown.options = [("All", "all"), *[(stage, stage) for stage in TRI_STREAM_STAGE_ORDER]]
         self.stage_dropdown.value = "all"
+        self.canvas_w_int.value = 340
+        self.canvas_h_int.value = 340
         self.image_representation_dropdown.value = "raw_grayscale_on_white"
         self.foreground_enhancement_enabled_checkbox.value = True
         self.foreground_enhancement_target_float.value = 0.70

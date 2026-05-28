@@ -1,6 +1,6 @@
 # Bounded Monocular Perception
 
-> 🎥 **Live demo:** [https://youtu.be/fCXdb0SeLFY](https://youtu.be/fCXdb0SeLFY)
+> 🎥 **Live demo:** [https://www.youtube.com/watch?v=IOYiBk6UhAs](https://www.youtube.com/watch?v=IOYiBk6UhAs)
 > 📄 **Technical writeup:** [`documents/bounded-monocular-perception-technical-writeup-v0.9.md`](documents/bounded-monocular-perception-technical-writeup-v0.9.md)  
 > 🔍 **Failure analysis:** [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md)  
 > 🧭 **Current model direction:** amodal semantic keypoint regression, with training data processing in progress
