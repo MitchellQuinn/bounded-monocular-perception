@@ -131,6 +131,7 @@ class BackgroundEdgeLocator:
         source_h, source_w = int(gray.shape[0]), int(gray.shape[1])
         warnings: list[str] = []
         rejection_reasons: list[str] = []
+        background_removal_required = _background_removal_explicitly_requested(request)
         background = self._background_snapshot(config, source_w, source_h, warnings, request)
         background_applied = bool(background is not None and background.captured and background.enabled)
         manual_ignore_mask = _manual_ignore_mask_from_request(
@@ -140,7 +141,15 @@ class BackgroundEdgeLocator:
             warnings=warnings,
         )
 
-        diff, foreground_mask = _foreground_mask(gray, background, config, warnings)
+        if background_removal_required and not background_applied:
+            warnings.append(
+                "Background removal was requested for ROI locator, but no enabled "
+                "matching background is available; refusing dark-on-light fallback."
+            )
+            diff = None
+            foreground_mask = np.zeros(gray.shape, dtype=bool)
+        else:
+            diff, foreground_mask = _foreground_mask(gray, background, config, warnings)
         if manual_ignore_mask is not None:
             foreground_mask = np.array(foreground_mask, dtype=bool, copy=True)
             foreground_mask[manual_ignore_mask] = False
@@ -516,6 +525,17 @@ def _apply_background_removal_to_locator(request: contracts.LocatorRequest) -> b
     )
 
 
+def _background_removal_explicitly_requested(
+    request: contracts.LocatorRequest,
+) -> bool:
+    return (
+        request.extras.get(
+            contracts.PREPROCESSING_METADATA_APPLY_BACKGROUND_REMOVAL_TO_ROI_LOCATOR
+        )
+        is True
+    )
+
+
 def _config_from_request(
     request: contracts.LocatorRequest,
     config: BackgroundEdgeLocatorConfig,
@@ -607,7 +627,118 @@ def _build_candidates(
     source_wh: tuple[int, int],
     config: BackgroundEdgeLocatorConfig,
 ) -> tuple[contracts.RoiCandidate, ...]:
-    contour_source = edge_map if bool(np.any(edge_map)) else foreground_mask.astype(np.uint8) * 255
+    component_candidates = _build_foreground_component_candidates(
+        edge_map=edge_map,
+        foreground_mask=foreground_mask,
+        source_wh=source_wh,
+        config=config,
+    )
+    accepted_components = tuple(
+        candidate for candidate in component_candidates if not candidate.rejection_reason
+    )
+    if accepted_components:
+        return tuple(
+            sorted(component_candidates, key=lambda item: item.score, reverse=True)
+        )
+
+    edge_candidates = _build_edge_contour_candidates(
+        edge_map=edge_map,
+        foreground_mask=foreground_mask,
+        source_wh=source_wh,
+        config=config,
+    )
+    return tuple(
+        sorted(
+            (*component_candidates, *edge_candidates),
+            key=lambda item: item.score,
+            reverse=True,
+        )
+    )
+
+
+def _build_foreground_component_candidates(
+    *,
+    edge_map: np.ndarray,
+    foreground_mask: np.ndarray,
+    source_wh: tuple[int, int],
+    config: BackgroundEdgeLocatorConfig,
+) -> tuple[contracts.RoiCandidate, ...]:
+    frame_w, frame_h = source_wh
+    frame_area = float(max(1, frame_w * frame_h))
+    component_count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(
+        np.asarray(foreground_mask, dtype=np.uint8),
+        8,
+    )
+    candidates: list[contracts.RoiCandidate] = []
+    for label in range(1, int(component_count)):
+        x, y, w, h, area = [int(value) for value in stats[label]]
+        bbox_area = float(max(0, w * h))
+        area_px = float(max(0, area))
+        aspect = float(w) / float(max(1, h))
+        edge_density = float(np.count_nonzero(edge_map[y : y + h, x : x + w])) / float(
+            max(1.0, bbox_area)
+        )
+        rejection_reason = _candidate_rejection_reason(
+            area_px=area_px,
+            bbox_area=bbox_area,
+            aspect=aspect,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            frame_w=frame_w,
+            frame_h=frame_h,
+            config=config,
+        )
+        if rejection_reason is None:
+            rejection_reason = _diffuse_component_rejection_reason(
+                bbox_area=bbox_area,
+                frame_area=frame_area,
+                edge_density=edge_density,
+            )
+        score = _candidate_score(
+            area_px=area_px,
+            bbox_area=bbox_area,
+            frame_area=frame_area,
+            edge_density=edge_density,
+            config=config,
+        )
+        if rejection_reason is None and score < float(config.min_candidate_score):
+            rejection_reason = (
+                f"{contracts.LocatorFailureReason.LOW_CONFIDENCE.value}:{score:.3f}"
+            )
+        candidates.append(
+            contracts.RoiCandidate(
+                candidate_id=f"component_{label:03d}",
+                bbox_xyxy_px=(float(x), float(y), float(x + w), float(y + h)),
+                center_xy_px=(float(x) + (float(w) / 2.0), float(y) + (float(h) / 2.0)),
+                area_px=area_px,
+                contour_area_px=area_px,
+                bbox_area_px=bbox_area,
+                aspect_ratio=aspect,
+                score=score,
+                rejection_reason=rejection_reason,
+                extras={
+                    contracts.ROI_CANDIDATE_SOURCE_FIELD: (
+                        contracts.ROI_CANDIDATE_SOURCE_FOREGROUND_COMPONENT
+                    ),
+                    "edge_density": edge_density,
+                },
+            )
+        )
+    return tuple(candidates)
+
+
+def _build_edge_contour_candidates(
+    *,
+    edge_map: np.ndarray,
+    foreground_mask: np.ndarray,
+    source_wh: tuple[int, int],
+    config: BackgroundEdgeLocatorConfig,
+) -> tuple[contracts.RoiCandidate, ...]:
+    if not bool(np.any(edge_map)):
+        return ()
+    contour_source = edge_map
     contours, _hierarchy = cv2.findContours(
         contour_source,
         cv2.RETR_EXTERNAL,
@@ -623,26 +754,35 @@ def _build_candidates(
         mask_area = int(np.count_nonzero(foreground_mask[y : y + h, x : x + w]))
         area_px = float(max(mask_area, contour_area, bbox_area))
         aspect = float(w) / float(max(1, h))
-        rejection_reason = None
-        if area_px < float(config.min_foreground_area_px):
-            rejection_reason = (
-                f"{contracts.LocatorFailureReason.NO_CANDIDATES.value}:"
-                f"area<{int(config.min_foreground_area_px)}"
-            )
-        elif aspect < 0.15 or aspect > 8.0:
-            rejection_reason = f"implausible_aspect_ratio:{aspect:.3f}"
         edge_density = float(np.count_nonzero(edge_map[y : y + h, x : x + w])) / float(
             max(1.0, bbox_area)
         )
-        area_score = min(1.0, area_px / max(float(config.min_foreground_area_px) * 8.0, 1.0))
-        extent_score = min(1.0, (bbox_area / frame_area) * 80.0)
-        density_score = min(1.0, edge_density * 10.0)
-        score = max(0.0, min(1.0, 0.55 * area_score + 0.30 * extent_score + 0.15 * density_score))
+        rejection_reason = _candidate_rejection_reason(
+            area_px=area_px,
+            bbox_area=bbox_area,
+            aspect=aspect,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            frame_w=frame_w,
+            frame_h=frame_h,
+            config=config,
+        )
+        score = _candidate_score(
+            area_px=area_px,
+            bbox_area=bbox_area,
+            frame_area=frame_area,
+            edge_density=edge_density,
+            config=config,
+        )
         if rejection_reason is None and score < float(config.min_candidate_score):
-            rejection_reason = f"{contracts.LocatorFailureReason.LOW_CONFIDENCE.value}:{score:.3f}"
+            rejection_reason = (
+                f"{contracts.LocatorFailureReason.LOW_CONFIDENCE.value}:{score:.3f}"
+            )
         candidates.append(
             contracts.RoiCandidate(
-                candidate_id=f"candidate_{index:03d}",
+                candidate_id=f"edge_{index:03d}",
                 bbox_xyxy_px=(float(x), float(y), float(x + w), float(y + h)),
                 center_xy_px=(float(x) + (float(w) / 2.0), float(y) + (float(h) / 2.0)),
                 area_px=area_px,
@@ -651,10 +791,88 @@ def _build_candidates(
                 aspect_ratio=aspect,
                 score=score,
                 rejection_reason=rejection_reason,
-                extras={"edge_density": edge_density},
+                extras={
+                    contracts.ROI_CANDIDATE_SOURCE_FIELD: (
+                        contracts.ROI_CANDIDATE_SOURCE_EDGE_CONTOUR
+                    ),
+                    "edge_density": edge_density,
+                },
             )
         )
-    return tuple(sorted(candidates, key=lambda item: item.score, reverse=True))
+    return tuple(candidates)
+
+
+def _candidate_rejection_reason(
+    *,
+    area_px: float,
+    bbox_area: float,
+    aspect: float,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    frame_w: int,
+    frame_h: int,
+    config: BackgroundEdgeLocatorConfig,
+) -> str | None:
+    if area_px < float(config.min_foreground_area_px):
+        return (
+            f"{contracts.LocatorFailureReason.NO_CANDIDATES.value}:"
+            f"area<{int(config.min_foreground_area_px)}"
+        )
+    if aspect < 0.15 or aspect > 8.0:
+        return f"implausible_aspect_ratio:{aspect:.3f}"
+
+    frame_area = float(max(1, int(frame_w) * int(frame_h)))
+    bbox_fraction = float(bbox_area) / frame_area
+    touches_left = int(x) <= 0
+    touches_top = int(y) <= 0
+    touches_right = int(x + w) >= int(frame_w)
+    touches_bottom = int(y + h) >= int(frame_h)
+    touched_borders = sum(
+        int(value)
+        for value in (touches_left, touches_top, touches_right, touches_bottom)
+    )
+    if bbox_fraction > 0.45:
+        return f"implausibly_large_candidate:{bbox_fraction:.3f}"
+    if touched_borders >= 2 and bbox_fraction > 0.20:
+        return f"border_saturated_candidate:{bbox_fraction:.3f}"
+    return None
+
+
+def _diffuse_component_rejection_reason(
+    *,
+    bbox_area: float,
+    frame_area: float,
+    edge_density: float,
+) -> str | None:
+    bbox_fraction = float(bbox_area) / float(max(1.0, frame_area))
+    if bbox_fraction > 0.20 and float(edge_density) < 0.01:
+        return (
+            "diffuse_large_component:"
+            f"{bbox_fraction:.3f},edge_density:{float(edge_density):.4f}"
+        )
+    return None
+
+
+def _candidate_score(
+    *,
+    area_px: float,
+    bbox_area: float,
+    frame_area: float,
+    edge_density: float,
+    config: BackgroundEdgeLocatorConfig,
+) -> float:
+    area_score = min(
+        1.0,
+        float(area_px) / max(float(config.min_foreground_area_px) * 8.0, 1.0),
+    )
+    extent_score = min(1.0, (float(bbox_area) / max(1.0, frame_area)) * 80.0)
+    density_score = min(1.0, float(edge_density) * 10.0)
+    return max(
+        0.0,
+        min(1.0, 0.65 * area_score + 0.25 * extent_score + 0.10 * density_score),
+    )
 
 
 def _roi_geometry(

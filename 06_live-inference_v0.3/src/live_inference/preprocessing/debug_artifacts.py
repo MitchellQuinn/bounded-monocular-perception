@@ -60,6 +60,9 @@ ARTIFACT_MANUAL_MASK = "manual_mask"
 ARTIFACT_BACKGROUND_SNAPSHOT = "background_snapshot"
 ARTIFACT_BACKGROUND_REMOVAL_MASK = "background_removal_mask"
 ARTIFACT_COMBINED_IGNORE_MASK = "combined_ignore_mask"
+ARTIFACT_FOREGROUND_MASK_BEFORE_COMPONENT_CLEANUP = (
+    "foreground_mask_before_component_cleanup"
+)
 
 
 def default_debug_output_dir() -> Path:
@@ -229,6 +232,7 @@ __all__ = [
     "ARTIFACT_DISTANCE_IMAGE",
     "ARTIFACT_EDGE_MAP",
     "ARTIFACT_FOREGROUND_MASK",
+    "ARTIFACT_FOREGROUND_MASK_BEFORE_COMPONENT_CLEANUP",
     "ARTIFACT_GRAYSCALE_FRAME",
     "ARTIFACT_LOCATOR_OVERLAY",
     "ARTIFACT_LOCATOR_INPUT",

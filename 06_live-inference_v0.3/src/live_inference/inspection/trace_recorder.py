@@ -447,6 +447,9 @@ class InferenceTraceRecorder:
             "foreground_pixel_count": preprocessing_metadata.get(
                 "foreground_pixel_count"
             ),
+            "foreground_mask_component_cleanup": (
+                _foreground_mask_component_cleanup_snapshot(preprocessing_metadata)
+            ),
             "silhouette_diagnostics": preprocessing_metadata.get(
                 "silhouette_diagnostics"
             ),
@@ -563,6 +566,9 @@ def _canonical_artifact_name(kind: str, source: Path) -> str:
         "background_snapshot": "background_snapshot.png",
         "background_removal_mask": "background_removal_mask.png",
         "combined_ignore_mask": "combined_ignore_mask.png",
+        "foreground_mask_before_component_cleanup": (
+            "foreground_mask_before_component_cleanup.png"
+        ),
         "locator_result": "locator_result.json",
     }
     if kind in mapping:
@@ -826,6 +832,15 @@ def _roi_fcn_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
         contracts.PREPROCESSING_METADATA_ROI_CANVAS_INSERT_XYXY_PX,
         "foreground_mask_empty",
         "foreground_pixel_count",
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_APPLIED,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_COUNT,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_SOURCE,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_LABEL,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_AREA_PX,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_AREA_PX,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_FRACTION,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_ROI_BBOX_XYXY_PX,
         "silhouette_diagnostics",
         "final_locator_input_stats",
         "final_locator_input_min",
@@ -881,6 +896,29 @@ def _mask_background_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
         ):
             payload[key_text] = value
     return payload
+
+
+def _foreground_mask_component_cleanup_snapshot(
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    keys = {
+        "status": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS,
+        "applied": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_APPLIED,
+        "component_count": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_COUNT,
+        "source": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_SOURCE,
+        "kept_label": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_LABEL,
+        "kept_area_px": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_AREA_PX,
+        "removed_area_px": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_AREA_PX,
+        "removed_fraction": contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_FRACTION,
+        "kept_roi_bbox_xyxy_px": (
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_ROI_BBOX_XYXY_PX
+        ),
+    }
+    return {
+        name: metadata[key]
+        for name, key in keys.items()
+        if key in metadata
+    }
 
 
 def _artifact(kind: str, path: Path, *, required: bool) -> dict[str, Any]:

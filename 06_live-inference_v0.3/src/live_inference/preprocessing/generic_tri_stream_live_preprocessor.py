@@ -34,6 +34,7 @@ from .debug_artifacts import (
     ARTIFACT_BACKGROUND_SNAPSHOT,
     ARTIFACT_DISTANCE_IMAGE,
     ARTIFACT_FOREGROUND_MASK,
+    ARTIFACT_FOREGROUND_MASK_BEFORE_COMPONENT_CLEANUP,
     ARTIFACT_GRAYSCALE_FRAME,
     ARTIFACT_MANUAL_MASK,
     ARTIFACT_ORIENTATION_IMAGE,
@@ -239,7 +240,7 @@ class TriStreamLivePreprocessor:
         )
         mask_preparation = self._prepare_frame_mask(
             source_gray,
-            apply_to_locator=True,
+            apply_to_locator=bool(stage_policy.apply_manual_mask_to_roi_locator),
             apply_to_regressor=False,
         )
         warnings = _hash_warnings(request, image_bytes)
@@ -301,6 +302,7 @@ class TriStreamLivePreprocessor:
             preprocessor_source_gray=mask_preparation.regressor_source_gray,
             manual_mask=mask_preparation.manual_mask,
             roi_crop=roi_crop,
+            foreground_mask_before_component_cleanup=None,
             foreground_mask=None,
             distance_image=None,
             orientation_image=None,
@@ -341,8 +343,10 @@ class TriStreamLivePreprocessor:
         warnings = _hash_warnings(request, image_bytes)
         mask_preparation = self._prepare_frame_mask(
             source_gray,
-            apply_to_locator=True,
-            apply_to_regressor=True,
+            apply_to_locator=bool(stage_policy.apply_manual_mask_to_roi_locator),
+            apply_to_regressor=bool(
+                stage_policy.apply_manual_mask_to_regressor_preprocessing
+            ),
         )
         warnings.extend(mask_preparation.warnings)
         if background_warning and (
@@ -404,6 +408,7 @@ class TriStreamLivePreprocessor:
                 preprocessor_source_gray=mask_preparation.regressor_source_gray,
                 manual_mask=mask_preparation.manual_mask,
                 roi_crop=None,
+                foreground_mask_before_component_cleanup=None,
                 foreground_mask=None,
                 distance_image=None,
                 orientation_image=None,
@@ -452,9 +457,13 @@ class TriStreamLivePreprocessor:
             warnings.append(str(roi_background.metadata[contracts.PREPROCESSING_METADATA_BACKGROUND_WARNING]))
 
         foreground_mask: np.ndarray | None = None
+        foreground_mask_before_component_cleanup: np.ndarray | None = None
         distance_image_2d: np.ndarray | None = None
         orientation_image_2d: np.ndarray | None = None
         foreground_extraction_result: _ForegroundExtractionResult | None = None
+        final_foreground_area_px: int | None = None
+        final_foreground_bbox_inclusive_xyxy_px: tuple[int, int, int, int] | None = None
+        final_feature_bbox_xyxy_px: np.ndarray | None = None
         foreground_extraction_policy = (
             self._foreground_extraction_policy_state.snapshot()
         )
@@ -507,6 +516,29 @@ class TriStreamLivePreprocessor:
                 )
             )
             mask_metadata.update(foreground_background_metadata)
+            foreground_mask_before_component_cleanup = np.array(
+                foreground_mask,
+                dtype=bool,
+                copy=True,
+            )
+            foreground_mask, component_cleanup_metadata = (
+                _foreground_mask_component_cleanup(
+                    foreground_mask,
+                    roi_gray=roi_background.preview_gray,
+                )
+            )
+            mask_metadata.update(component_cleanup_metadata)
+            (
+                _final_full_foreground_mask,
+                final_foreground_area_px,
+                final_foreground_bbox_inclusive_xyxy_px,
+                final_feature_bbox_xyxy_px,
+            ) = _foreground_geometry_from_roi_mask(
+                foreground_mask,
+                source_gray=mask_preparation.regressor_source_gray,
+                source_bounds=source_bounds,
+                roi_bounds=roi_bounds,
+            )
             model_background_mask = _background_mask_from_foreground(foreground_mask)
             roi_repr = _render_vehicle_detail_on_white(
                 roi_background.preview_gray,
@@ -543,7 +575,7 @@ class TriStreamLivePreprocessor:
                 foreground_mask=foreground_mask,
             )
             geometry = _bbox_features_from_xyxy(
-                foreground_extraction_result.feature_bbox_xyxy_px,
+                final_feature_bbox_xyxy_px,
                 image_width_px=source_w,
                 image_height_px=source_h,
             )
@@ -588,6 +620,9 @@ class TriStreamLivePreprocessor:
                 preprocessor_source_gray=mask_preparation.regressor_source_gray,
                 manual_mask=mask_preparation.manual_mask,
                 roi_crop=roi_background.preview_gray,
+                foreground_mask_before_component_cleanup=(
+                    foreground_mask_before_component_cleanup
+                ),
                 foreground_mask=foreground_mask,
                 distance_image=distance_image_2d,
                 orientation_image=orientation_image_2d,
@@ -629,21 +664,23 @@ class TriStreamLivePreprocessor:
                     int(foreground_extraction_policy.revision)
                 ),
                 contracts.PREPROCESSING_METADATA_FOREGROUND_BBOX_XYXY_PX: (
-                    _array_xyxy_to_tuple(foreground_extraction_result.feature_bbox_xyxy_px)
+                    _array_xyxy_to_tuple(final_feature_bbox_xyxy_px)
                 ),
                 contracts.PREPROCESSING_METADATA_FOREGROUND_BBOX_INCLUSIVE_XYXY_PX: (
-                    foreground_extraction_result.bbox_inclusive_xyxy_px
+                    final_foreground_bbox_inclusive_xyxy_px
                 ),
                 contracts.PREPROCESSING_METADATA_FOREGROUND_AREA_PX: int(
-                    foreground_extraction_result.area_px
+                    final_foreground_area_px
                 ),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_XYXY_PX: (
-                    _array_xyxy_to_tuple(foreground_extraction_result.feature_bbox_xyxy_px)
+                    _array_xyxy_to_tuple(final_feature_bbox_xyxy_px)
                 ),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_BBOX_INCLUSIVE_XYXY_PX: (
-                    foreground_extraction_result.bbox_inclusive_xyxy_px
+                    final_foreground_bbox_inclusive_xyxy_px
                 ),
-                contracts.PREPROCESSING_METADATA_SILHOUETTE_AREA_PX: int(foreground_extraction_result.area_px),
+                contracts.PREPROCESSING_METADATA_SILHOUETTE_AREA_PX: int(
+                    final_foreground_area_px
+                ),
                 contracts.PREPROCESSING_METADATA_SILHOUETTE_FALLBACK_USED: bool(
                     foreground_extraction_result.fallback_used
                 ),
@@ -684,6 +721,9 @@ class TriStreamLivePreprocessor:
             preprocessor_source_gray=mask_preparation.regressor_source_gray,
             manual_mask=mask_preparation.manual_mask,
             roi_crop=roi_background.preview_gray,
+            foreground_mask_before_component_cleanup=(
+                foreground_mask_before_component_cleanup
+            ),
             foreground_mask=foreground_mask,
             distance_image=distance_image_2d,
             orientation_image=orientation_image_2d,
@@ -997,7 +1037,9 @@ class TriStreamLivePreprocessor:
                 ),
                 "manual_mask_available": bool(manual_mask_valid),
                 "apply_manual_mask_to_roi_locator": bool(apply_to_locator),
-                "apply_manual_mask_to_regressor_preprocessing": True,
+                "apply_manual_mask_to_regressor_preprocessing": bool(
+                    apply_to_regressor
+                ),
                 "manual_mask_applied_to_roi_locator": bool(manual_to_locator),
                 "manual_mask_applied_to_regressor_preprocessing": bool(
                     manual_to_regressor
@@ -1255,6 +1297,7 @@ class TriStreamLivePreprocessor:
         preprocessor_source_gray: np.ndarray,
         manual_mask: np.ndarray | None,
         roi_crop: np.ndarray | None,
+        foreground_mask_before_component_cleanup: np.ndarray | None,
         foreground_mask: np.ndarray | None,
         distance_image: np.ndarray | None,
         orientation_image: np.ndarray | None,
@@ -1289,6 +1332,9 @@ class TriStreamLivePreprocessor:
                 ),
                 ARTIFACT_BACKGROUND_REMOVAL_MASK: background_removal_mask,
                 ARTIFACT_ROI_CROP: roi_crop,
+                ARTIFACT_FOREGROUND_MASK_BEFORE_COMPONENT_CLEANUP: (
+                    foreground_mask_before_component_cleanup
+                ),
                 ARTIFACT_FOREGROUND_MASK: foreground_mask,
                 ARTIFACT_DISTANCE_IMAGE: distance_image,
                 ARTIFACT_ORIENTATION_IMAGE: orientation_image,
@@ -1578,6 +1624,267 @@ def _select_best_component(
         "largest_component_saturated": bool(largest_saturated),
         "saturated_rejected_count": int(saturated_rejected_count),
     }
+
+
+def _foreground_mask_component_cleanup(
+    foreground_mask: np.ndarray,
+    *,
+    roi_gray: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    source = "foreground_mask_after_background_removal"
+    mask = np.asarray(foreground_mask, dtype=bool)
+    original_count = int(np.count_nonzero(mask))
+    metadata: dict[str, Any] = {
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS: (
+            "empty_mask" if original_count <= 0 else "single_component"
+        ),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_APPLIED: False,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_COUNT: 0,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_SOURCE: source,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_LABEL: None,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_AREA_PX: (
+            original_count
+        ),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_AREA_PX: 0,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_FRACTION: 0.0,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_ROI_BBOX_XYXY_PX: None,
+        "foreground_mask_component_cleanup_selection_method": "largest_component",
+        "foreground_mask_component_cleanup_kept_labels": (),
+    }
+    if original_count <= 0:
+        return np.ascontiguousarray(mask), metadata
+
+    selected, diagnostics = _select_dark_foreground_components(
+        mask,
+        roi_gray=roi_gray,
+    )
+    if selected is None:
+        selected, diagnostics = _select_best_component(
+            mask,
+            source=source,
+            reject_saturated=False,
+        )
+    component_count = int(diagnostics.get("component_count") or 0)
+    selected_area = int(diagnostics.get("selected_area_px") or 0)
+    removed_count = max(0, original_count - selected_area)
+    selected_bbox = diagnostics.get("selected_bbox_xywh_px")
+    metadata.update(
+        {
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_COUNT: (
+                component_count
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_LABEL: (
+                diagnostics.get("selected_label")
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_AREA_PX: (
+                selected_area
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_AREA_PX: (
+                removed_count
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_FRACTION: (
+                float(removed_count) / float(max(1, original_count))
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_ROI_BBOX_XYXY_PX: (
+                _xywh_to_xyxy_tuple(selected_bbox)
+            ),
+            "foreground_mask_component_cleanup_selection_method": diagnostics.get(
+                "source"
+            ),
+            "foreground_mask_component_cleanup_kept_labels": tuple(
+                int(label)
+                for label in diagnostics.get("selected_labels", ())
+            ),
+            "foreground_mask_component_cleanup_kept_dark_area_px": int(
+                diagnostics.get("selected_dark_area_px") or 0
+            ),
+            "foreground_mask_component_cleanup_kept_dark_fraction": (
+                diagnostics.get("selected_dark_fraction")
+            ),
+            "foreground_mask_component_cleanup_kept_mean_gray": (
+                diagnostics.get("selected_mean_gray")
+            ),
+        }
+    )
+    if component_count <= 1:
+        metadata[
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS
+        ] = "single_component"
+        return np.ascontiguousarray(mask), metadata
+    if selected_area <= 0 or not bool(np.any(selected)):
+        metadata[
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS
+        ] = str(diagnostics.get("status") or "no_selected_component")
+        metadata[
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_KEPT_AREA_PX
+        ] = original_count
+        metadata[
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_AREA_PX
+        ] = 0
+        metadata[
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_REMOVED_FRACTION
+        ] = 0.0
+        return np.ascontiguousarray(mask), metadata
+
+    metadata[
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS
+    ] = str(diagnostics.get("status") or "kept_best_component")
+    metadata[
+        contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_APPLIED
+    ] = bool(removed_count > 0)
+    return np.ascontiguousarray(selected.astype(bool, copy=False)), metadata
+
+
+def _select_dark_foreground_components(
+    mask: np.ndarray,
+    *,
+    roi_gray: np.ndarray | None,
+) -> tuple[np.ndarray | None, dict[str, Any]]:
+    if roi_gray is None:
+        return None, {}
+    gray = np.asarray(roi_gray, dtype=np.uint8)
+    candidate = np.asarray(mask, dtype=bool)
+    if gray.shape != candidate.shape:
+        return None, {
+            "status": "dark_selection_shape_mismatch",
+            "source": "dark_foreground_components",
+        }
+
+    label_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
+        candidate.astype(np.uint8),
+        8,
+    )
+    components: list[dict[str, Any]] = []
+    for label in range(1, int(label_count)):
+        x, y, w, h, area = [int(value) for value in stats[label]]
+        if area <= 0:
+            continue
+        pixels = gray[labels == label]
+        dark_pixels = pixels <= 120
+        dark_area = int(np.count_nonzero(dark_pixels))
+        dark_fraction = float(dark_area) / float(max(1, area))
+        mean_gray = float(np.mean(pixels))
+        darkness_mass = float(np.sum(np.maximum(0, 180 - pixels.astype(np.int16))))
+        components.append(
+            {
+                "label": int(label),
+                "bbox": (x, y, w, h),
+                "area": int(area),
+                "dark_area": int(dark_area),
+                "dark_fraction": float(dark_fraction),
+                "mean_gray": float(mean_gray),
+                "darkness_mass": float(darkness_mass),
+            }
+        )
+
+    if not components:
+        return np.zeros(candidate.shape, dtype=bool), {
+            "status": "no_selected_component",
+            "source": "dark_foreground_components",
+            "component_count": 0,
+            "selected_label": None,
+            "selected_labels": (),
+            "selected_area_px": 0,
+            "selected_bbox_xywh_px": None,
+            "selected_dark_area_px": 0,
+            "selected_dark_fraction": None,
+            "selected_mean_gray": None,
+        }
+
+    dark_components = [
+        item
+        for item in components
+        if item["dark_fraction"] >= 0.25 and item["dark_area"] >= 64
+    ]
+    if not dark_components:
+        return np.zeros(candidate.shape, dtype=bool), {
+            "status": "no_dark_component_safety_skip",
+            "source": "dark_foreground_components",
+            "component_count": len(components),
+            "selected_label": None,
+            "selected_labels": (),
+            "selected_area_px": 0,
+            "selected_bbox_xywh_px": None,
+            "selected_dark_area_px": 0,
+            "selected_dark_fraction": None,
+            "selected_mean_gray": None,
+        }
+
+    anchor = max(dark_components, key=lambda item: item["darkness_mass"])
+    min_dark_mass = max(64.0, float(anchor["darkness_mass"]) * 0.03)
+    kept_components = [
+        item
+        for item in dark_components
+        if float(item["darkness_mass"]) >= min_dark_mass
+    ]
+    selected_labels = tuple(int(item["label"]) for item in kept_components)
+    selected = np.isin(labels, selected_labels)
+    selected_area = int(np.count_nonzero(selected))
+    bbox = _mask_bbox_xywh(selected)
+    selected_pixels = gray[selected]
+    selected_dark_area = int(np.count_nonzero(selected_pixels <= 120))
+    return selected.astype(bool, copy=False), {
+        "status": "kept_dark_components",
+        "source": "dark_foreground_components",
+        "component_count": len(components),
+        "selected_label": int(anchor["label"]),
+        "selected_labels": selected_labels,
+        "selected_area_px": selected_area,
+        "selected_bbox_xywh_px": bbox,
+        "selected_dark_area_px": selected_dark_area,
+        "selected_dark_fraction": (
+            float(selected_dark_area) / float(max(1, selected_area))
+        ),
+        "selected_mean_gray": float(np.mean(selected_pixels))
+        if selected_pixels.size
+        else None,
+    }
+
+
+def _foreground_geometry_from_roi_mask(
+    foreground_mask: np.ndarray,
+    *,
+    source_gray: np.ndarray,
+    source_bounds: np.ndarray,
+    roi_bounds: np.ndarray,
+) -> tuple[np.ndarray, int, tuple[int, int, int, int], np.ndarray]:
+    src_x1, src_y1, src_x2, src_y2 = [
+        int(value) for value in source_bounds.tolist()
+    ]
+    roi_x1, roi_y1, roi_x2, roi_y2 = [int(value) for value in roi_bounds.tolist()]
+    full_foreground_mask = np.zeros(source_gray.shape, dtype=bool)
+    full_target = full_foreground_mask[src_y1:src_y2, src_x1:src_x2]
+    full_target[:, :] = np.asarray(foreground_mask, dtype=bool)[
+        roi_y1:roi_y2,
+        roi_x1:roi_x2,
+    ]
+    full_foreground_mask[src_y1:src_y2, src_x1:src_x2] = full_target
+    area_px, bbox = _mask_geometry(full_foreground_mask)
+    feature_bbox_xyxy = _feature_bbox_from_geometry(
+        bbox,
+        area_px=area_px,
+        fallback_bounds=source_bounds,
+        source_shape=source_gray.shape,
+    )
+    return full_foreground_mask, area_px, bbox, feature_bbox_xyxy
+
+
+def _xywh_to_xyxy_tuple(
+    bbox_xywh: object,
+) -> tuple[int, int, int, int] | None:
+    if bbox_xywh is None:
+        return None
+    x, y, w, h = [int(value) for value in bbox_xywh]
+    return (x, y, x + w, y + h)
+
+
+def _mask_bbox_xywh(mask: np.ndarray) -> tuple[int, int, int, int] | None:
+    ys, xs = np.where(mask)
+    if xs.size == 0:
+        return None
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    return (x1, y1, x2 - x1, y2 - y1)
 
 
 def _component_is_roi_saturated(

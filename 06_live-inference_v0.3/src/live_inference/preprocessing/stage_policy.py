@@ -45,7 +45,7 @@ class StageTransformPolicySnapshot:
     revision: int = 0
     roi_locator_input_polarity: str = ROI_LOCATOR_INPUT_POLARITY_AS_IS
     roi_locator_input_mode: str | None = None
-    apply_manual_mask_to_roi_locator: bool = False
+    apply_manual_mask_to_roi_locator: bool = True
     apply_background_removal_to_roi_locator: bool = False
     apply_manual_mask_to_regressor_preprocessing: bool = True
     apply_background_removal_to_regressor_preprocessing: bool = False

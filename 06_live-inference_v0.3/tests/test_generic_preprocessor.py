@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -40,6 +41,10 @@ from live_inference.preprocessing import (  # noqa: E402
     ManualFixedRoiLocator,
     StageTransformPolicyState,
     TriStreamLivePreprocessor,
+)
+from live_inference.preprocessing.generic_tri_stream_live_preprocessor import (  # noqa: E402
+    _foreground_mask_component_cleanup,
+    _foreground_geometry_from_roi_mask,
 )
 
 
@@ -242,9 +247,46 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
         self.assertEqual(metadata["frame_mask_pixel_count"], 225)
         self.assertTrue(metadata["manual_mask_applied_to_roi_locator"])
         self.assertTrue(metadata["manual_mask_applied_to_regressor_preprocessing"])
+        self.assertEqual(
+            metadata["frame_mask_application_space"],
+            "locator,regressor_preprocessing",
+        )
         debug_paths = metadata[contracts.PREPROCESSING_METADATA_DEBUG_PATHS]
         self.assertIn("manual_mask", debug_paths)
         self.assertIn("preprocessor_source_after_regressor_masks", debug_paths)
+
+    def test_frame_mask_can_be_excluded_from_locator_by_policy(self) -> None:
+        image = np.full((420, 640), 255, dtype=np.uint8)
+        cv2.rectangle(image, (120, 180), (180, 230), 70, thickness=-1)
+        cv2.rectangle(image, (430, 120), (610, 320), 60, thickness=-1)
+        ok, encoded = cv2.imencode(".png", image)
+        if not ok:
+            raise AssertionError("Could not encode masked locator fixture")
+        image_bytes = encoded.tobytes()
+        mask_state = FrameMaskState()
+        mask = np.zeros(image.shape, dtype=bool)
+        mask[:, 380:] = True
+        mask_state.commit_mask(mask, width_px=640, height_px=420, fill_value=255)
+        stage_policy_state = StageTransformPolicyState()
+        stage_policy_state.update(apply_manual_mask_to_roi_locator=False)
+
+        diagnostic = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=BackgroundEdgeLocator(),
+            mask_state=mask_state,
+            stage_policy_state=stage_policy_state,
+        ).run_locator_only(_request(image_bytes), image_bytes)
+
+        self.assertIsNotNone(diagnostic.locator_result)
+        assert diagnostic.locator_result is not None
+        self.assertFalse(
+            diagnostic.preprocessing_metadata["manual_mask_applied_to_roi_locator"]
+        )
+        self.assertFalse(
+            diagnostic.locator_result.debug_artifacts.metadata[
+                "manual_ignore_mask_applied"
+            ]
+        )
 
     def test_frame_mask_excludes_locator_distractor(self) -> None:
         image = np.full((420, 640), 255, dtype=np.uint8)
@@ -296,6 +338,7 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
             "accepted_raw_frame.png",
             "grayscale_frame.png",
             "foreground_mask.png",
+            "foreground_mask_before_component_cleanup.png",
             "edge_map.png",
             "candidate_contours.png",
             "chosen_contour.png",
@@ -308,6 +351,83 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
             "trace_manifest.json",
         ):
             self.assertTrue((trace_path / filename).is_file(), filename)
+        preprocessing_metadata = json.loads(
+            (trace_path / "preprocessing_metadata.json").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS,
+            preprocessing_metadata,
+        )
+        manifest = json.loads(
+            (trace_path / "trace_manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("foreground_mask_component_cleanup", manifest)
+        self.assertIn("status", manifest["foreground_mask_component_cleanup"])
+
+    def test_foreground_component_cleanup_prunes_detached_island(self) -> None:
+        mask = np.zeros((320, 320), dtype=bool)
+        mask[150:250, 60:220] = True
+        mask[60:130, 175:245] = True
+
+        cleaned, metadata = _foreground_mask_component_cleanup(mask)
+
+        self.assertTrue(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_APPLIED
+            ]
+        )
+        self.assertEqual(
+            metadata[contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_COUNT],
+            2,
+        )
+        self.assertEqual(int(np.count_nonzero(cleaned)), 16_000)
+        self.assertFalse(bool(np.any(cleaned[60:130, 175:245])))
+        self.assertTrue(bool(np.all(cleaned[150:250, 60:220])))
+
+    def test_foreground_component_cleanup_prefers_dark_vehicle_component(self) -> None:
+        mask = np.zeros((320, 320), dtype=bool)
+        roi_gray = np.full((320, 320), 255, dtype=np.uint8)
+        mask[0:194, 85:220] = True
+        roi_gray[0:194, 85:220] = 142
+        mask[210:320, 118:240] = True
+        roi_gray[210:320, 118:240] = 12
+
+        cleaned, metadata = _foreground_mask_component_cleanup(
+            mask,
+            roi_gray=roi_gray,
+        )
+
+        self.assertEqual(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_STATUS
+            ],
+            "kept_dark_components",
+        )
+        self.assertTrue(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_MASK_COMPONENT_CLEANUP_APPLIED
+            ]
+        )
+        self.assertFalse(bool(np.any(cleaned[0:120, 90:210])))
+        self.assertTrue(bool(np.any(cleaned[220:300, 140:220])))
+
+    def test_cleaned_foreground_geometry_tracks_model_mask(self) -> None:
+        mask = np.zeros((320, 320), dtype=bool)
+        mask[150:250, 60:220] = True
+        source = np.full((600, 960), 255, dtype=np.uint8)
+        source_bounds = np.asarray([320.0, 140.0, 640.0, 460.0], dtype=np.float32)
+        roi_bounds = np.asarray([0.0, 0.0, 320.0, 320.0], dtype=np.float32)
+
+        _full_mask, area_px, bbox, feature_bbox = _foreground_geometry_from_roi_mask(
+            mask,
+            source_gray=source,
+            source_bounds=source_bounds,
+            roi_bounds=roi_bounds,
+        )
+
+        self.assertEqual(area_px, 16_000)
+        self.assertEqual(bbox, (380, 290, 539, 389))
+        self.assertEqual(tuple(float(value) for value in feature_bbox), (380.0, 290.0, 540.0, 390.0))
 
     def test_incident_roi_does_not_collapse_to_tiny_threshold_foreground(self) -> None:
         fixture = (
