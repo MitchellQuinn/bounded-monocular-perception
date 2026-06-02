@@ -27,6 +27,17 @@ pair8_side_summary_comparison.png
 
 These eight PNGs are the review-facing evidence for the table in the report. They show the synthetic/live comparison for every measured pair used in the apparent-distance offset calculation.
 
+## Included Follow-Up Live Sweep Summary
+
+The incident report now includes an eight-row follow-up front/side live sweep summary. The recorded summary is:
+
+```text
+all rows: mean signed error = -0.113 m, mean absolute error = 0.118 m
+excluding slightly clipped 1.59 m front row: mean signed error = -0.103 m, mean absolute error = 0.109 m
+```
+
+No raw trace bundle or CSV for this follow-up sweep is staged in the repository yet. If those artifacts become available, place them under `evidence/live-sweep/` and link them from the report appendix.
+
 ## Optional Raw Scale-Pair Evidence
 
 The local workspace also contains the raw synthetic/live pair images:
@@ -85,7 +96,7 @@ Trace directories present in the incident workspace:
 20260531T143246Z__2b22b3a6-57ed-45c1-95ea-4466d5f55d1c__4e167d15
 ```
 
-The report's six-reading post-ROI-fix live sweep is recorded in the local observation note. If the original six trace directories or a CSV summary are available later, add them under:
+The report's original six-reading post-ROI-fix live sweep is recorded in the local observation note. The follow-up eight-row live sweep is currently recorded as a numerical summary in the report. If the original or follow-up trace directories or a CSV summary are available later, add them under:
 
 ```text
 failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/evidence/live-sweep/

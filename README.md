@@ -190,7 +190,7 @@ See: [`failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retr
 
 After the locator and foreground path became more inspectable, accepted live readings still underpredicted distance by about `0.35 m` to `0.40 m`. Paired synthetic/live image analysis showed the live target appearing larger than the synthetic target at the same nominal distance, predicting a mean apparent-distance offset close to the measured live bias.
 
-The live runtime now includes a post-foreground model representation transform for apparent-scale mitigation, but corrected live-distance claims remain blocked until the scale check and live sweep are rerun.
+The live runtime now includes a post-foreground model representation transform for apparent-scale mitigation. A first follow-up sweep improved all-row mean signed error to `-0.113 m` and mean absolute error to `0.118 m`, or `-0.103 m` / `0.109 m` excluding one slightly clipped near-range row. That is a material improvement, but residual near-range and side-view underprediction means calibrated live-distance claims remain bounded.
 
 See: [`failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md`](failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md)
 
