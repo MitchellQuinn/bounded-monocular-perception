@@ -43,6 +43,8 @@ class LiveInferenceGuiContext:
     synthetic_camera_config_path: Path | None
     synthetic_camera_base_dir: Path
     synthetic_camera_config: object | None
+    model_representation_transform_config_path: Path | None
+    model_representation_transform_config: object | None
     distance_orientation_device: str
     roi_fcn_device: str | None
     background_state: object
@@ -95,6 +97,13 @@ def default_synthetic_camera_config_path() -> Path:
     return _live_project_root() / "config/synthetic_camera.toml.example"
 
 
+def default_model_representation_transform_config_path() -> Path:
+    return (
+        _live_project_root()
+        / "config/model_representation_transform_arducam_ar0234_incident005.toml"
+    )
+
+
 def default_trace_output_dir() -> Path:
     return _live_project_root() / "live_traces"
 
@@ -104,6 +113,7 @@ def build_live_inference_gui_context(
     camera_source: str = DEFAULT_CAMERA_SOURCE,
     model_selection_path: Path | None = None,
     synthetic_camera_config_path: Path | None = None,
+    model_representation_transform_config_path: Path | None = None,
     selection_path: Path | None = None,
     source_dir: Path | None = None,
     output_dir: Path | None = None,
@@ -149,6 +159,30 @@ def build_live_inference_gui_context(
     synthetic_base_dir = project_root
     resolved_camera_config_path: Path | None = None
     synthetic_config: object | None = None
+    model_representation_transform_config: object | None = None
+    requested_model_transform_config_path = model_representation_transform_config_path
+    if (
+        requested_model_transform_config_path is None
+        and resolved_camera_source == OPENCV_V4L2_CAMERA_SOURCE
+    ):
+        requested_model_transform_config_path = (
+            default_model_representation_transform_config_path()
+        )
+    resolved_model_transform_config_path = (
+        _resolve_path(requested_model_transform_config_path)
+        if requested_model_transform_config_path is not None
+        else None
+    )
+    if resolved_model_transform_config_path is not None:
+        from live_inference.preprocessing import (  # noqa: PLC0415
+            load_model_representation_transform_config,
+        )
+
+        model_representation_transform_config = (
+            load_model_representation_transform_config(
+                resolved_model_transform_config_path
+            )
+        )
 
     if resolved_camera_source == DEFAULT_CAMERA_SOURCE:
         resolved_camera_config_path = _resolve_synthetic_camera_config_path(
@@ -266,6 +300,7 @@ def build_live_inference_gui_context(
         foreground_extraction_policy_state=foreground_extraction_policy_state,
         stage_policy_state=stage_policy_state,
         camera_intrinsics_state=camera_intrinsics_state,
+        model_representation_transform_config=model_representation_transform_config,
     )
     engine = deps.torch_tri_stream_inference_engine_cls(
         model_root=selection.distance_orientation_root,
@@ -299,6 +334,15 @@ def build_live_inference_gui_context(
             ),
             "locator_kind": kind.value,
             "device": distance_orientation_device,
+            "model_representation_transform_config_path": (
+                _optional_path_text(resolved_model_transform_config_path)
+            ),
+            "model_representation_transform": (
+                model_representation_transform_config.metadata_base()
+                if model_representation_transform_config is not None
+                and hasattr(model_representation_transform_config, "metadata_base")
+                else None
+            ),
         },
     )
     single_frame_runner = SingleFrameInferenceRunner(
@@ -328,6 +372,8 @@ def build_live_inference_gui_context(
         synthetic_camera_config_path=resolved_camera_config_path,
         synthetic_camera_base_dir=synthetic_base_dir,
         synthetic_camera_config=synthetic_config,
+        model_representation_transform_config_path=resolved_model_transform_config_path,
+        model_representation_transform_config=model_representation_transform_config,
         distance_orientation_device=distance_orientation_device,
         roi_fcn_device=roi_fcn_device,
         background_state=background_state,
@@ -357,6 +403,9 @@ def main(argv: list[str] | None = None) -> int:
             camera_source=args.camera_source,
             model_selection_path=args.model_selection,
             synthetic_camera_config_path=args.synthetic_camera_config,
+            model_representation_transform_config_path=(
+                args.model_representation_transform_config
+            ),
             source_dir=args.source_dir,
             output_dir=args.output_dir,
             camera_device=args.camera_device,
@@ -432,6 +481,16 @@ def _argument_parser() -> argparse.ArgumentParser:
         "--model-selection",
         type=Path,
         default=default_model_selection_path(),
+    )
+    parser.add_argument(
+        "--model-representation-transform-config",
+        type=Path,
+        default=None,
+        help=(
+            "TOML file containing [model_representation_transform]; the real "
+            "OpenCV/V4L2 camera path defaults to the Incident 005 Arducam "
+            "apparent-scale profile."
+        ),
     )
     parser.add_argument("--auto-start-camera", action="store_true")
     parser.add_argument("--auto-start-inference", action="store_true")
@@ -730,6 +789,7 @@ __all__ = [
     "LiveInferenceGuiContext",
     "OPENCV_V4L2_CAMERA_SOURCE",
     "build_live_inference_gui_context",
+    "default_model_representation_transform_config_path",
     "default_model_selection_path",
     "default_synthetic_camera_config_path",
     "default_trace_output_dir",

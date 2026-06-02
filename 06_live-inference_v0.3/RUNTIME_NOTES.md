@@ -25,6 +25,18 @@ PYTHONPATH=06_live-inference_v0.3/src ./.venv/bin/python \
   --device auto
 ```
 
+The real OpenCV/V4L2 camera path loads the Incident 005 Arducam apparent-scale
+model representation transform by default from:
+
+```text
+06_live-inference_v0.3/config/model_representation_transform_arducam_ar0234_incident005.toml
+```
+
+Trace metadata should show `model_representation_transform_enabled=true` and
+`model_representation_transform_applied=true` when the transform reaches model
+packing. The `--model-representation-transform-config` flag remains available for
+explicit profile overrides.
+
 ## Single-Frame Diagnostic Flow
 
 1. Start Camera.

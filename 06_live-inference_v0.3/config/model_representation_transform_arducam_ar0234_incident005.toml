@@ -1,0 +1,41 @@
+# Incident 005 apparent-scale mitigation profile.
+#
+# Source evidence:
+# failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/
+#
+# The Incident 005 scale-pair analysis measured live/synthetic apparent target
+# scale ratios:
+#
+#   mean width scale  = 1.238x
+#   mean height scale = 1.210x
+#
+# The model representation transform is applied to live foregrounds before
+# tri-stream packing, so the correction uses the inverse ratios:
+#
+#   scale_x = 1 / 1.238 = 0.8077544426494346
+#   scale_y = 1 / 1.210 = 0.8264462809917356
+#
+# Keep output width/height unset so the transform uses the active ROI/model
+# canvas size from the selected model preprocessing contract.
+
+[model_representation_transform]
+enabled = true
+space_name = "arducam_ar0234_incident005_synthetic_apparent_scale_v1"
+stage = "post_foreground_pre_pack"
+
+[model_representation_transform.affine]
+scale_x = 0.8077544426494346
+scale_y = 0.8264462809917356
+anchor = "foreground_bbox_center"
+translate_x_px = 0.0
+translate_y_px = 0.0
+
+[model_representation_transform.resampling]
+image_interpolation = "linear"
+mask_interpolation = "nearest"
+image_fill_value = 255
+mask_fill_value = false
+
+[model_representation_transform.geometry]
+recompute_from_transformed_mask = true
+normalization_space = "source_image"

@@ -30,6 +30,22 @@ from .camera_intrinsics import (
     default_unity_calibration_path,
     normalize_camera_intrinsics_mode,
 )
+from .model_representation_transform import (
+    MODEL_REPRESENTATION_ANCHOR_EXPLICIT_POINT,
+    MODEL_REPRESENTATION_ANCHOR_FOREGROUND_BBOX_CENTER,
+    MODEL_REPRESENTATION_ANCHOR_ROI_CENTER,
+    MODEL_REPRESENTATION_GEOMETRY_NORMALIZATION_SOURCE_IMAGE,
+    MODEL_REPRESENTATION_TRANSFORM_STAGE,
+    SUPPORTED_MODEL_REPRESENTATION_ANCHORS,
+    SUPPORTED_MODEL_REPRESENTATION_GEOMETRY_NORMALIZATION_SPACES,
+    ModelRepresentationTransformConfig,
+    ModelRepresentationTransformResult,
+    ModelRepresentationTransformer,
+    load_model_representation_transform_config,
+    normalize_geometry_normalization_space,
+    normalize_interpolation_name,
+    normalize_model_representation_anchor,
+)
 from .roi_fcn_locator import (
     RoiFcnArtifactMetadata,
     RoiFcnLocator,

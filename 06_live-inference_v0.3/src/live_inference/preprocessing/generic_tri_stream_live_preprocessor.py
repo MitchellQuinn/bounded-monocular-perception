@@ -36,6 +36,12 @@ from .debug_artifacts import (
     ARTIFACT_FOREGROUND_MASK,
     ARTIFACT_FOREGROUND_MASK_BEFORE_COMPONENT_CLEANUP,
     ARTIFACT_GRAYSCALE_FRAME,
+    ARTIFACT_MODEL_FOREGROUND_MASK_AFTER_TRANSFORM,
+    ARTIFACT_MODEL_FOREGROUND_MASK_BEFORE_TRANSFORM,
+    ARTIFACT_MODEL_ORIENTATION_SOURCE_AFTER_TRANSFORM,
+    ARTIFACT_MODEL_ORIENTATION_SOURCE_BEFORE_TRANSFORM,
+    ARTIFACT_MODEL_ROI_REPR_AFTER_TRANSFORM,
+    ARTIFACT_MODEL_ROI_REPR_BEFORE_TRANSFORM,
     ARTIFACT_MANUAL_MASK,
     ARTIFACT_ORIENTATION_IMAGE,
     ARTIFACT_PREPROCESSOR_SOURCE_AFTER_REGRESSOR_MASKS,
@@ -57,6 +63,10 @@ from .stage_policy import (
 from .camera_intrinsics import (
     CameraIntrinsicsFrameTransformer,
     CameraIntrinsicsTransformState,
+)
+from .model_representation_transform import (
+    ModelRepresentationTransformConfig,
+    ModelRepresentationTransformer,
 )
 from .preprocessing_config import TriStreamPreprocessingConfig
 from .tri_stream_live_preprocessor import (
@@ -91,6 +101,9 @@ from rb_pipeline_v4.pack_dual_stream_stage import (
 from rb_pipeline_v4.pack_tri_stream_stage import (
     _render_orientation_image_scaled_by_foreground_extent,
 )
+
+
+_FOREGROUND_ROI_BORDER_GUARD_MARGIN_PX = 0
 
 
 @dataclass(frozen=True)
@@ -157,6 +170,10 @@ class TriStreamLivePreprocessor:
         stage_policy: StageTransformPolicySnapshot | None = None,
         camera_intrinsics_state: CameraIntrinsicsTransformState | None = None,
         camera_intrinsics_transformer: CameraIntrinsicsFrameTransformer | None = None,
+        model_representation_transform_config: (
+            ModelRepresentationTransformConfig | None
+        ) = None,
+        model_representation_transformer: ModelRepresentationTransformer | None = None,
         **_legacy_kwargs: Any,
     ) -> None:
         if config is None:
@@ -188,6 +205,11 @@ class TriStreamLivePreprocessor:
                 if camera_intrinsics_state is not None
                 else None
             )
+        )
+        self._model_representation_transformer = (
+            model_representation_transformer
+            if model_representation_transformer is not None
+            else ModelRepresentationTransformer(model_representation_transform_config)
         )
 
     @property
@@ -461,9 +483,14 @@ class TriStreamLivePreprocessor:
         distance_image_2d: np.ndarray | None = None
         orientation_image_2d: np.ndarray | None = None
         foreground_extraction_result: _ForegroundExtractionResult | None = None
+        raw_foreground_area_px: int | None = None
+        raw_foreground_bbox_inclusive_xyxy_px: tuple[int, int, int, int] | None = None
+        raw_feature_bbox_xyxy_px: np.ndarray | None = None
         final_foreground_area_px: int | None = None
         final_foreground_bbox_inclusive_xyxy_px: tuple[int, int, int, int] | None = None
         final_feature_bbox_xyxy_px: np.ndarray | None = None
+        model_transform_metadata: dict[str, Any] = {}
+        model_transform_debug_images: dict[str, np.ndarray] = {}
         foreground_extraction_policy = (
             self._foreground_extraction_policy_state.snapshot()
         )
@@ -528,11 +555,27 @@ class TriStreamLivePreprocessor:
                 )
             )
             mask_metadata.update(component_cleanup_metadata)
+            border_metadata, border_error = _foreground_roi_border_guard(
+                foreground_mask,
+                margin_px=_FOREGROUND_ROI_BORDER_GUARD_MARGIN_PX,
+            )
+            border_metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_ENFORCED
+            ] = False
+            border_metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_ACTION
+            ] = "diagnostic_only"
+            if border_error is not None:
+                border_metadata[
+                    contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_WARNING
+                ] = border_error
+                warnings.append(border_error)
+            mask_metadata.update(border_metadata)
             (
-                _final_full_foreground_mask,
-                final_foreground_area_px,
-                final_foreground_bbox_inclusive_xyxy_px,
-                final_feature_bbox_xyxy_px,
+                _raw_full_foreground_mask,
+                raw_foreground_area_px,
+                raw_foreground_bbox_inclusive_xyxy_px,
+                raw_feature_bbox_xyxy_px,
             ) = _foreground_geometry_from_roi_mask(
                 foreground_mask,
                 source_gray=mask_preparation.regressor_source_gray,
@@ -545,6 +588,30 @@ class TriStreamLivePreprocessor:
                 model_background_mask,
                 image_representation_mode=self._config.image_representation_mode,
             )
+            raw_orientation_source_gray = _raw_orientation_source_after_background_removal(
+                roi_gray,
+                roi_background.removal_mask,
+            )
+            model_transform_result = self._model_representation_transformer.transform(
+                roi_repr=roi_repr,
+                orientation_source_gray=raw_orientation_source_gray,
+                foreground_mask=foreground_mask,
+                source_gray_shape=mask_preparation.regressor_source_gray.shape,
+                source_bounds=source_bounds,
+                roi_bounds=roi_bounds,
+            )
+            model_transform_metadata = dict(model_transform_result.metadata)
+            model_transform_debug_images = dict(model_transform_result.debug_images)
+            foreground_mask = model_transform_result.foreground_mask
+            roi_repr = model_transform_result.roi_repr
+            raw_orientation_source_gray = model_transform_result.orientation_source_gray
+            final_foreground_area_px = model_transform_result.model_foreground_area_px
+            final_foreground_bbox_inclusive_xyxy_px = (
+                model_transform_result.model_foreground_bbox_inclusive_xyxy_px
+            )
+            final_feature_bbox_xyxy_px = (
+                model_transform_result.model_feature_bbox_xyxy_px
+            )
             foreground_enhancement_result = None
             if self._config.foreground_runtime.active():
                 foreground_enhancement_result = apply_foreground_enhancement_v4(
@@ -554,10 +621,6 @@ class TriStreamLivePreprocessor:
                 )
                 roi_repr = foreground_enhancement_result.image
             orientation_repr = roi_repr
-            raw_orientation_source_gray = _raw_orientation_source_after_background_removal(
-                roi_gray,
-                roi_background.removal_mask,
-            )
             distance_image_2d, brightness_payload, distance_clipped = (
                 self._build_distance_image(
                     roi_repr=roi_repr,
@@ -630,6 +693,7 @@ class TriStreamLivePreprocessor:
                 locator_result=locator_result,
                 background_snapshot=background_snapshot,
                 background_removal_mask=roi_background.removal_mask,
+                model_transform_debug_images=model_transform_debug_images,
             )
             if debug_paths:
                 metadata = {**metadata, contracts.PREPROCESSING_METADATA_DEBUG_PATHS: _path_map(debug_paths)}
@@ -655,6 +719,7 @@ class TriStreamLivePreprocessor:
         )
         metadata.update(mask_metadata)
         metadata.update(prepared_source.metadata)
+        metadata.update(model_transform_metadata)
         metadata.update(
             {
                 contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_MODE: (
@@ -662,6 +727,19 @@ class TriStreamLivePreprocessor:
                 ),
                 contracts.PREPROCESSING_METADATA_FOREGROUND_EXTRACTION_REVISION: (
                     int(foreground_extraction_policy.revision)
+                ),
+                contracts.PREPROCESSING_METADATA_RAW_FOREGROUND_BBOX_XYXY_PX: (
+                    _array_xyxy_to_tuple(raw_feature_bbox_xyxy_px)
+                    if raw_feature_bbox_xyxy_px is not None
+                    else None
+                ),
+                contracts.PREPROCESSING_METADATA_RAW_FOREGROUND_BBOX_INCLUSIVE_XYXY_PX: (
+                    raw_foreground_bbox_inclusive_xyxy_px
+                ),
+                contracts.PREPROCESSING_METADATA_RAW_FOREGROUND_AREA_PX: (
+                    None
+                    if raw_foreground_area_px is None
+                    else int(raw_foreground_area_px)
                 ),
                 contracts.PREPROCESSING_METADATA_FOREGROUND_BBOX_XYXY_PX: (
                     _array_xyxy_to_tuple(final_feature_bbox_xyxy_px)
@@ -731,6 +809,7 @@ class TriStreamLivePreprocessor:
             locator_result=locator_result,
             background_snapshot=background_snapshot,
             background_removal_mask=roi_background.removal_mask,
+            model_transform_debug_images=model_transform_debug_images,
         )
         if debug_paths:
             metadata = {**metadata, contracts.PREPROCESSING_METADATA_DEBUG_PATHS: _path_map(debug_paths)}
@@ -1305,8 +1384,10 @@ class TriStreamLivePreprocessor:
         locator_result: contracts.LocatorResult,
         background_snapshot: BackgroundSnapshot | None = None,
         background_removal_mask: np.ndarray | None = None,
+        model_transform_debug_images: Mapping[str, np.ndarray] | None = None,
     ) -> dict[str, Path]:
         debug_paths = {str(key): Path(value) for key, value in locator_result.debug_artifacts.paths.items()}
+        model_debug_images = dict(model_transform_debug_images or {})
         if not bool(request.save_debug_images):
             return debug_paths
         output_dir = (
@@ -1336,6 +1417,24 @@ class TriStreamLivePreprocessor:
                     foreground_mask_before_component_cleanup
                 ),
                 ARTIFACT_FOREGROUND_MASK: foreground_mask,
+                ARTIFACT_MODEL_ROI_REPR_BEFORE_TRANSFORM: model_debug_images.get(
+                    "model_roi_repr_before_transform"
+                ),
+                ARTIFACT_MODEL_ROI_REPR_AFTER_TRANSFORM: model_debug_images.get(
+                    "model_roi_repr_after_transform"
+                ),
+                ARTIFACT_MODEL_FOREGROUND_MASK_BEFORE_TRANSFORM: (
+                    model_debug_images.get("model_foreground_mask_before_transform")
+                ),
+                ARTIFACT_MODEL_FOREGROUND_MASK_AFTER_TRANSFORM: (
+                    model_debug_images.get("model_foreground_mask_after_transform")
+                ),
+                ARTIFACT_MODEL_ORIENTATION_SOURCE_BEFORE_TRANSFORM: (
+                    model_debug_images.get("model_orientation_source_before_transform")
+                ),
+                ARTIFACT_MODEL_ORIENTATION_SOURCE_AFTER_TRANSFORM: (
+                    model_debug_images.get("model_orientation_source_after_transform")
+                ),
                 ARTIFACT_DISTANCE_IMAGE: distance_image,
                 ARTIFACT_ORIENTATION_IMAGE: orientation_image,
             },
@@ -1867,6 +1966,77 @@ def _foreground_geometry_from_roi_mask(
         source_shape=source_gray.shape,
     )
     return full_foreground_mask, area_px, bbox, feature_bbox_xyxy
+
+
+def _foreground_roi_border_guard(
+    foreground_mask: np.ndarray,
+    *,
+    margin_px: int,
+) -> tuple[dict[str, Any], str | None]:
+    mask = np.asarray(foreground_mask, dtype=bool)
+    margin = max(0, int(margin_px))
+    metadata: dict[str, Any] = {
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_MARGIN_PX: margin,
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_STATUS: (
+            "empty_mask"
+        ),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES: (),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_TOP: (
+            False
+        ),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_BOTTOM: (
+            False
+        ),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_LEFT: (
+            False
+        ),
+        contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_RIGHT: (
+            False
+        ),
+    }
+    if mask.ndim != 2 or mask.size == 0 or not bool(np.any(mask)):
+        return metadata, None
+
+    height, width = int(mask.shape[0]), int(mask.shape[1])
+    top_limit = min(height, margin + 1)
+    bottom_start = max(0, height - margin - 1)
+    left_limit = min(width, margin + 1)
+    right_start = max(0, width - margin - 1)
+    touches = {
+        "top": bool(np.any(mask[:top_limit, :])),
+        "bottom": bool(np.any(mask[bottom_start:, :])),
+        "left": bool(np.any(mask[:, :left_limit])),
+        "right": bool(np.any(mask[:, right_start:])),
+    }
+    touched = tuple(side for side, value in touches.items() if value)
+    metadata.update(
+        {
+            contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_STATUS: (
+                "touching_border" if touched else "ok"
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES: (
+                touched
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_TOP: (
+                touches["top"]
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_BOTTOM: (
+                touches["bottom"]
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_LEFT: (
+                touches["left"]
+            ),
+            contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_RIGHT: (
+                touches["right"]
+            ),
+        }
+    )
+    if not touched:
+        return metadata, None
+    return (
+        metadata,
+        "foreground mask touches ROI canvas border: " + ",".join(touched),
+    )
 
 
 def _xywh_to_xyxy_tuple(

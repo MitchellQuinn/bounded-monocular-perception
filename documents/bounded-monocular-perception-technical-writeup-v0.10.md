@@ -1,4 +1,8 @@
-# Bounded Monocular Perception System - Technical Writeup v0.9
+# Bounded Monocular Perception System - Technical Writeup v0.10
+
+**Current as of:** 2026-06-02  
+**Version policy:** this writeup is standalone; older repository-level writeup
+versions are removed rather than retained as dependencies.
 
 ## 1. Project Overview
 
@@ -6,10 +10,10 @@ This repository is a bounded computer-vision and applied-machine-learning
 workspace for estimating vehicle distance and yaw from a fixed monocular camera
 view under controlled conditions.
 
-The system is deliberately scoped around one known vehicle family, fixed camera
-geometry, a constrained movement plane, synthetic supervision, controlled
-full-frame captures, and live-local runtime testing under controlled physical
-conditions. The engineering question is narrow:
+The system is deliberately scoped around one known vehicle family, one fixed
+camera geometry, a constrained movement plane, synthetic supervision,
+controlled full-frame captures, and live-local runtime testing under controlled
+physical conditions. The engineering question is narrow:
 
 > Can a fixed-camera system observing a known vehicle in a constrained scene
 > estimate useful vehicle state from image-based geometric cues, and what breaks
@@ -17,12 +21,20 @@ conditions. The engineering question is narrow:
 > inference?
 
 That framing is central to the repository. It should be read as a bounded
-research-engineering workspace rather than a packaged product or broad
-general-purpose vision model. The value is the engineering record: applied ML
-engineering, computer-vision system construction, synthetic-data generation,
-preprocessing contracts, runtime composition, trace capture, calibration
-support, failure analysis, and measuring degradation between offline validation
-and composed live inference.
+research-engineering workspace rather than a packaged product, benchmark
+system, or broad general-purpose vision model. The value is the engineering
+record: applied ML engineering, computer-vision system construction,
+synthetic-data generation, preprocessing contracts, runtime composition, trace
+capture, calibration support, failure analysis, and measuring degradation
+between offline validation and composed live inference.
+
+The main change in v0.10 is that Incident 005 is now a first-class part of the
+technical narrative. After locator and foreground failures were made more
+inspectable, the project found strong evidence that the remaining live
+underprediction is largely explained by live/synthetic apparent-scale mismatch.
+The current live runtime therefore includes a configurable post-foreground model
+representation transform, but the corrected live-distance claim remains bounded
+until the calibrated rerun is complete.
 
 ## 2. Problem Scope
 
@@ -31,8 +43,8 @@ The core task is intentionally constrained:
 * **Input:** a monocular full-frame image from a fixed camera.
 * **Primary output:** vehicle distance in metres.
 * **Secondary output:** vehicle yaw/orientation.
-* **Runtime support task:** locate the crop region required to construct the
-  model input representation.
+* **Runtime support task:** locate and construct the crop/foreground
+  representation required by the selected model.
 
 The current system assumes:
 
@@ -40,12 +52,13 @@ The current system assumes:
 * one fixed camera geometry
 * one constrained movement plane
 * synthetic training and validation data
-* controlled full-frame captures
+* controlled full-frame live captures
+* a bounded live-local camera setup rather than open-world deployment
 
 These assumptions keep the problem falsifiable. They also make it possible to
 separate model performance from failures introduced by localisation,
-preprocessing, camera geometry, foreground extraction, and live runtime
-composition.
+preprocessing, camera geometry, foreground extraction, apparent-scale alignment,
+and live runtime composition.
 
 ## 3. Repository Architecture
 
@@ -59,7 +72,8 @@ The repository is organised as a versioned multi-project workspace:
 * `03_rb-training-v2.0`: PyTorch training, topology registry, model evaluation,
   resume support, reporting, and experimental amodal keypoint pose topology
   work.
-* `04_ROI-FCN`: preprocessing and training for crop-centre heatmap localisation.
+* `04_ROI-FCN`: preprocessing and training for crop-centre heatmap
+  localisation.
 * `05_inference-v0.3-ds`: raw-image inference using ROI-FCN plus dual-stream
   distance/yaw models.
 * `05_inference-v0.4-ts`: tri-stream-facing inference work and
@@ -71,7 +85,8 @@ The repository is organised as a versioned multi-project workspace:
 * `06_live-inference_v0.3`: current live-local runtime with generic locator
   interfaces, deterministic background/edge localisation, manual masks,
   selectable foreground extraction, component-aware threshold foreground
-  selection, camera-intrinsics preprocessing, trace evidence, and GUI controls.
+  selection, camera-intrinsics preprocessing, post-foreground model
+  representation transforms, trace evidence, and GUI controls.
 * `charuco-calibration`: PySide6/OpenCV ChArUco calibration tool for capturing
   pose-diverse calibration frames, solving camera intrinsics, and exporting
   JSON/YAML calibration artifacts.
@@ -116,10 +131,16 @@ The generator writes:
 * `manifests/samples.csv`
 * `runlog.txt`
 
-The sample manifest now also carries Defender keypoint schema metadata,
-camera-space centre labels, ten fixed camera-space 3D keypoints, and per-keypoint
-visibility labels. This gives downstream stages explicit lineage and typed target
-metadata rather than relying on filenames alone.
+The sample manifest also carries Defender keypoint schema metadata,
+camera-space centre labels, ten fixed camera-space 3D keypoints, and
+per-keypoint visibility labels. This gives downstream stages explicit lineage
+and typed target metadata rather than relying on filenames alone.
+
+Incident 005 adds an important caveat to synthetic generation and rendering:
+synthetic images must not merely contain plausible labelled targets. For a direct
+monocular distance regressor, synthetic and live captures must also agree on
+what apparent image scale corresponds to the same physical reference distance.
+That apparent-scale contract is now an explicit validation boundary.
 
 ## 5. Preprocessing and Representation Design
 
@@ -161,6 +182,12 @@ vehicle-on-white representation:
 
 The split remains technically meaningful. Distance benefits from preserving
 apparent scale, while yaw benefits from a target-centred orientation view.
+
+The same design choice also creates a strict live/synthetic alignment
+requirement. If a live target appears `1.20x` to `1.24x` larger than its
+synthetic counterpart at the same nominal distance, the direct distance regressor
+can coherently interpret the live target as closer. Incident 005 is the current
+evidence for that failure mode.
 
 ## 6. Model Training and Evaluation
 
@@ -207,7 +234,7 @@ distance/yaw coupling:
 That design was an attempt to protect distance prediction from unstable yaw
 features while still allowing pose-conditioned corrections. Live incident
 evidence shows that it is a useful baseline, but not a complete solution to
-pose-linked distance bias.
+pose-linked or projection-linked distance bias.
 
 The first experimental keypoint topology is registered as
 `defender_amodal_keypoint_pose` with variant
@@ -259,9 +286,9 @@ locator canvas, ran the learned heatmap model, decoded the argmax to one
 source-image centre, and extracted a fixed ROI around that point.
 
 Live inference v0.3 changed the default locator to `background_edge_v1`, an
-inspectable deterministic geometric locator built for the controlled fixed-camera
-path. ROI-FCN is retained as `roi_fcn_legacy`, an explicit comparison/fallback
-route, and the current model selection file references
+inspectable deterministic geometric locator built for the controlled
+fixed-camera path. ROI-FCN is retained as `roi_fcn_legacy`, an explicit
+comparison/fallback route, and the current model selection file references
 `260516-1714_roi-fcn-tiny__run_0002` for that route.
 
 Incident 004 records the engineering justification for this pivot. The issue was
@@ -269,9 +296,9 @@ not simply that ROI-FCN could miss a centre point. The deeper boundary mismatch
 was that ROI-FCN compressed live ROI selection into a learned heatmap peak, while
 the runtime needed an auditable apparent-scale measurement path: foreground mask,
 edge map, candidate contours, chosen bbox, ROI crop bounds, rejection reasons,
-and traceable artifacts. This matters because downstream distance depends on crop
-boundaries, foreground quality, and geometry, not only on whether a centre point
-looks plausible.
+and traceable artifacts. This matters because downstream distance depends on
+crop boundaries, foreground quality, apparent target scale, and geometry, not
+only on whether a centre point looks plausible.
 
 ## 8. Raw-Image Inference
 
@@ -297,9 +324,10 @@ This stage exposed an important system-level gap: some offline training metrics
 are much stronger than composed raw-image runtime metrics. That gap is useful
 engineering evidence. The project does not stop at preprocessed validation
 performance; it measures degradation introduced by crop localisation, runtime
-preprocessing, and model composition.
+preprocessing, camera alignment, model representation construction, and model
+composition.
 
-## 9. Camera Calibration and Intrinsics Handling
+## 9. Calibration, Intrinsics, and Representation Alignment
 
 The `charuco-calibration` project provides a standalone PySide6/OpenCV workflow
 for camera calibration. It captures pose-diverse ChArUco frames, scores capture
@@ -314,8 +342,8 @@ enums, and protocols for board config, camera config, detections, quality
 metrics, capture decisions, calibration results, worker state, and exported
 artifacts.
 
-The live v0.3 runtime now contains calibration-backed camera intrinsics
-transforms. Supported modes are:
+The live v0.3 runtime contains calibration-backed camera intrinsics transforms.
+Supported modes are:
 
 * `disabled`
 * `real_to_unity_intrinsics_remap`
@@ -328,11 +356,48 @@ The live project includes:
 * an analytic Unity AR0234 pinhole target calibration under
   `06_live-inference_v0.3/config/calibration/260520-1130_unity_ar0234_pinhole_1920x1200`.
 
-The runtime transform can undistort the real camera frame or remap it toward the
-Unity-trained camera model before normal localisation, preprocessing, geometry
-extraction, and model inference. This is important because later live failure
-analysis shows that camera-model mismatch contributes to live error, while also
-showing that calibration alone does not remove pose-dependent distance bias.
+The camera-intrinsics transform can undistort the real camera frame or remap it
+toward the Unity-trained camera model before normal localisation, preprocessing,
+geometry extraction, and model inference. Incident 002 showed that this improves
+part of the runtime alignment problem, but does not by itself remove
+pose-dependent live distance error.
+
+Incident 005 adds a second alignment layer: the **model representation
+transform**. This is not the same as the camera-intrinsics transform.
+
+```text
+camera intrinsics transform:
+  full frame -> transformed full frame before locator and preprocessing
+
+model representation transform:
+  post-foreground ROI representation -> model-facing ROI representation
+  before x_distance_image, x_orientation_image, and x_geometry are packed
+```
+
+The first implementation is an affine ROI-space transform with independent
+horizontal and vertical scale factors. It can be configured by TOML, applies the
+same transform to the model ROI representation, orientation source, and
+foreground mask, then recomputes model-space foreground geometry from the
+transformed mask.
+
+The current Incident 005 AR0234 profile uses the inverse of the measured
+live/synthetic apparent-scale ratios:
+
+| Scale source | Value |
+| --- | ---: |
+| Measured mean live/synthetic width scale | `1.238x` |
+| Measured mean live/synthetic height scale | `1.210x` |
+| Transform `scale_x` | `0.8077544426494346` |
+| Transform `scale_y` | `0.8264462809917356` |
+
+The real OpenCV/V4L2 camera path currently loads that Incident 005 profile by
+default unless a transform config override is supplied. Trace metadata records
+whether the transform was enabled and applied, the scale factors, the anchor,
+the affine matrix, raw foreground geometry, and model-space foreground geometry.
+
+This is an initial mitigation and observability hook. It should not be described
+as a validated live accuracy fix until the synthetic/live scale check and
+trace-backed live sweep are rerun after calibration.
 
 ## 10. Live-Local Inference Runtime
 
@@ -359,6 +424,9 @@ stabilisation layer. It includes:
   and `silhouette_contour_v2` retained as a legacy selectable path.
 * component-aware threshold foreground selection with diagnostic metadata for
   foreground/locator disagreement.
+* post-foreground model representation transform support.
+* raw foreground and model-space foreground geometry metadata.
+* diagnostic foreground ROI border-touch metadata.
 * tri-stream live preprocessor.
 * PyTorch tri-stream inference engine.
 * camera and inference workers.
@@ -474,15 +542,6 @@ pose. Front-facing views often predicted farther than side or rear views at the
 same floor mark, rear-facing views often predicted closer, and side-facing views
 were usually intermediate or closest to the measured reference distance.
 
-The incident had three practical objectives:
-
-1. Determine whether live distance errors were primarily caused by camera-model
-   mismatch between Unity synthetic camera geometry and the real AR0234 camera.
-2. Compare the direct distance/yaw tri-stream model family across available
-   versions.
-3. Decide whether further work should continue within the direct-regression
-   family or move to a more inspectable representation.
-
 Four measured positions were tested:
 
 | Mark | Measured distance |
@@ -491,13 +550,6 @@ Four measured positions were tested:
 | 2 | `1.77 m` |
 | 3 | `1.97 m` |
 | 4 | `2.18 m` |
-
-At each mark, front-facing, side-facing, and rear-facing orientations were
-tested. The measured distances are practical reference distances, not calibrated
-metrology ground truth. The important signal is the repeated pose-dependent
-structure at fixed measured floor positions.
-
-### Camera-Model Correction
 
 An input-space camera-model correction was applied using AR0234 calibration data
 and an equivalent Unity camera model. The correction modestly improved aggregate
@@ -513,8 +565,6 @@ distance error, but did not reduce the pose-dependent spread:
 The conclusion is that camera-model mismatch contributed to live error, but was
 not the dominant remaining cause.
 
-### TriStream v0.4 Trace-Backed Sweep
-
 A trace-backed sweep using `tri_stream_yaw_v0_4` with camera intrinsics applied
 showed usable but insufficient live distance accuracy:
 
@@ -527,17 +577,6 @@ showed usable but insufficient live distance accuracy:
 | Maximum absolute error | `0.2680 m` |
 | Samples within `10 cm` | `7 / 12` |
 | Samples within `5 cm` | `1 / 12` |
-
-The pose spread by mark was:
-
-| Mark | Front | Side | Rear | Spread |
-| ---: | ---: | ---: | ---: | ---: |
-| `1.59 m` | `1.740 m` | `1.681 m` | `1.664 m` | `0.076 m` |
-| `1.77 m` | `2.014 m` | `1.823 m` | `1.840 m` | `0.191 m` |
-| `1.97 m` | `2.036 m` | `2.004 m` | `1.913 m` | `0.123 m` |
-| `2.18 m` | `2.074 m` | `2.067 m` | `1.912 m` | `0.162 m` |
-
-### TriStream v0.5 Trace-Backed Rerun
 
 A later trace-backed rerun used the current `260521-1029_ts-2d-cnn` /
 `tri_stream_yaw_v0_5` artifact. It did not cleanly solve the live failure mode:
@@ -552,24 +591,15 @@ A later trace-backed rerun used the current `260521-1029_ts-2d-cnn` /
 | Samples within `10 cm` | `6 / 12` |
 | Samples within `5 cm` | `3 / 12` |
 
-The pose spread by mark was:
-
-| Mark | Front | Side | Rear | Spread |
-| ---: | ---: | ---: | ---: | ---: |
-| `1.59 m` | `1.622 m` | `1.534 m` | `1.537 m` | `0.088 m` |
-| `1.77 m` | `1.723 m` | `1.704 m` | `1.668 m` | `0.054 m` |
-| `1.97 m` | `1.977 m` | `1.854 m` | `1.769 m` | `0.208 m` |
-| `2.18 m` | `1.891 m` | `2.062 m` | `1.979 m` | `0.171 m` |
-
-The v0.5 rerun was marginally better on MAE, the stricter `5 cm` count, and
-average pose spread, but worse on RMSE, maximum error, and the `10 cm` count. It
-also shifted the overall signed error strongly negative.
-
 The incident outcome is an architectural finding. The direct distance/yaw
 tri-stream family remains useful as a baseline and live-runtime integration
 path, but it is no longer the preferred path for the next major improvement
 cycle. The remaining problem needs a representation that exposes inferred
 geometry, not only final scalar outputs.
+
+Incident 005 later narrows one part of the remaining problem: live/synthetic
+apparent-scale mismatch can produce a systematic signed distance bias even when
+the locator and foreground path are plausible.
 
 ## 13. Incident 003: Foreground Mask Contamination Underestimate
 
@@ -686,7 +716,86 @@ The claim is narrower and better supported: for this bounded fixed-camera live
 system, the geometric locator is a better engineering interface because it turns
 ROI selection into an auditable apparent-scale measurement path.
 
-## 15. Experimental Amodal Keypoint Topology
+## 15. Incident 005: Live/Synthetic Apparent-Scale Mismatch
+
+The `failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch`
+directory records the current leading explanation for a post-ROI-fix live
+distance underprediction.
+
+After the live ROI path had moved to the geometric locator, accepted live
+predictions were still consistently too close. The post-ROI-fix live sweep
+recorded six accepted distance readings. Five clean or clean-ish readings
+underpredicted measured distance by approximately `0.35 m` to `0.40 m`. One
+additional `2.9 m -> 2.008 m` reading was treated as contaminated and excluded
+from the clean bias estimate.
+
+The clean trace summary was:
+
+| Metric | Value |
+| --- | ---: |
+| Included readings | `5` |
+| Mean signed error | `-0.364 m` |
+| Median signed error | `-0.363 m` |
+| Signed error range | `-0.345 m` to `-0.399 m` |
+| Mean absolute error | `0.364 m` |
+
+An independent synthetic/live image-pair analysis then compared the apparent
+size of the Defender in nominally matched synthetic and live captures. Across
+eight front/side image pairs, the live vehicle appeared consistently larger than
+the synthetic vehicle at the same nominal lens distance. Using inverse-scale
+geometry, that visual-scale mismatch predicts a mean apparent-distance offset of
+`-0.336 m`, with a median of `-0.331 m` and a range from `-0.283 m` to
+`-0.406 m`.
+
+| Evidence source | Key result | Interpretation |
+| --- | ---: | --- |
+| Clean live sweep | mean signed error `-0.364 m` | Model predicts target too close |
+| Synthetic/live scale comparison | mean apparent-distance offset `-0.336 m` | Live target appears larger than synthetic equivalent |
+| Difference between means | `0.028 m` | Independent evidence paths converge |
+
+The incident therefore strongly supports the hypothesis that the live model
+input presents the Defender as visually larger, and therefore apparently closer,
+than the synthetic training representation. It does not prove one exact
+low-level cause. The mismatch could still be split between Unity camera
+parameters, real-to-Unity intrinsics mapping, viewport/capture handling, lens
+model mismatch, synthetic object scale, or physical measurement reference
+differences.
+
+The engineering conclusion is narrower and stronger: once locator and foreground
+failures are controlled, live/synthetic apparent-scale alignment becomes a
+primary remaining distance-risk boundary.
+
+The immediate implementation response is a configurable post-foreground model
+representation transform:
+
+```text
+accepted camera frame
+  -> optional camera intrinsics transform
+  -> locator and ROI crop
+  -> foreground extraction and component cleanup
+  -> model representation transform
+  -> recompute model-space x_geometry
+  -> pack x_distance_image, x_orientation_image, x_geometry
+  -> direct distance/yaw model
+```
+
+The transform is traceable and configurable, but the incident remains open in
+the important sense that the corrected live sweep has not yet been reported.
+Until the apparent-scale mismatch is corrected and rerun, the direct distance/yaw
+model should be framed as:
+
+```text
+traceable live-runtime integration and failure-analysis evidence
+not a calibrated live distance-estimation claim
+```
+
+The checked-in Incident 005 evidence includes the polished report and eight
+compact scale-pair summary comparison images. The evidence manifest also
+describes heavier raw image pairs and live-inference traces that remain in the
+local incident workspace and can be copied later if the repository should
+preserve the full artifact set.
+
+## 16. Experimental Amodal Keypoint Topology
 
 The repository contains both the keypoint topology design documents and a first
 experimental implementation:
@@ -726,7 +835,7 @@ derived from known object geometry, camera setup, visible evidence, ROI geometry
 and the synthetic training distribution. Visibility is a separate target and
 diagnostic signal; it does not mask the amodal 3D supervision.
 
-The first implementation milestone now has concrete code support for:
+The first implementation milestone has concrete code support for:
 
 * a registered topology family and selectable variant.
 * a versioned `defender_keypoint_schema.json` with schema-hash validation.
@@ -739,30 +848,31 @@ The first implementation milestone now has concrete code support for:
 * clear failures for missing labels or schema metadata.
 * a `geometry_only` ablation mode.
 
-This topology follows directly from Incidents 002, 003, and 004. Direct
+This topology follows directly from Incidents 002, 003, 004, and 005. Direct
 distance/yaw regression can report that a prediction is wrong, but it cannot
 expose enough intermediate geometric state to determine whether the model
 misunderstood scale, pose, extent, visibility, lighting, foreground shape, ROI
-selection, or a combination of those factors. A keypoint-based representation
-gives the system an inspectable object hypothesis that can be compared against
-known rigid geometry.
+selection, synthetic/live projection, or a combination of those factors. A
+keypoint-based representation gives the system an inspectable object hypothesis
+that can be compared against known rigid geometry.
 
 The remaining caution is important: until trained keypoint artifacts and
 geometry-only ablations are evaluated, the keypoint topology should be described
 as an implemented experimental direction rather than an externally validated
 accuracy improvement.
 
-## 16. Representative Results
+## 17. Representative Results
 
 The table below separates offline preprocessed evaluation, raw-image composed
-inference, live-local artifact selection, and live incident evidence. These are
-different evidence types and should not be collapsed into one headline number.
+inference, live-local artifact selection, live incident evidence, and current
+mitigation work. These are different evidence types and should not be collapsed
+into one headline number.
 
 | Artifact / Run | Evidence Type | Train / Validation Samples | Distance MAE | Distance RMSE | Distance within `0.10 m` | Yaw Mean Error | Yaw within `5 deg` | Interpretation |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `260415-1146_ds-2d-cnn/run_0001` | offline preprocessed dual-stream distance+yaw validation | `250,000 / 50,000` | `0.01007 m` | `0.01297 m` | `0.99996` | `1.49987 deg` | `0.97482` | Strong recorded offline preprocessed dual-stream result. |
 | `260515-1301_ts-2d-cnn` | prior selected tri-stream v0.4 offline validation artifact | `300,000 / 60,000` | `0.01485 m` | `0.02412 m` | `0.99907` | `1.03246 deg` | `0.99793` | Strong offline synthetic artifact, later superseded as the selected live direct-regression model. |
-| `260521-1029_ts-2d-cnn` | current selected tri-stream v0.5 offline validation artifact | `300,000 / 60,000` | `0.01586 m` | `0.02603 m` | `0.99848` | `1.50303 deg` | `0.98543` | Current direct-regression baseline; strong offline metrics but unresolved live pose-linked bias. |
+| `260521-1029_ts-2d-cnn` | current selected tri-stream v0.5 offline validation artifact | `300,000 / 60,000` | `0.01586 m` | `0.02603 m` | `0.99848` | `1.50303 deg` | `0.98543` | Current direct-regression baseline; strong offline metrics but unresolved live transfer risk. |
 | `260504-1100_ts-2d-cnn__run_0001` | earlier live-local tri-stream selected artifact | `226,971 / 47,929` | `0.09756 m` | `0.12627 m` | `0.62826` | `3.87700 deg` | `0.74675` | Metadata-compatible earlier live candidate, weaker distance than later selected artifacts. |
 | `260415-1146_ds-2d-cnn` raw-image output | composed ROI-FCN plus dual-stream inference on `49,999` raw validation rows | `n/a / 49,999` | `0.11117 m` | `0.43346 m` | `0.92948` | `12.33194 deg` | `0.58491` | Shows runtime degradation and a crop-boundary distance tail. |
 | `260425-1025_ds-2d-cnn` raw-image output | composed ROI-FCN plus brightness-normalised dual-stream inference on `49,999` raw validation rows | `n/a / 49,999` | `0.04784 m` | `0.10853 m` | `0.95312` | `16.48438 deg` | `0.38421` | Better bulk distance, but broad yaw underperformance. |
@@ -771,17 +881,21 @@ different evidence types and should not be collapsed into one headline number.
 | `tri_stream_yaw_v0_4` live sweep | trace-backed live incident evidence | `n/a` | `0.1105 m` | `0.1317 m` | `7 / 12` | `n/a` | `n/a` | Pose-dependent live distance bias persisted with intrinsics applied. |
 | `tri_stream_yaw_v0_5` live sweep | trace-backed live incident evidence | `n/a` | `0.1074 m` | `0.1341 m` | `6 / 12` | `n/a` | `n/a` | Current direct-regression model remained pose-sensitive and shifted signed error negative. |
 | Incident 003 primary trace | live preprocessing failure evidence | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Foreground-mask contamination expanded apparent scale and drove a distance underestimate; hard rejection was backed out in favour of diagnostic/component-selection remediation. |
+| Incident 005 clean live sweep | live incident evidence | `n/a` | `0.364 m` | `n/a` | `0 / 5` | `n/a` | `n/a` | Five clean-ish accepted readings underpredicted by mean signed error `-0.364 m`; apparent-scale mismatch is the leading explanation. |
+| Incident 005 synthetic/live scale pairs | paired image-scale evidence | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Eight front/side pairs predict mean apparent-distance offset `-0.336 m`, close to the clean live bias. |
+| Incident 005 model representation transform | runtime mitigation and traceability hook | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Implemented post-foreground affine scale correction with raw/model foreground metadata; corrected live accuracy rerun remains required. |
 
-Four conclusions follow from these results. First, the repository contains
+Five conclusions follow from these results. First, the repository contains
 strong offline evidence for the bounded preprocessed task. Second, end-to-end
 raw-image and live inference are harder than the offline task. Third, foreground
 quality is a first-class operational risk for the direct tri-stream family,
 because corrupted apparent scale can drive confident but wrong distance outputs.
 Fourth, the live ROI boundary needs inspectable geometric evidence, not only a
-learned centre-point confidence. The repository measures and investigates those
-gaps rather than hiding them.
+learned centre-point confidence. Fifth, once locator and foreground failures are
+controlled, synthetic/live apparent-scale alignment itself becomes a first-class
+validation gate.
 
-## 17. Failure Analysis and Engineering Learnings
+## 18. Failure Analysis and Engineering Learnings
 
 The failure-analysis framework uses a primary threshold of:
 
@@ -830,13 +944,19 @@ boundary decision. ROI-FCN predicts a centre point, but live inference needs an
 auditable apparent-scale path with candidates, bbox geometry, rejection reasons,
 and artifacts that can be compared to downstream foreground geometry.
 
+Incident 005 reframes the remaining live underprediction as a synthetic/live
+projection and apparent-scale boundary. The model can receive a coherent,
+vehicle-shaped input and still produce a systematically wrong distance if the
+live model representation is scaled differently from the synthetic training
+representation.
+
 The main learning is that model metrics alone are insufficient. In a multi-stage
 perception system, accuracy depends on the contracts and failure modes of every
 stage: camera capture, calibration, background handling, ROI selection,
-foreground extraction, geometry construction, model input rendering, and output
-decoding.
+foreground extraction, representation alignment, geometry construction, model
+input rendering, and output decoding.
 
-## 18. Testing and Engineering Discipline
+## 19. Testing and Engineering Discipline
 
 The repository includes focused tests across multiple layers:
 
@@ -861,6 +981,10 @@ The repository includes focused tests across multiple layers:
   selection, manual mask application, trace artifact contents, GUI app wiring,
   incident-001 preprocessing regression, incident-003 diagnostic behaviour, and
   generic locator compatibility.
+* model representation transform tests covering enabled-config validation,
+  independent `scale_x`/`scale_y` behaviour, spatial image/mask alignment,
+  preprocessor integration, and recomputing `x_geometry` from the transformed
+  foreground mask.
 * ChArUco calibration contracts, config loading, dictionary probing, capture
   quality, capture decisions, session storage, pose diversity, reprojection, and
   artifact export.
@@ -880,10 +1004,15 @@ The incident-specific tests are particularly valuable:
 * `test_generic_preprocessor.py` also verifies that incident-shaped foreground
   over-expansion is diagnostic-only and that disconnected threshold contaminants
   are excluded by component selection.
-* The Incident 004 retrospective identifies v0.2 trace replay as useful follow-up
-  work, but does not require it for the architectural justification.
+* `test_model_representation_transform.py` verifies that the Incident 005 style
+  post-foreground transform changes mask width and height independently and
+  updates model geometry from the transformed mask.
+* The Incident 004 retrospective identifies v0.2 trace replay as useful
+  follow-up work, but does not require it for the architectural justification.
+* Incident 005 identifies scale-pair fixtures and corrected live sweep replay as
+  required follow-up work before stronger live distance claims.
 
-## 19. Technically Distinctive Features
+## 20. Technically Distinctive Features
 
 The project demonstrates:
 
@@ -904,6 +1033,8 @@ The project demonstrates:
 * component-aware threshold foreground extraction with foreground/locator
   diagnostic metadata.
 * calibration-backed live camera intrinsics transforms.
+* post-foreground model representation transforms for apparent-scale alignment.
+* raw-vs-model foreground geometry metadata for trace analysis.
 * a tri-stream model contract separating distance image, orientation image, and
   geometry features.
 * runtime compatibility checking before model pairing.
@@ -913,12 +1044,13 @@ The project demonstrates:
 * failure analysis that distinguishes offline validation quality from composed
   runtime quality.
 * an experimental amodal keypoint topology motivated by measured limitations of
-  direct scalar regression and foreground-dependent apparent-scale failures.
+  direct scalar regression, foreground-dependent apparent-scale failures, and
+  synthetic/live projection mismatch.
 
 These are not presented as novel research contributions. They are practical
 engineering capabilities in applied ML and perception-system development.
 
-## 20. Established Engineering Patterns Demonstrated
+## 21. Established Engineering Patterns Demonstrated
 
 The repository implements established engineering patterns relevant to applied
 ML systems:
@@ -927,7 +1059,7 @@ ML systems:
   and model cards.
 * NPZ shard packing and schema validation.
 * OpenCV contour processing, foreground extraction, silhouette generation,
-  ChArUco detection, and camera calibration.
+  ChArUco detection, affine warping, and camera calibration.
 * heatmap-based localisation and argmax decode.
 * deterministic geometric locator contracts with candidate scoring and explicit
   rejection metadata.
@@ -938,8 +1070,9 @@ ML systems:
 * artifact-backed incident analysis and regression tests.
 * multitask topology contracts spanning scalar regression, circular yaw, 3D
   centre regression, keypoint regression, and visibility classification.
+* configuration-backed runtime transforms with debug artifacts and metadata.
 
-## 21. Scope and Current Limits
+## 22. Scope and Current Limits
 
 This repository is not presented as a packaged product or broad general-purpose
 vision model. It is a bounded research-engineering workspace for testing whether
@@ -957,23 +1090,30 @@ The current evidence should be read with the following constraints in mind:
   inference are separate evidence types.
 * The live-local runtime works, but real-camera accuracy is still under
   investigation.
-* The current direct scalar distance/yaw model shows pose-linked distance bias
-  in live testing.
+* The current direct scalar distance/yaw model shows pose-linked and
+  projection-linked distance risk in live testing.
 * Camera calibration improves part of the runtime alignment problem but does
-  not, by itself, solve pose-dependent error.
+  not, by itself, solve pose-dependent or apparent-scale error.
 * The live sweeps use practical measured floor marks, not calibrated metrology
   ground truth.
+* The distance reference convention still needs to be made explicit across
+  synthetic labels, physical measurement, and scale-pair analysis.
 * `background_edge_v1` is deterministic and inspectable, and is designed for
   the controlled fixed-camera live-local path. It is not a general detector.
 * ROI-FCN targets are bootstrapped from an existing crop heuristic, so the
   localiser initially learns that crop-centre definition rather than
   independently curated ground truth.
-* Incident 004 is a retrospective engineering justification, not a benchmark that
-  quantifies geometric-locator centre accuracy against ROI-FCN on hand-labelled
-  live frames.
+* Incident 004 is a retrospective engineering justification, not a benchmark
+  that quantifies geometric-locator centre accuracy against ROI-FCN on
+  hand-labelled live frames.
+* Incident 005 strongly supports the apparent-scale mismatch hypothesis, but
+  does not isolate one exact low-level geometry cause.
+* The Incident 005 model representation transform is implemented, configurable,
+  and test-covered, but the corrected live sweep and scripted scale fixtures
+  remain required before claiming calibrated live distance accuracy.
 * The current next architectural direction is a more inspectable
   keypoint/topology-based representation.
-* The keypoint topology now has a first experimental registered implementation,
+* The keypoint topology has a first experimental registered implementation,
   schema, labels, losses, metrics, and tests, but it is not yet a selected live
   model artifact or externally validated accuracy improvement.
 * Foreground extraction remains a live-runtime risk. The current strategy
@@ -985,27 +1125,47 @@ The current evidence should be read with the following constraints in mind:
 These caveats are part of the technical value of the project. They keep the
 claims bounded and make the results easier to evaluate honestly.
 
-## 22. Short Technical Summary
+## 23. Current Version Focus
+
+This standalone v0.10 writeup captures the current repository-level narrative in these ways:
+
+* Adds Incident 005 as a first-class incident and evidence source.
+* Separates live/synthetic apparent-scale mismatch from prior locator,
+  foreground, and pose-bias failures.
+* Adds the model representation transform as a current live-runtime capability.
+* Distinguishes camera-intrinsics transforms from post-foreground model-space
+  transforms.
+* Adds raw-vs-model foreground metadata and debug artifacts to the live runtime
+  description.
+* Adds Incident 005 to representative results and current limitations.
+* Tightens the claim boundary for direct distance/yaw regression: useful
+  integration baseline and evidence path, not yet a calibrated live distance
+  claim.
+
+## 24. Short Technical Summary
 
 This repository is a bounded computer-vision project for fixed-camera vehicle
 distance and yaw estimation. It combines Unity synthetic data generation,
 OpenCV preprocessing, PyTorch model training, learned and deterministic ROI
-localisation, raw-image inference, camera calibration, and a live PySide6
-runtime.
+localisation, raw-image inference, camera calibration, post-foreground model
+representation alignment, and a live PySide6 runtime.
 
 The project is intentionally narrow: one known vehicle family, one fixed camera
 geometry, synthetic labelled data, and a constrained operating plane. Within
 that scope, it demonstrates the engineering work required to move from offline
 model training toward composed runtime inference, including data contracts,
 artifact compatibility checks, runtime preprocessing, camera-intrinsics
-handling, trace capture, and failure analysis.
+handling, apparent-scale alignment, trace capture, and failure analysis.
 
 The most valuable result is not a single accuracy number. The repository shows
 strong offline synthetic performance, measurable degradation in composed
 raw-image inference, live preprocessing incidents that were traced and
 remediated or partially remediated, a ROI-FCN-to-geometric-locator pivot toward
 an inspectable apparent-scale measurement path, a pose-dependent distance-bias
-incident that motivates a more inspectable model family, and a first experimental
-amodal keypoint topology implementation. That makes the repository useful
-evidence of applied ML engineering, computer vision, evaluation discipline, and
-runtime integration capability.
+incident that motivates a more inspectable model family, a live/synthetic
+apparent-scale incident that motivates explicit representation alignment, and a
+first experimental amodal keypoint topology implementation.
+
+That makes the repository useful evidence of applied ML engineering, computer
+vision, evaluation discipline, runtime integration capability, and careful
+failure analysis under bounded claims.

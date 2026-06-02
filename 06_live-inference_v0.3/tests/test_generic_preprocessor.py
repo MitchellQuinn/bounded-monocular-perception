@@ -112,6 +112,43 @@ class GenericTriStreamPreprocessorTests(unittest.TestCase):
             contracts.LocatorKind.FIXED_CENTER_ROI.value,
         )
 
+    def test_records_foreground_touching_model_roi_border_without_rejecting(self) -> None:
+        image = np.full((600, 960), 255, dtype=np.uint8)
+        cv2.rectangle(image, (430, 430), (530, 459), 60, thickness=-1)
+        ok, encoded = cv2.imencode(".png", image)
+        self.assertTrue(ok)
+        image_bytes = encoded.tobytes()
+        preprocessor = TriStreamLivePreprocessor(
+            model_manifest=_manifest(),
+            locator=FixedCenterRoiLocator(roi_wh_px=(320, 320)),
+        )
+
+        prepared = preprocessor.prepare_model_inputs(_request(image_bytes), image_bytes)
+
+        metadata = prepared.preprocessing_metadata
+        self.assertEqual(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_STATUS
+            ],
+            "touching_border",
+        )
+        self.assertTrue(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_TOUCHES_BOTTOM
+            ]
+        )
+        self.assertFalse(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_ENFORCED
+            ]
+        )
+        self.assertEqual(
+            metadata[
+                contracts.PREPROCESSING_METADATA_FOREGROUND_ROI_BORDER_GUARD_ACTION
+            ],
+            "diagnostic_only",
+        )
+
     def test_background_removal_requires_explicit_model_stage_policy(self) -> None:
         background = np.full((600, 960), 255, dtype=np.uint8)
         frame = background.copy()

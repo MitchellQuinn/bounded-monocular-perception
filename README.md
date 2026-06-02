@@ -1,13 +1,13 @@
 # Bounded Monocular Perception
 
-> 🎥 **Live demo:** [https://www.youtube.com/watch?v=IOYiBk6UhAs](https://www.youtube.com/watch?v=IOYiBk6UhAs)
-> 📄 **Technical writeup:** [`documents/bounded-monocular-perception-technical-writeup-v0.9.md`](documents/bounded-monocular-perception-technical-writeup-v0.9.md)  
-> 🔍 **Failure analysis:** [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md)  
-> 🧭 **Current model direction:** amodal semantic keypoint regression, with training data processing in progress
+> - 🎥 **Live demo:** [https://www.youtube.com/watch?v=IOYiBk6UhAs](https://www.youtube.com/watch?v=IOYiBk6UhAs)
+> - 📄 **Technical writeup:** [`documents/bounded-monocular-perception-technical-writeup-v0.10.md`](documents/bounded-monocular-perception-technical-writeup-v0.10.md)
+> - 🔍 **Failure analysis:** [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md)
+> - 🧭 **Current model direction:** apparent-scale representation alignment and amodal semantic keypoint regression
 
-This repository is a bounded computer-vision and applied-machine-learning workspace for estimating vehicle distance and yaw from a fixed monocular camera view under controlled conditions.
+This repository is a bounded computer-vision and applied-machine-learning workspace for estimating vehicle distance and yaw from a fixed monocular camera view under controlled conditions. This is a bounded perception investigation, not a benchmark system.
 
-It is built end-to-end across Unity synthetic data generation, preprocessing contracts, PyTorch training, raw-image inference, live PySide6 runtime integration, camera calibration, trace capture, and failure analysis.
+It is built end-to-end across Unity synthetic data generation, preprocessing contracts, PyTorch training, raw-image inference, live PySide6 runtime integration, camera calibration, representation alignment, trace capture, and failure analysis.
 
 The project is deliberately narrow: one known vehicle family, fixed monocular camera geometry, a constrained movement plane, controlled full-frame captures, synthetic training and validation data, and live-local testing under controlled physical conditions.
 
@@ -33,6 +33,7 @@ The current value is the engineering record:
 - distance/yaw model training and evaluation
 - raw-image and live-runtime composition
 - calibration support
+- apparent-scale representation alignment
 - trace-backed failure analysis
 - architectural pivots driven by measured failure modes
 
@@ -49,6 +50,7 @@ The current value is the engineering record:
 | Failure analysis | live incidents are traced through captured artifacts rather than collapsed into a single score |
 | Representation iteration | direct scalar distance/yaw regression exposed pose-linked bias, motivating a more inspectable keypoint topology |
 | Calibration-aware investigation | ChArUco calibration tooling and live intrinsics modes are integrated into the runtime path |
+| Representation alignment | Incident 005 drives a post-foreground model representation transform for apparent-scale mitigation |
 
 ---
 
@@ -64,12 +66,13 @@ The current deployed live path uses:
 - PySide6 camera and inference workers
 - manual masks, background capture, foreground extraction controls, and trace capture
 - camera intrinsics modes for real-camera undistortion or real-to-Unity remapping
+- an Incident 005 model representation transform for apparent-scale mitigation
 
 The previous learned ROI-FCN localiser is now best understood as a historical / comparison path. It remains in the repository because it was part of the system’s development history and helped expose the runtime composition problem, but the active live direction has moved toward more inspectable geometric localisation.
 
-A retrospective incident report on the ROI-FCN/localisation pivot is in progress and should be added to the failure-analysis index once complete.
+The ROI-FCN/localisation pivot is recorded as Incident 004, and the newer Incident 005 report records the live/synthetic apparent-scale mismatch that remains after the locator and foreground path are more inspectable.
 
-The current direct distance/yaw baseline is useful, but live trace-backed testing shows unresolved pose-linked distance bias. That result motivates the active amodal keypoint direction.
+The current direct distance/yaw baseline is useful, but live trace-backed testing shows unresolved pose-linked and apparent-scale transfer risks. Those results motivate both the current representation-alignment work and the active amodal keypoint direction.
 
 The amodal keypoint model implementation now exists, and training data processing is under way. First training/evaluation results are pending. Until those metrics are available, the keypoint branch should be treated as active roadmap work rather than a validated performance claim.
 
@@ -79,25 +82,31 @@ The amodal keypoint model implementation now exists, and training data processin
 
 For a fast technical review, start here:
 
-1. [`documents/bounded-monocular-perception-technical-writeup-v0.9.md`](documents/bounded-monocular-perception-technical-writeup-v0.9.md)  
+1. [`documents/bounded-monocular-perception-technical-writeup-v0.10.md`](documents/bounded-monocular-perception-technical-writeup-v0.10.md)
    Current repository-level technical overview, architecture, results, caveats, and engineering learnings.
 
-2. [`documents/document-index.md`](documents/document-index.md)  
+2. [`documents/document-index.md`](documents/document-index.md)
    Routing layer for current and historical technical material.
 
-3. [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md)  
+3. [`failure-analysis/failure-analysis-index.md`](failure-analysis/failure-analysis-index.md)
    Failure-analysis reports and incident evidence.
 
-4. [`failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md`](failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md)  
+4. [`failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md`](failure-analysis/incidents/incident-001-live-distance-regression-spike/live-distance-regression-spike-report.md)
    Remediated live preprocessing failure with trace-backed regression coverage.
 
-5. [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md)  
+5. [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md)
    Live pose-linked distance-bias investigation and architectural pivot.
 
-6. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md)  
+6. [`failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md`](failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md)
+   ROI-FCN-to-geometric-locator retrospective and live ROI-boundary justification.
+
+7. [`failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md`](failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md)
+   Live/synthetic apparent-scale mismatch investigation and representation-transform mitigation.
+
+8. [`documents/keypoint-regression-topology-v0.4-technical-summary.md`](documents/keypoint-regression-topology-v0.4-technical-summary.md)
    Short summary of the amodal semantic keypoint direction.
 
-7. [`06_live-inference_v0.3/RUNTIME_NOTES.md`](06_live-inference_v0.3/RUNTIME_NOTES.md)  
+9. [`06_live-inference_v0.3/RUNTIME_NOTES.md`](06_live-inference_v0.3/RUNTIME_NOTES.md)
    Current live-local runtime notes and diagnostic flow.
 
 ---
@@ -113,6 +122,7 @@ The repository separates evidence types rather than collapsing them into one hea
 | Raw-image composed inference | Raw-image reports show material degradation compared with preprocessed validation, including crop-boundary distance tails and yaw-heavy failure populations. | Composition introduces system-level failure modes not visible in preprocessed validation. |
 | Live preprocessing failure analysis | Incident 001 traces a live distance spike to foreground/silhouette collapse, remediates the preprocessing path, and adds fixture-backed regression tests. | Failure was made observable and converted into a testable remediation. |
 | Live pose-bias failure analysis | Incident 002 shows that camera intrinsics improve aggregate live error but do not remove pose-linked distance bias in the direct tri-stream model family. | Direct scalar regression is not inspectable enough for the observed live failure mode. |
+| Live apparent-scale failure analysis | Incident 005 shows that clean accepted live readings underpredicted by about `0.35 m` to `0.40 m`, while paired synthetic/live scale analysis predicted a similar apparent-distance offset. | Synthetic/live representation alignment is now a first-class validation boundary. |
 | Current architectural pivot | Amodal semantic keypoint regression is being developed to expose the model’s inferred object geometry directly. | The next model family is designed around inspectability and diagnostic value, not just lower scalar error. |
 
 ---
@@ -130,6 +140,7 @@ A composed perception runtime depends on:
 - ROI or foreground localisation
 - crop selection
 - foreground extraction
+- apparent-scale and model-space alignment
 - representation reconstruction
 - geometry-vector construction
 - model compatibility
@@ -165,13 +176,23 @@ That finding motivates the amodal semantic keypoint topology.
 
 See: [`failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md`](failure-analysis/incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md)
 
-### ROI-FCN Localisation Retrospective
+### Incident 004: ROI-FCN Localisation Retrospective
 
 The ROI-FCN path was a useful intermediate stage: it turned crop-centre selection into a learned localisation task and allowed raw-image inference paths to be composed.
 
 In live testing, however, the learned localiser proved less useful than more inspectable geometric / foreground-driven localisation for the controlled physical demo setup. The active runtime direction has therefore moved away from ROI-FCN as the preferred live localiser.
 
-A retrospective incident report is being produced and should be linked here once added.
+See: [`failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md`](failure-analysis/incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md)
+
+---
+
+### Incident 005: Live/Synthetic Apparent-Scale Mismatch
+
+After the locator and foreground path became more inspectable, accepted live readings still underpredicted distance by about `0.35 m` to `0.40 m`. Paired synthetic/live image analysis showed the live target appearing larger than the synthetic target at the same nominal distance, predicting a mean apparent-distance offset close to the measured live bias.
+
+The live runtime now includes a post-foreground model representation transform for apparent-scale mitigation, but corrected live-distance claims remain blocked until the scale check and live sweep are rerun.
+
+See: [`failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md`](failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md)
 
 ---
 
@@ -181,7 +202,7 @@ The current direct distance/yaw path predicts final scalar outputs from tri-stre
 
 ```text
 x_distance_image + x_orientation_image + x_geometry -> distance + yaw
-````
+```
 
 That path is compact and operationally useful, but it hides the intermediate geometric state the model has inferred.
 
@@ -257,15 +278,14 @@ The runner executes focused tests from the current checked-in subprojects. A pla
 
 ### Near term
 
-* Add the ROI-FCN/localisation retrospective incident report once complete.
-* Update the failure-analysis index to include the ROI-FCN retrospective.
+* Script the Incident 005 synthetic/live scale comparison table and add scale fixtures.
+* Re-run the live distance sweep after apparent-scale correction with trace capture.
 * Complete amodal keypoint training-data processing.
 * Train the first amodal keypoint model.
 * Report keypoint metrics separately from direct distance/yaw metrics.
 * Add visible-vs-hidden keypoint evaluation.
 * Add or preserve geometry-only ablation before making external claims about image-stream contribution.
 * Add live/demo visualisation for keypoint overlays once the model produces meaningful outputs.
-* Add the live inference demo video link at the top of this README.
 
 ### Medium term
 

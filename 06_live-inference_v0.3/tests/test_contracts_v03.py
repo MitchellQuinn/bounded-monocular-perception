@@ -66,6 +66,29 @@ class ContractsV03Tests(unittest.TestCase):
             contracts.PREPROCESSING_RUNTIME_PARAMETER_CAMERA_INTRINSICS_MODE,
         )
 
+
+    def test_model_representation_transform_keys_are_contract_values(self) -> None:
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_MODEL_REPRESENTATION_TRANSFORM_SCALE_X,
+            "model_representation_transform_scale_x",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_MODEL_REPRESENTATION_TRANSFORM_SCALE_Y,
+            "model_representation_transform_scale_y",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_RAW_FOREGROUND_BBOX_XYXY_PX,
+            "raw_foreground_bbox_xyxy_px",
+        )
+        self.assertEqual(
+            contracts.PREPROCESSING_METADATA_MODEL_FOREGROUND_BBOX_XYXY_PX,
+            "model_foreground_bbox_xyxy_px",
+        )
+        self.assertIn(
+            contracts.DISPLAY_ARTIFACT_MODEL_ROI_REPR_AFTER_TRANSFORM,
+            contracts.DISPLAY_DEBUG_ARTIFACT_KEYS,
+        )
+
     def test_locator_result_serializes_plain_values(self) -> None:
         candidate = contracts.RoiCandidate(
             candidate_id="c0",

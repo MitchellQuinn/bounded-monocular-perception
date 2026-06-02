@@ -1,0 +1,28 @@
+[model_representation_transform]
+enabled = false
+space_name = "disabled"
+stage = "post_foreground_pre_pack"
+
+[model_representation_transform.affine]
+# Enable the transform and replace these values with calibration-derived
+# apparent-scale corrections for the active camera/profile.
+scale_x = 1.0
+scale_y = 1.0
+anchor = "foreground_bbox_center"
+translate_x_px = 0.0
+translate_y_px = 0.0
+
+[model_representation_transform.output]
+# The first implementation keeps this equal to the ROI/model canvas.
+width_px = 300
+height_px = 300
+
+[model_representation_transform.resampling]
+image_interpolation = "linear"
+mask_interpolation = "nearest"
+image_fill_value = 255
+mask_fill_value = false
+
+[model_representation_transform.geometry]
+recompute_from_transformed_mask = true
+normalization_space = "source_image"

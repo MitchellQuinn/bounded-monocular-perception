@@ -16,6 +16,7 @@ This directory is the canonical home for failure-analysis material in the reposi
 | [`incident-002-pose-dependent-distance-bias`](incidents/incident-002-pose-dependent-distance-bias/pose-dependent-distance-bias-report.md) | Investigated; architectural pivot | Pose-linked live distance bias in the direct distance/yaw tri-stream model family |
 | [`incident-003-foreground-mask-contamination-distance-underestimate`](incidents/incident-003-foreground-mask-contamination-distance-underestimate/foreground-mask-contamination-distance-underestimate-report.md) | Partially remediated | Foreground-mask contamination from support-surface texture causing a live distance underestimate |
 | [`incident-004-roi-fcn-to-geometric-locator-retrospective`](incidents/incident-004-roi-fcn-to-geometric-locator-retrospective/roi-fcn-to-geometric-locator-retrospective-report.md) | Retrospective; architectural justification | Why live ROI selection moved from ROI-FCN to the inspectable geometric locator |
+| [`incident-005-live-synthetic-apparent-scale-mismatch`](incidents/incident-005-live-synthetic-apparent-scale-mismatch/live-synthetic-apparent-scale-mismatch-report.md) | Investigated; mitigation in progress | Live/synthetic apparent-scale mismatch causing accepted live distance underprediction |
 
 ## Model Evaluation Reports
 

@@ -575,6 +575,85 @@ class GuiUiAndAppTests(unittest.TestCase):
             self.assertFalse(
                 context.stage_policy_state.get_snapshot().apply_background_removal_to_regressor_preprocessing
             )
+            self.assertIsNone(context.model_representation_transform_config_path)
+            self.assertIsNone(context.model_representation_transform_config)
+        finally:
+            context.camera_controller.request_stop()
+            context.inference_controller.request_stop()
+            context.camera_controller.wait(10)
+            context.inference_controller.wait(10)
+
+    def test_real_camera_context_uses_incident005_transform_by_default(self) -> None:
+        context = build_live_inference_gui_context(
+            camera_source="opencv-v4l2",
+            device="cpu",
+        )
+        try:
+            self.assertIsNotNone(context.model_representation_transform_config_path)
+            self.assertIsNotNone(context.model_representation_transform_config)
+            assert context.model_representation_transform_config is not None
+            self.assertTrue(context.model_representation_transform_config.enabled)
+            self.assertEqual(
+                context.model_representation_transform_config.space_name,
+                "arducam_ar0234_incident005_synthetic_apparent_scale_v1",
+            )
+            self.assertAlmostEqual(
+                context.model_representation_transform_config.scale_x,
+                0.8077544426494346,
+            )
+            self.assertAlmostEqual(
+                context.model_representation_transform_config.scale_y,
+                0.8264462809917356,
+            )
+        finally:
+            context.camera_controller.request_stop()
+            context.inference_controller.request_stop()
+            context.camera_controller.wait(10)
+            context.inference_controller.wait(10)
+
+    def test_app_context_loads_model_representation_transform_config(self) -> None:
+        config_path = Path(tempfile.mkdtemp()) / "model_transform.toml"
+        config_text = "\n".join(
+            [
+                "[model_representation_transform]",
+                "enabled = true",
+                "space_name = \"test_model_space\"",
+                "stage = \"post_foreground_pre_pack\"",
+                "",
+                "[model_representation_transform.affine]",
+                "scale_x = 0.5",
+                "scale_y = 0.75",
+                "anchor = \"foreground_bbox_center\"",
+                "translate_x_px = 0.0",
+                "translate_y_px = 0.0",
+                "",
+                "[model_representation_transform.resampling]",
+                "image_interpolation = \"linear\"",
+                "mask_interpolation = \"nearest\"",
+                "image_fill_value = 255",
+                "mask_fill_value = false",
+                "",
+                "[model_representation_transform.geometry]",
+                "recompute_from_transformed_mask = true",
+                "normalization_space = \"source_image\"",
+                "",
+            ]
+        )
+        config_path.write_text(config_text, encoding="utf-8")
+        context = build_live_inference_gui_context(
+            device="cpu",
+            model_representation_transform_config_path=config_path,
+        )
+        try:
+            self.assertEqual(
+                context.model_representation_transform_config_path,
+                config_path.resolve(strict=False),
+            )
+            self.assertIsNotNone(context.model_representation_transform_config)
+            assert context.model_representation_transform_config is not None
+            self.assertTrue(context.model_representation_transform_config.enabled)
+            self.assertEqual(context.model_representation_transform_config.scale_x, 0.5)
+            self.assertEqual(context.model_representation_transform_config.scale_y, 0.75)
         finally:
             context.camera_controller.request_stop()
             context.inference_controller.request_stop()

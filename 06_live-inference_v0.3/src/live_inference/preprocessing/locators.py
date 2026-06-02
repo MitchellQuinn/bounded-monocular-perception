@@ -166,6 +166,7 @@ class BackgroundEdgeLocator:
             foreground_mask=foreground_mask,
             source_wh=(source_w, source_h),
             config=config,
+            prefer_components=background_applied,
         )
         accepted_candidates = tuple(candidate for candidate in candidates if not candidate.rejection_reason)
         if not accepted_candidates:
@@ -173,7 +174,20 @@ class BackgroundEdgeLocator:
                 rejection_reasons.append(contracts.LocatorFailureReason.NO_CANDIDATES.value)
             chosen = None
         else:
-            chosen = max(accepted_candidates, key=lambda item: item.score)
+            eligible_candidates = tuple(
+                candidate
+                for candidate in accepted_candidates
+                if not _candidate_roi_rejection_reasons(
+                    candidate,
+                    foreground_mask=foreground_mask,
+                    source_wh=(source_w, source_h),
+                    config=config,
+                )
+            )
+            chosen = max(
+                eligible_candidates or accepted_candidates,
+                key=lambda item: item.score,
+            )
 
         if chosen is not None:
             roi_geometry = _roi_geometry(
@@ -186,14 +200,14 @@ class BackgroundEdgeLocator:
                 foreground_mask,
                 roi_geometry["source_xyxy"],
             )
-            if chosen.score < config.min_candidate_score:
-                rejection_reasons.append(contracts.LocatorFailureReason.LOW_CONFIDENCE.value)
-            if clip_max > int(config.roi_clip_tolerance_px):
-                rejection_reasons.append(contracts.LocatorFailureReason.ROI_CLIPPED.value)
-            if content_fraction < float(config.min_roi_content_fraction):
-                rejection_reasons.append(
-                    contracts.LocatorFailureReason.ROI_CONTENT_TOO_LOW.value
+            rejection_reasons.extend(
+                _candidate_roi_rejection_reasons(
+                    chosen,
+                    foreground_mask=foreground_mask,
+                    source_wh=(source_w, source_h),
+                    config=config,
                 )
+            )
             accepted = not rejection_reasons
             confidence = float(chosen.score)
             bbox = chosen.bbox_xyxy_px
@@ -626,6 +640,7 @@ def _build_candidates(
     foreground_mask: np.ndarray,
     source_wh: tuple[int, int],
     config: BackgroundEdgeLocatorConfig,
+    prefer_components: bool = True,
 ) -> tuple[contracts.RoiCandidate, ...]:
     component_candidates = _build_foreground_component_candidates(
         edge_map=edge_map,
@@ -636,7 +651,7 @@ def _build_candidates(
     accepted_components = tuple(
         candidate for candidate in component_candidates if not candidate.rejection_reason
     )
-    if accepted_components:
+    if prefer_components and accepted_components:
         return tuple(
             sorted(component_candidates, key=lambda item: item.score, reverse=True)
         )
@@ -847,12 +862,48 @@ def _diffuse_component_rejection_reason(
     edge_density: float,
 ) -> str | None:
     bbox_fraction = float(bbox_area) / float(max(1.0, frame_area))
-    if bbox_fraction > 0.20 and float(edge_density) < 0.01:
+    if bbox_fraction > 0.15 and float(edge_density) < 0.01:
         return (
             "diffuse_large_component:"
             f"{bbox_fraction:.3f},edge_density:{float(edge_density):.4f}"
         )
     return None
+
+
+def _candidate_roi_rejection_reasons(
+    candidate: contracts.RoiCandidate,
+    *,
+    foreground_mask: np.ndarray,
+    source_wh: tuple[int, int],
+    config: BackgroundEdgeLocatorConfig,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    roi_geometry = _roi_geometry(
+        center_xy=candidate.center_xy_px,
+        source_wh=source_wh,
+        roi_wh=(config.roi_width_px, config.roi_height_px),
+    )
+    clip_max = max(
+        (int(value) for value in roi_geometry["clip_amount"].values()),
+        default=0,
+    )
+    content_fraction = _roi_content_fraction(
+        foreground_mask,
+        roi_geometry["source_xyxy"],
+    )
+    if candidate.score < config.min_candidate_score:
+        reasons.append(
+            f"{contracts.LocatorFailureReason.LOW_CONFIDENCE.value}:"
+            f"{float(candidate.score):.3f}"
+        )
+    if clip_max > int(config.roi_clip_tolerance_px):
+        reasons.append(contracts.LocatorFailureReason.ROI_CLIPPED.value)
+    if content_fraction < float(config.min_roi_content_fraction):
+        reasons.append(
+            f"{contracts.LocatorFailureReason.ROI_CONTENT_TOO_LOW.value}:"
+            f"{float(content_fraction):.4f}"
+        )
+    return tuple(reasons)
 
 
 def _candidate_score(
