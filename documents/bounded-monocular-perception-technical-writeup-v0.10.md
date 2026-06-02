@@ -1,8 +1,6 @@
 # Bounded Monocular Perception System - Technical Writeup v0.10
 
 **Current as of:** 2026-06-02  
-**Version policy:** this writeup is standalone; older repository-level writeup
-versions are removed rather than retained as dependencies.
 
 ## 1. Project Overview
 
