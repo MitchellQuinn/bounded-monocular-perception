@@ -4,7 +4,7 @@
 **System:** bounded monocular perception, live inference v0.3  
 **Date analysed:** 2026-06-01  
 **Date updated:** 2026-06-02
-**Status:** Investigated; apparent-scale mismatch hypothesis strongly supported; first follow-up sweep improved but residual underprediction remains
+**Status:** Investigated; apparent-scale mismatch hypothesis strongly supported; follow-up sweeps improved but residual close-range underprediction remains
 
 ## 1. Executive Summary
 
@@ -16,19 +16,20 @@ The clean live sweep mean error is `-0.364 m`. The image-pair scale analysis pre
 
 The incident therefore strongly supports the hypothesis that the live model input presents the Defender as visually larger, and therefore apparently closer, than the synthetic training representation. This does not prove one exact low-level cause. The mismatch could still be split between Unity camera parameters, the real-to-Unity intrinsics mapping, viewport/capture handling, lens model mismatch, synthetic object scale, or physical measurement reference differences. The engineering conclusion is narrower and stronger: once locator and foreground failures are controlled, live/synthetic apparent-scale alignment becomes a primary remaining distance-risk boundary.
 
-A first follow-up live sweep is now recorded in this report. Across eight measured front/side rows, mean signed error improved to `-0.113 m` and mean absolute error improved to `0.118 m`. Excluding the slightly clipped `1.59 m` front row, mean signed error was `-0.103 m` and mean absolute error was `0.109 m`. This is a material improvement from the original clean-sweep mean signed error of `-0.364 m`, but it is not a final calibrated live-accuracy claim: residual underprediction remains, especially in the near-range and side-view rows.
+Two follow-up live sweeps are now recorded in this report. The first eight-row front/side sweep improved mean signed error to `-0.113 m` and mean absolute error to `0.118 m`, or `-0.103 m` / `0.109 m` excluding the slightly clipped `1.59 m` front row. A later three-distance sweep improved further to mean signed error `-0.033 m` and mean absolute error `0.080 m`. That latest sweep is strong at `2.20 m` and `2.90 m`, but the `1.60 m` close-range rows still average `-0.145 m`, so this remains mitigation evidence rather than a final calibrated live-accuracy claim.
 
 ## 2. Incident Scope
 
-This report covers three evidence sources captured during the Incident 005 investigation:
+This report covers four evidence sources captured during the Incident 005 investigation:
 
 1. A post-ROI-fix live sweep summarised in the incident observation note.
 2. An eight-pair synthetic/live apparent-scale analysis using manually measured bounding boxes.
 3. A follow-up eight-row front/side live sweep recorded after the apparent-scale mitigation work.
+4. A later three-distance front/side live sweep recorded after further apparent-scale mitigation work.
 
-The report is intentionally limited to distance bias from apparent-scale mismatch and the first follow-up distance results. It does not re-litigate earlier locator and foreground-mask incidents except where those incidents explain why this failure is different.
+The report is intentionally limited to distance bias from apparent-scale mismatch and follow-up distance results. It does not re-litigate earlier locator and foreground-mask incidents except where those incidents explain why this failure is different.
 
-The staged repository output includes the eight scale-pair summary comparison images under [`evidence/scale-pairs`](evidence/scale-pairs). The local incident workspace also contains raw image pairs and live-inference trace artifacts captured on `2026-05-31`; those optional heavier artifacts are described in [`evidence/evidence-manifest.md`](evidence/evidence-manifest.md). The follow-up sweep summary is recorded in this report; no raw trace bundle for that follow-up sweep is staged yet.
+The staged repository output includes the eight scale-pair summary comparison images under [`evidence/scale-pairs`](evidence/scale-pairs). The local incident workspace also contains raw image pairs and live-inference trace artifacts captured on `2026-05-31`; those optional heavier artifacts are described in [`evidence/evidence-manifest.md`](evidence/evidence-manifest.md). The follow-up sweep summaries are recorded in this report; no raw trace bundle or CSV for those follow-up sweeps is staged yet.
 
 ## 3. Expected Behaviour
 
@@ -51,7 +52,8 @@ The local incident record contains these source notes:
 - `Incident Issue Observation.md`: six-trace live sweep summary.
 - `Image Analysis Results.md`: eight-pair visual-scale calculation.
 - `Outcome Evidence Statement.md`: combined interpretation and root-cause caution.
-- Follow-up live sweep summary supplied on 2026-06-02: eight front/side readings after the apparent-scale mitigation work.
+- First follow-up live sweep summary supplied on 2026-06-02: eight front/side readings after the apparent-scale mitigation work.
+- Latest three-distance sweep summary supplied on 2026-06-02: six front/side readings at `1.60 m`, `2.20 m`, and `2.90 m` after further apparent-scale mitigation work.
 
 The relevant repository context is:
 
@@ -89,7 +91,7 @@ Clean or clean-ish trace summary, excluding the contaminated outlier:
 
 Including the contaminated outlier would produce a mean signed error of `-0.452 m`, but that is not the right incident summary. The useful signal is the recurring clean-trace underprediction around `-0.35 m` to `-0.40 m`.
 
-### 5.2 Follow-up live sweep
+### 5.2 First follow-up live sweep
 
 A later eight-row front/side sweep recorded a materially smaller negative bias:
 
@@ -112,6 +114,35 @@ Follow-up summary:
 | Excluding slightly clipped `1.59 m` front row | `-0.103 m` | `0.109 m` |
 
 This is a material improvement over the original clean-sweep mean signed error of `-0.364 m` and mean absolute error of `0.364 m`. It does not fully close the live-distance issue: the remaining bias is still mostly negative, `4 / 8` rows remain outside the `0.10 m` distance threshold, and the near-range side readings are still underpredicting.
+
+### 5.3 Latest three-distance sweep
+
+A later three-distance front/side sweep recorded a further aggregate improvement:
+
+| Measured reference | Orientation | Predicted distance | Signed error | Note |
+| ---: | --- | ---: | ---: | --- |
+| `1.60 m` | `0 deg / front` | `1.48 m` | `-0.12 m` | close-range underprediction |
+| `1.60 m` | `90 deg / side` | `1.43 m` | `-0.17 m` | reading when not locked onto foot |
+| `2.20 m` | `0 deg / front` | `2.29 m` | `+0.09 m` | slight overprediction |
+| `2.20 m` | `90 deg / side` | `2.24 m` | `+0.04 m` | good |
+| `2.90 m` | `0 deg / front` | `2.91 m` | `+0.01 m` | very good |
+| `2.90 m` | `90 deg / side` | `2.85 m` | `-0.05 m` | good |
+
+Latest sweep summary:
+
+| Population | Mean signed error | Mean absolute error |
+| --- | ---: | ---: |
+| All rows | `-0.033 m` | `0.080 m` |
+
+Distance-band signed-error summary:
+
+| Distance band | Mean signed error | Interpretation |
+| --- | ---: | --- |
+| `1.60 m` | `-0.145 m` | close-range underprediction remains |
+| `2.20 m` | `+0.065 m` | slight overprediction |
+| `2.90 m` | `-0.020 m` | good far-range alignment |
+
+This latest sweep further reduces the aggregate bias and improves MAE relative to the first follow-up. It is still not closure: the close-range `1.60 m` rows remain outside the `0.10 m` distance threshold, and one side reading is explicitly noted as not locked onto the foot.
 
 ## 6. Synthetic/Live Scale Analysis
 
@@ -154,9 +185,10 @@ The scale-analysis offset is not merely directionally consistent with the live s
 | Evidence source | Key result | Interpretation |
 | --- | ---: | --- |
 | Original clean live sweep | mean signed error `-0.364 m` | Model predicts target too close |
-| Follow-up live sweep | mean signed error `-0.113 m`; MAE `0.118 m` | Materially improved but residual underprediction remains |
+| First follow-up live sweep | mean signed error `-0.113 m`; MAE `0.118 m` | Materially improved but residual underprediction remained |
+| Latest three-distance sweep | mean signed error `-0.033 m`; MAE `0.080 m` | Further improvement, with remaining close-range underprediction at `1.60 m` |
 | Synthetic/live scale comparison | mean apparent-distance offset `-0.336 m` | Live target appears larger than synthetic equivalent |
-| Difference between means | `0.028 m` | Independent evidence paths converge |
+| Difference between original means | `0.028 m` | Independent evidence paths converge |
 
 ### 6.1 Image Evidence
 
@@ -262,7 +294,7 @@ Without the paired scale analysis, the failure could be misread as model weaknes
 
 The incident does not invalidate the geometric locator pivot. It clarifies the next boundary. The locator can make the crop path auditable, but the system also needs a calibrated synthetic/live projection contract.
 
-The follow-up sweep shows that the mitigation direction is useful: the large original negative bias is materially reduced. The impact is not eliminated, because several near-range readings still underpredict by more than the `0.10 m` failure threshold and one row is explicitly noted as slightly clipped.
+The follow-up sweeps show that the mitigation direction is useful: the large original negative bias is materially reduced, and the latest three-distance sweep reaches all-row MAE `0.080 m`. The impact is not eliminated, because the close-range `1.60 m` readings still underpredict by more than the `0.10 m` failure threshold and one side row is explicitly noted as not locked onto the foot.
 
 ## 12. Remediation Strategy
 
@@ -306,15 +338,15 @@ The first version can be manual or script-assisted. The important point is to st
 
 ### 12.4 Repeat live sweeps after apparent-scale mitigation
 
-A first follow-up sweep is now recorded in Section 5.2. It reduced all-row mean signed error to `-0.113 m` and mean absolute error to `0.118 m`; excluding the slightly clipped `1.59 m` front row gives mean signed error `-0.103 m` and mean absolute error `0.109 m`.
+Two follow-up sweeps are now recorded in Sections 5.2 and 5.3. The first reduced all-row mean signed error to `-0.113 m` and mean absolute error to `0.118 m`; excluding the slightly clipped `1.59 m` front row gives mean signed error `-0.103 m` and mean absolute error `0.109 m`. The latest three-distance sweep improved further to mean signed error `-0.033 m` and mean absolute error `0.080 m`, with good `2.20 m` and `2.90 m` behaviour but remaining close-range `1.60 m` underprediction.
 
-The next requirement is repeatability and trace-backed evidence, not merely one improved summary table. Future sweeps should preserve:
+The next requirement is repeatability and trace-backed evidence, not merely improved summary tables. Future sweeps should preserve:
 
-- the same measured marks, including `1.59 m`, `1.77 m`, `1.97 m`, and `2.18 m`
+- the same measured marks, including close, mid, and far positions such as `1.60 m`, `2.20 m`, and `2.90 m`
 - front and side orientations
 - trace capture enabled
 - raw frame, locator result, ROI crop, foreground mask, `x_distance_image`, `x_orientation_image`, `x_geometry`, and model output retained
-- explicit notes for clipping, support-surface contamination, or manual-mask changes
+- explicit notes for clipping, support-surface contamination, manual-mask changes, or foot-lock/placement uncertainty
 
 The reportable metric should include both continuous and thresholded results:
 
@@ -326,14 +358,14 @@ The reportable metric should include both continuous and thresholded results:
 - count within `0.10 m`
 - count within `0.05 m`
 
-The key acceptance question is now whether the residual negative bias is repeatable, whether it can be reduced below the `0.10 m` failure boundary across near and far marks, and whether the apparent-scale correction remains stable across front and side views.
+The key acceptance question is now whether the residual close-range negative bias is repeatable, whether it can be reduced below the `0.10 m` failure boundary across near, mid, and far marks, and whether the apparent-scale correction remains stable across front and side views.
 
 ### 12.5 Keep direct regression claims bounded
 
-After the first follow-up sweep, direct distance/yaw regression should be framed as:
+After the follow-up sweeps, direct distance/yaw regression should be framed as:
 
 ```text
-traceable live-runtime integration with initial apparent-scale mitigation evidence
+traceable live-runtime integration with apparent-scale mitigation evidence
 not yet a calibrated live distance-estimation claim
 ```
 
@@ -350,7 +382,8 @@ The recommended verification plan is:
 | P0 | Script the scale comparison table | Manual bbox arithmetic is replaced by reproducible calculation |
 | P0 | Re-render synthetic matched views after calibration changes | Mean apparent-distance offset moves materially toward zero |
 | P0 | Record first follow-up live sweep | Done in this report: all-row mean signed error `-0.113 m`, MAE `0.118 m` |
-| P0 | Repeat live distance sweep with trace capture | Residual signed error is stable, traceable, and no longer exceeds the `0.10 m` boundary across near and far marks |
+| P0 | Record latest three-distance sweep | Done in this report: all-row mean signed error `-0.033 m`, MAE `0.080 m`; close-range mean signed error `-0.145 m` |
+| P0 | Repeat live distance sweep with trace capture | Residual signed error is stable, traceable, and no longer exceeds the `0.10 m` boundary across near, mid, and far marks |
 | P1 | Add scale fixtures to tests or analysis scripts | Future camera/render changes cannot silently reintroduce the mismatch |
 | P1 | Compare direct regressor against the amodal/keypoint direction | Remaining failures are evaluated with more inspectable geometry |
 
@@ -364,7 +397,7 @@ The image-pair analysis uses 2D bbox measurements. Bounding boxes are a useful p
 
 The contaminated `2.9 m -> 2.008 m` live reading is excluded from the clean bias estimate. That exclusion is appropriate for estimating the recurring scale-linked bias, but the trace should still be preserved because it may represent another recoverable preprocessing or support-surface failure.
 
-The follow-up sweep is currently recorded as a numerical summary rather than a staged trace bundle or CSV. One row is explicitly marked as slightly affected by ROI clipping contamination, and several near-range rows remain outside the `0.10 m` distance threshold. The follow-up therefore supports material improvement, not closure of the incident as a calibrated live accuracy claim.
+The follow-up sweeps are currently recorded as numerical summaries rather than staged trace bundles or CSV files. In the first follow-up, one row is explicitly marked as slightly affected by ROI clipping contamination and several near-range rows remain outside the `0.10 m` distance threshold. In the latest three-distance sweep, the aggregate MAE improves to `0.080 m`, but the `1.60 m` rows remain outside the `0.10 m` threshold and one side reading is noted as not locked onto the foot. The follow-ups therefore support material improvement, not closure of the incident as a calibrated live accuracy claim.
 
 The report does not claim that scale mismatch is the only remaining live issue. It claims that scale mismatch is now strongly evidenced and large enough to explain most of the clean underprediction observed in this incident.
 
@@ -378,7 +411,8 @@ The distance regressor can behave coherently and still be wrong if the synthetic
 original live sweep: recurring negative distance bias
 image-pair analysis: live target appears larger than synthetic target
 inverse-scale estimate: predicted offset almost matches live bias
-follow-up sweep: bias materially reduced but residual underprediction remains
+first follow-up sweep: bias materially reduced but residual underprediction remains
+latest three-distance sweep: aggregate MAE improves to 0.080 m, close-range bias remains
 engineering outcome: validate apparent scale before making stronger live claims
 ```
 
@@ -390,9 +424,9 @@ Incident 005 identifies a likely synthetic-to-live projection mismatch in the bo
 
 The post-ROI-fix live sweep showed clean-trace underprediction around `-0.35 m` to `-0.40 m`. The independent synthetic/live bbox comparison predicted an apparent-distance offset of about `-0.34 m`. Those two paths agree closely enough to make apparent-scale mismatch the leading explanation.
 
-The immediate outcome is not another locator patch. The first follow-up sweep suggests the apparent-scale mitigation direction is useful: all-row mean signed error improved to `-0.113 m` and mean absolute error to `0.118 m`; excluding the slightly clipped `1.59 m` front row gives `-0.103 m` mean signed error and `0.109 m` mean absolute error.
+The immediate outcome is not another locator patch. The follow-up sweeps suggest the apparent-scale mitigation direction is useful. The first follow-up improved all-row mean signed error to `-0.113 m` and mean absolute error to `0.118 m`; excluding the slightly clipped `1.59 m` front row gave `-0.103 m` mean signed error and `0.109 m` mean absolute error. The latest three-distance sweep improved further to mean signed error `-0.033 m` and mean absolute error `0.080 m`.
 
-That improvement is material, but it is not closure. The next engineering step is a calibrated synthetic/live scale-validation loop with repeat trace-backed live sweeps, staged artifacts, and scripted scale fixtures. Until that is done, the direct distance/yaw model remains useful as a baseline and runtime evidence path, but not as a calibrated live distance claim.
+That improvement is material, but it is not closure. The latest sweep is good at `2.20 m` and `2.90 m`, while the `1.60 m` close-range rows still average `-0.145 m`. The next engineering step is a calibrated synthetic/live scale-validation loop with repeat trace-backed live sweeps, staged artifacts, and scripted scale fixtures. Until that is done, the direct distance/yaw model remains useful as a baseline and runtime evidence path, but not as a calibrated live distance claim.
 
 ## 17. Appendix: Key Artifact Links
 
@@ -400,7 +434,7 @@ Recommended evidence layout after repository copy:
 
 - [`evidence/scale-pairs/`](evidence/scale-pairs/): eight synthetic/live pair summary comparison images.
 - [`evidence/evidence-manifest.md`](evidence/evidence-manifest.md): included evidence list and optional full-artifact copy map, including the heavier live-inference traces that were not staged by default.
-- Section 5.2 of this report: first follow-up live sweep numerical summary; raw trace bundle and CSV are not staged yet.
+- Sections 5.2 and 5.3 of this report: follow-up live sweep numerical summaries; raw trace bundles and CSV files are not staged yet.
 
 Suggested related reports:
 

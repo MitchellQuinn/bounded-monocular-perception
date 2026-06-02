@@ -32,9 +32,10 @@ inspectable, the project found strong evidence that the remaining live
 underprediction is largely explained by live/synthetic apparent-scale mismatch.
 The current live runtime therefore includes a configurable post-foreground model
 representation transform. A first follow-up sweep improved all-row mean signed
-error to `-0.113 m` and mean absolute error to `0.118 m`, or `-0.103 m` /
-`0.109 m` excluding one slightly clipped near-range row. That is material
-improvement, but residual underprediction remains and the corrected
+error to `-0.113 m` and mean absolute error to `0.118 m`; a later
+three-distance sweep improved further to mean signed error `-0.033 m` and mean
+absolute error `0.080 m`. That latest sweep is good at `2.20 m` and `2.90 m`,
+but the `1.60 m` close-range rows still average `-0.145 m`, so the calibrated
 live-distance claim remains bounded until the calibrated scale-validation loop
 is complete.
 
@@ -397,10 +398,10 @@ default unless a transform config override is supplied. Trace metadata records
 whether the transform was enabled and applied, the scale factors, the anchor,
 the affine matrix, raw foreground geometry, and model-space foreground geometry.
 
-This is an initial mitigation and observability hook. The first follow-up live
-sweep improved all-row mean absolute error to `0.118 m`, but it should not be
-described as a validated live accuracy fix until the synthetic/live scale check,
-repeat trace-backed sweeps, and calibrated distance-reference checks are
+This is an initial mitigation and observability hook. The latest three-distance
+follow-up sweep improved all-row mean absolute error to `0.080 m`, but it should
+not be described as a validated live accuracy fix until the synthetic/live scale
+check, repeat trace-backed sweeps, and calibrated distance-reference checks are
 complete.
 
 ## 10. Live-Local Inference Runtime
@@ -724,8 +725,7 @@ ROI selection into an auditable apparent-scale measurement path.
 
 The `failure-analysis/incidents/incident-005-live-synthetic-apparent-scale-mismatch`
 directory records the current leading explanation for a post-ROI-fix live
-distance underprediction and the first follow-up sweep after apparent-scale
-mitigation.
+distance underprediction and follow-up sweeps after apparent-scale mitigation.
 
 After the live ROI path had moved to the geometric locator, accepted live
 predictions were still consistently too close. The post-ROI-fix live sweep
@@ -757,7 +757,8 @@ geometry, that visual-scale mismatch predicts a mean apparent-distance offset of
 | Original clean live sweep | mean signed error `-0.364 m` | Model predicts target too close |
 | Synthetic/live scale comparison | mean apparent-distance offset `-0.336 m` | Live target appears larger than synthetic equivalent |
 | Difference between original means | `0.028 m` | Independent evidence paths converge |
-| First follow-up live sweep | mean signed error `-0.113 m`; MAE `0.118 m` | Mitigation materially improved the live bias, but residual underprediction remains |
+| First follow-up live sweep | mean signed error `-0.113 m`; MAE `0.118 m` | Mitigation materially improved the live bias, but residual underprediction remained |
+| Latest three-distance sweep | mean signed error `-0.033 m`; MAE `0.080 m` | Further improvement, with remaining close-range underprediction at `1.60 m` |
 
 The incident therefore strongly supports the hypothesis that the live model
 input presents the Defender as visually larger, and therefore apparently closer,
@@ -806,10 +807,40 @@ The follow-up summary is:
 | All rows | `-0.113 m` | `0.118 m` |
 | Excluding slightly clipped `1.59 m` front row | `-0.103 m` | `0.109 m` |
 
-That is a material improvement over the original clean-sweep mean signed error
-and MAE of `-0.364 m` / `0.364 m`, but it is not closure. Four of the eight
-follow-up rows remain outside the `0.10 m` distance threshold, and the near-range
-side rows still underpredict. The direct distance/yaw model should therefore
+That first follow-up was a material improvement over the original clean-sweep
+mean signed error and MAE of `-0.364 m` / `0.364 m`, but it was not closure. Four
+of the eight follow-up rows remained outside the `0.10 m` distance threshold,
+and the near-range side rows still underpredicted.
+
+A later three-distance sweep recorded these live readings:
+
+| Measured reference | Orientation | Predicted distance | Signed error | Note |
+| ---: | --- | ---: | ---: | --- |
+| `1.60 m` | `0 deg / front` | `1.48 m` | `-0.12 m` | close-range underprediction |
+| `1.60 m` | `90 deg / side` | `1.43 m` | `-0.17 m` | reading when not locked onto foot |
+| `2.20 m` | `0 deg / front` | `2.29 m` | `+0.09 m` | slight overprediction |
+| `2.20 m` | `90 deg / side` | `2.24 m` | `+0.04 m` | good |
+| `2.90 m` | `0 deg / front` | `2.91 m` | `+0.01 m` | very good |
+| `2.90 m` | `90 deg / side` | `2.85 m` | `-0.05 m` | good |
+
+The latest sweep summary is:
+
+| Population | Mean signed error | Mean absolute error |
+| --- | ---: | ---: |
+| All rows | `-0.033 m` | `0.080 m` |
+
+Distance-band signed-error summary:
+
+| Distance band | Mean signed error | Interpretation |
+| --- | ---: | --- |
+| `1.60 m` | `-0.145 m` | close-range underprediction remains |
+| `2.20 m` | `+0.065 m` | slight overprediction |
+| `2.90 m` | `-0.020 m` | good far-range alignment |
+
+The latest sweep further reduces the aggregate bias and improves MAE relative to
+the first follow-up. It is still not closure: the close-range `1.60 m` rows
+remain outside the `0.10 m` distance threshold, and one side reading is explicitly
+noted as not locked onto the foot. The direct distance/yaw model should therefore
 still be framed as:
 
 ```text
@@ -912,7 +943,8 @@ into one headline number.
 | Incident 005 clean live sweep | live incident evidence | `n/a` | `0.364 m` | `n/a` | `0 / 5` | `n/a` | `n/a` | Five clean-ish accepted readings underpredicted by mean signed error `-0.364 m`; apparent-scale mismatch is the leading explanation. |
 | Incident 005 synthetic/live scale pairs | paired image-scale evidence | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Eight front/side pairs predict mean apparent-distance offset `-0.336 m`, close to the clean live bias. |
 | Incident 005 first follow-up sweep | live mitigation evidence | `n/a` | `0.118 m` | `n/a` | `4 / 8` | `n/a` | `n/a` | Mean signed error improved to `-0.113 m`; excluding one slightly clipped row, MAE was `0.109 m`, but near-range side rows still underpredict. |
-| Incident 005 model representation transform | runtime mitigation and traceability hook | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Implemented post-foreground affine scale correction with raw/model foreground metadata; first follow-up sweep improved error but repeat trace-backed validation remains required. |
+| Incident 005 latest three-distance sweep | live mitigation evidence | `n/a` | `0.080 m` | `n/a` | `4 / 6` | `n/a` | `n/a` | Mean signed error improved to `-0.033 m`; `1.60 m` rows still average `-0.145 m`, while `2.20 m` and `2.90 m` are close. |
+| Incident 005 model representation transform | runtime mitigation and traceability hook | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | `n/a` | Implemented post-foreground affine scale correction with raw/model foreground metadata; follow-up sweeps improved error but repeat trace-backed validation remains required. |
 
 Five conclusions follow from these results. First, the repository contains
 strong offline evidence for the bounded preprocessed task. Second, end-to-end
@@ -977,9 +1009,11 @@ Incident 005 reframes the remaining live underprediction as a synthetic/live
 projection and apparent-scale boundary. The model can receive a coherent,
 vehicle-shaped input and still produce a systematically wrong distance if the
 live model representation is scaled differently from the synthetic training
-representation. The first follow-up sweep shows that apparent-scale mitigation
-can materially reduce the bias, but it also shows why the calibrated live claim
-must remain bounded until repeated trace-backed sweeps close the residual error.
+representation. The follow-up sweeps show that apparent-scale mitigation can
+materially reduce the bias, with the latest three-distance sweep reaching mean
+signed error `-0.033 m` and MAE `0.080 m`. They also show why the calibrated live
+claim must remain bounded until repeated trace-backed sweeps close the residual
+close-range error.
 
 The main learning is that model metrics alone are insufficient. In a multi-stage
 perception system, accuracy depends on the contracts and failure modes of every
@@ -1040,9 +1074,9 @@ The incident-specific tests are particularly valuable:
   updates model geometry from the transformed mask.
 * The Incident 004 retrospective identifies v0.2 trace replay as useful
   follow-up work, but does not require it for the architectural justification.
-* Incident 005 records a first follow-up live sweep and identifies staged
-  scale-pair fixtures plus repeat trace-backed sweeps as required follow-up work
-  before stronger live distance claims.
+* Incident 005 records follow-up live sweeps and identifies staged scale-pair
+  fixtures plus repeat trace-backed sweeps as required follow-up work before
+  stronger live distance claims.
 
 ## 20. Technically Distinctive Features
 
@@ -1141,9 +1175,10 @@ The current evidence should be read with the following constraints in mind:
 * Incident 005 strongly supports the apparent-scale mismatch hypothesis, but
   does not isolate one exact low-level geometry cause.
 * The Incident 005 model representation transform is implemented, configurable,
-  and test-covered. A first follow-up sweep improved error materially, but
-  repeat trace-backed sweeps and scripted scale fixtures remain required before
-  claiming calibrated live distance accuracy.
+  and test-covered. Follow-up sweeps improved error materially, with the latest
+  three-distance sweep reaching MAE `0.080 m`, but repeat trace-backed sweeps and
+  scripted scale fixtures remain required before claiming calibrated live
+  distance accuracy.
 * The current next architectural direction is a more inspectable
   keypoint/topology-based representation.
 * The keypoint topology has a first experimental registered implementation,
@@ -1171,7 +1206,7 @@ This standalone v0.10 writeup captures the current repository-level narrative in
 * Adds raw-vs-model foreground metadata and debug artifacts to the live runtime
   description.
 * Adds Incident 005 to representative results and current limitations, including
-  the first follow-up live sweep after apparent-scale mitigation.
+  follow-up live sweeps after apparent-scale mitigation.
 * Tightens the claim boundary for direct distance/yaw regression: useful
   integration baseline and evidence path, not yet a calibrated live distance
   claim.
@@ -1197,8 +1232,8 @@ raw-image inference, live preprocessing incidents that were traced and
 remediated or partially remediated, a ROI-FCN-to-geometric-locator pivot toward
 an inspectable apparent-scale measurement path, a pose-dependent distance-bias
 incident that motivates a more inspectable model family, a live/synthetic
-apparent-scale incident that motivates explicit representation alignment, a
-first follow-up sweep showing material but incomplete mitigation, and a first
+apparent-scale incident that motivates explicit representation alignment,
+follow-up sweeps showing material but incomplete mitigation, and a first
 experimental amodal keypoint topology implementation.
 
 That makes the repository useful evidence of applied ML engineering, computer
